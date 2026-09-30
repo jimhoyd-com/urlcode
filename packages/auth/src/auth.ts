@@ -12,7 +12,7 @@ import type { AuthEndpointContext } from '@better-auth/core/context';
 import { getMigrations } from 'better-auth/db/migration';
 import { mkdir } from 'node:fs/promises';
 import { clientKey, ExtensionHttpError, isSameOriginRequest, jsonResponse, principalIdPattern, readBody } from '@jimhoyd/urlcode/extensions';
-import { holdServerLock, refuseNetworkFilesystem } from '@jimhoyd/urlcode/sqlite';
+import { beginImmediateWithin, holdServerLock, refuseNetworkFilesystem } from '@jimhoyd/urlcode/sqlite';
 import { maxRequestBodyBytes } from '@jimhoyd/urlcode/body-schema';
 import type { ExtensionAuthoringContract, ExtensionInstance, ExtensionOpenApiSecurity, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 import type { HostProbe, ServerLock } from '@jimhoyd/urlcode/sqlite';
@@ -35,8 +35,6 @@ const BUSY_TIMEOUT_MS = 2000;
  * is waiting on a response, so it waits longer than a request would.
  */
 export const OPERATOR_LOCK_WAIT_MS = 10_000;
-/** The pause between two operator attempts at the write lock: short, so the gap between two server commits is seen. */
-const OPERATOR_LOCK_POLL_MS = 1;
 const unsafe = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 /**
  * Default paths whose 401 means "no valid session" (Better Auth's session middleware). That middleware reads the session
@@ -93,12 +91,8 @@ export const authAuthoring: ExtensionAuthoringContract = {
  * the busy timeout instead, so the transaction's reads are still current when it writes. Only that exact statement
  * changes; Better Auth still sees a DatabaseSync and keeps its own dialect.
  *
- * An operator connection (`lockWait`) also takes that lock by polling rather than through SQLite's busy handler. The
- * busy handler sleeps up to 100 ms between attempts and is not a queue: beside a serving process that holds the write
- * lock for most of each commit (a flush to a slow disk, such as FlushFileBuffers on Windows) with only a request's gap
- * between commits, its roughly 30 attempts in 2 seconds can all land on a held lock, and `create-user` failed with
- * "database is locked". An attempt every millisecond for `lockWait` ms sees such a gap; a lock that is really held
- * (a stuck process) still fails once `lockWait` has passed.
+ * An operator connection (`lockWait`) polls for that lock rather than waiting in SQLite's busy handler, which could
+ * miss every gap between a busy server's commits (`beginImmediateWithin`).
  */
 class AuthDatabase extends DatabaseSync {
   readonly #lockWait: number | undefined;
@@ -114,31 +108,12 @@ class AuthDatabase extends DatabaseSync {
     if (wait === undefined) return begin;
     // Better Auth's dialect only calls run() (after columns()) on the statement it prepares for `begin`.
     return new Proxy(begin, { get: (target, key) => {
-      if (key === 'run') return () => this.#beginPolling(target, wait);
+      if (key === 'run') return () => beginImmediateWithin(this, wait, () => target.run());
       const value: unknown = Reflect.get(target, key, target);
       return typeof value === 'function' ? value.bind(target) : value;
     } });
   }
-  #beginPolling(begin: ReturnType<DatabaseSync['prepare']>, wait: number): ReturnType<ReturnType<DatabaseSync['prepare']>['run']> {
-    const deadline = Date.now() + wait;
-    const pause = new Int32Array(new SharedArrayBuffer(4));
-    this.exec('PRAGMA busy_timeout=0');
-    try {
-      for (;;) {
-        try { return begin.run(); }
-        catch (error) {
-          if (!isBusy(error) || Date.now() >= deadline) throw error;
-          Atomics.wait(pause, 0, 0, OPERATOR_LOCK_POLL_MS);
-        }
-      }
-    } finally { this.exec(`PRAGMA busy_timeout=${wait}`); }
-  }
 }
-/** SQLITE_BUSY, or one of its extended codes. */
-const isBusy = (error: unknown): boolean => {
-  const code = error !== null && typeof error === 'object' && 'errcode' in error ? error.errcode : undefined;
-  return typeof code === 'number' && (code & 0xff) === 5;
-};
 
 /**
  * Opens Better Auth's SQLite file: creates it 0600 (its directory 0700) when absent and refuses anything but a private

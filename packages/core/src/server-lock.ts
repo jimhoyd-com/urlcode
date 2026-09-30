@@ -1,9 +1,10 @@
-// One serving process per database, for every extension that keeps a SQLite database (store, auth). A process
+// One serving process per database, for the bundled extensions' own SQLite files (store, auth). A process
 // that serves a database first holds an exclusive lock on the file `<database>.server-lock` beside it, which the
 // operating system drops when the process ends, however it ends. A second serving process is refused before it writes.
-// The operator commands never take it: they share the database through SQLite's own locking, as before. Several
-// servers need a database server, which URLCode does not provide. Locks are unreliable over a network filesystem, so a
-// Linux database directory on one is refused first.
+// The operator commands never take it: they share the database through SQLite's own locking, as before. A site
+// that needs several servers keeps its data in a database server through its own library or an independent extension
+// (docs/EXTENSIONS.md, owner choice). Locks are unreliable over a network filesystem, so a Linux database directory on
+// one is refused first.
 import { closeSync, openSync, realpathSync } from 'node:fs';
 import { mkdir, statfs } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -88,7 +89,7 @@ export async function holdServerLock(database: string, what: string, probe?: Par
       db.exec('PRAGMA busy_timeout=500; PRAGMA locking_mode=EXCLUSIVE; BEGIN EXCLUSIVE');
     } catch (error) {
       db.close();
-      if (busy(error)) throw new Error(`Another process is already serving this ${what} database (${resolve(database)}): URLCode serves each database from one process. Stop that server first. Several servers need a real database server, which URLCode does not provide.`, { cause: error });
+      if (busy(error)) throw new Error(`Another process is already serving this ${what} database (${resolve(database)}): the bundled ${what} serves its database from one process. Stop that server first, or, to run several servers, keep the data in a database server through your own library or an independent extension.`, { cause: error });
       throw error;
     }
     entry = { db, refs: 0 };
@@ -122,4 +123,34 @@ export function serverLockHeld(database: string): boolean {
   try { db.prepare('SELECT count(*) AS n FROM sqlite_master').get(); return false; }
   catch (error) { if (busy(error)) return true; throw error; }
   finally { db.close(); }
+}
+
+/** SQLITE_BUSY, or one of its extended codes (`busy` above matches the primary code only, as the server lock needs). */
+const busyOrExtended = (error: unknown): boolean => {
+  const code = error !== null && typeof error === 'object' && 'errcode' in error ? error.errcode : undefined;
+  return typeof code === 'number' && (code & 0xff) === 5;
+};
+/**
+ * An operator connection's write lock beside a serving process: runs `begin` (which issues `BEGIN IMMEDIATE`) and,
+ * while it fails with SQLITE_BUSY, retries it every millisecond until `waitMs` has passed, then rethrows SQLite's error
+ * unchanged. SQLite's busy handler sleeps up to 100 ms between attempts and is not a queue: beside a server that holds
+ * the write lock for most of each commit (a flush to a slow disk, such as FlushFileBuffers on Windows) with only a
+ * short idle gap between commits, its roughly 30 attempts in 2 seconds can all land on a held lock, and the command
+ * failed with "database is locked". Polling sees such a gap; a lock that is really held (a stuck process), or a writer
+ * that leaves no idle gap at all, still fails once `waitMs` has passed. The connection's busy timeout is 0 while
+ * polling and `waitMs` afterwards, so open an operator connection with that timeout.
+ */
+export function beginImmediateWithin<T>(db: DatabaseSync, waitMs: number, begin: () => T): T {
+  const deadline = Date.now() + waitMs;
+  const pause = new Int32Array(new SharedArrayBuffer(4));
+  db.exec('PRAGMA busy_timeout=0');
+  try {
+    for (;;) {
+      try { return begin(); }
+      catch (error) {
+        if (!busyOrExtended(error) || Date.now() >= deadline) throw error;
+        Atomics.wait(pause, 0, 0, 1);
+      }
+    }
+  } finally { db.exec(`PRAGMA busy_timeout=${waitMs}`); }
 }

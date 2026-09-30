@@ -21,7 +21,7 @@ const cliPath = join(import.meta.dirname, '..', 'src', 'cli.ts');
 
 /**
  * A store database with one member and, beside it, a writer committing continuously that holds the write lock
- * `hold` ms per commit and idles `gap` ms between commits (test/slow-commit-writer.ts). Returns the database, the
+ * `hold` ms per commit and idles `gap` ms between commits (the repository's test/slow-commit-writer.ts). Returns the database, the
  * project and `stop`, which ends the writer and resolves to its commit count.
  */
 async function busyStore(t: TestContext, hold: number, gap: number) {
@@ -31,7 +31,7 @@ async function busyStore(t: TestContext, hold: number, gap: number) {
   await mkdir(app);
   await writeFile(join(app, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { store: { version: '1', config: { collections: { reviewers } } } }, routes: { '/api/review/*': { extension: 'store', methods: ['GET'] } } }));
   await addMember(database, { collections, collection: 'reviewers', principal: 'seed' });
-  const writer = spawn(process.execPath, [fileURLToPath(new URL('./slow-commit-writer.ts', import.meta.url)), database, String(hold), String(gap)], { stdio: ['pipe', 'pipe', 'inherit'] });
+  const writer = spawn(process.execPath, [fileURLToPath(new URL('../../../test/slow-commit-writer.ts', import.meta.url)), database, String(hold), String(gap)], { stdio: ['pipe', 'pipe', 'inherit'] });
   const exited = new Promise(resolve => writer.once('exit', resolve));
   let out = '';
   writer.stdout.setEncoding('utf8').on('data', (chunk: string) => { out += chunk; });

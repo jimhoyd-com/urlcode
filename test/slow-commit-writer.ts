@@ -1,5 +1,5 @@
-// A busy serving process on a slow-flush disk, for operator-lock.test.ts: `slow-commit-writer.ts <database> <hold ms>
-// <gap ms>`. Each commit holds SQLite's write lock for <hold> ms (as FlushFileBuffers does on a Windows runner), then
+// A busy serving process on a slow-flush disk, for the store's and auth's operator lock tests (`beginImmediateWithin`):
+// `slow-commit-writer.ts <database> <hold ms> <gap ms>`. Each commit holds SQLite's write lock for <hold> ms (as FlushFileBuffers does on a Windows runner), then
 // the process idles <gap> ms (a timer, the next request's arrival) before its next commit. A writer with no gap at all
 // is not modelled: it starves every waiter on some platforms, which the store documents as a limit. Prints "ready"
 // after its first commit and stops, printing {"commits": n}, when stdin closes.

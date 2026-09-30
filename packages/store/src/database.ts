@@ -7,7 +7,7 @@ import { lstat, mkdir, open, realpath } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { SQLInputValue, StatementSync } from 'node:sqlite';
-import { refuseNetworkFilesystem } from '@jimhoyd/urlcode/sqlite';
+import { beginImmediateWithin, refuseNetworkFilesystem } from '@jimhoyd/urlcode/sqlite';
 import type { HostProbe } from '@jimhoyd/urlcode/sqlite';
 
 /** PRAGMA application_id of a store database: "USTR". */
@@ -115,37 +115,11 @@ export const BUSY_TIMEOUT_MS = 2000;
  * waits for a lock beside a serving process. Nobody is waiting on a response, so it waits longer than a request would.
  */
 export const OPERATOR_LOCK_WAIT_MS = 10_000;
-/** The pause between two operator attempts at the write lock: short, so the idle gap between two server commits is seen. */
-const OPERATOR_LOCK_POLL_MS = 1;
 
-/** SQLITE_BUSY, or one of its extended codes. */
-const isBusy = (error: unknown): boolean => {
-  const code = error !== null && typeof error === 'object' && 'errcode' in error ? error.errcode : undefined;
-  return typeof code === 'number' && (code & 0xff) === 5;
-};
-/**
- * Runs `BEGIN IMMEDIATE`. With `lockWait` (an operator connection) it polls for the write lock rather than going
- * through SQLite's busy handler, which sleeps up to 100 ms between attempts and is not a queue: beside a serving
- * process that holds the write lock for most of each commit (a flush to a slow disk, such as FlushFileBuffers on
- * Windows) with only a short idle gap between commits, its roughly 30 attempts in 2 seconds can all land on a held lock,
- * and the command failed with "database is locked". An attempt every millisecond for `lockWait` ms sees such a gap; a
- * lock that is really held (a stuck process) still fails once `lockWait` has passed, and so does a writer that leaves
- * no idle gap at all. The connection's busy timeout is `lockWait` again afterwards.
- */
+/** `BEGIN IMMEDIATE`; with `lockWait` (an operator connection), polled for up to that long (`beginImmediateWithin`). */
 function beginImmediate(db: DatabaseSync, lockWait: number | undefined): void {
-  if (lockWait === undefined) { db.exec('BEGIN IMMEDIATE'); return; }
-  const deadline = Date.now() + lockWait;
-  const pause = new Int32Array(new SharedArrayBuffer(4));
-  db.exec('PRAGMA busy_timeout=0');
-  try {
-    for (;;) {
-      try { db.exec('BEGIN IMMEDIATE'); return; }
-      catch (error) {
-        if (!isBusy(error) || Date.now() >= deadline) throw error;
-        Atomics.wait(pause, 0, 0, OPERATOR_LOCK_POLL_MS);
-      }
-    }
-  } finally { db.exec(`PRAGMA busy_timeout=${lockWait}`); }
+  const begin = (): void => { db.exec('BEGIN IMMEDIATE'); };
+  if (lockWait === undefined) begin(); else beginImmediateWithin(db, lockWait, begin);
 }
 
 /** SQLite releases carrying the fixes URLCode's SQLite stores require (the same floor as audit). */

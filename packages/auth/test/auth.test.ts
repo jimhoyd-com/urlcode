@@ -135,7 +135,7 @@ test('a second serving process for the auth database is refused, and a restart a
   assert.ok(first.port, first.stderr);
   const second = await launch();
   assert.equal(second.port, undefined);
-  assert.match(second.stderr, /Another process is already serving this auth database \(.+auth\.sqlite\): URLCode serves each database from one process/);
+  assert.match(second.stderr, /Another process is already serving this auth database \(.+auth\.sqlite\): the bundled auth serves its database from one process/);
   // The first one is killed: the operating system drops its lock, and a restart serves the same accounts at once.
   await first.kill();
   // Windows releases a terminated process's locks after an OS-determined delay rather than at exit.
@@ -416,7 +416,7 @@ test('urlcode-auth create-user takes the write lock between the slow commits of 
   // request's response I/O), as a saturated server does when each flush is slow (FlushFileBuffers on Windows). SQLite's
   // busy handler, polling up to every 100 ms for 2 seconds, mostly found the lock held and failed with "database is
   // locked". A writer with no gap at all can still starve the operator command for its whole 10 seconds (README).
-  const writer = spawn(process.execPath, [fileURLToPath(new URL('./slow-commit-writer.ts', import.meta.url)), at.database, '100', '2'], { stdio: ['pipe', 'pipe', 'inherit'] });
+  const writer = spawn(process.execPath, [fileURLToPath(new URL('../../../test/slow-commit-writer.ts', import.meta.url)), at.database, '100', '2'], { stdio: ['pipe', 'pipe', 'inherit'] });
   const exited = new Promise(resolve => writer.once('exit', resolve));
   let out = '';
   writer.stdout.setEncoding('utf8').on('data', (chunk: string) => { out += chunk; });

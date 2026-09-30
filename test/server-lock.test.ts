@@ -78,7 +78,7 @@ test('a second process is refused while one holds the lock, and takes it once th
   const first = await holder(defer, database);
   assert.deepEqual(first.outcome, { held: true });
   assert.equal(serverLockHeld(database), true);
-  await assert.rejects(holdServerLock(database, 'test'), /^Error: Another process is already serving this test database \(.+site\.sqlite\): URLCode serves each database from one process/);
+  await assert.rejects(holdServerLock(database, 'test'), /^Error: Another process is already serving this test database \(.+site\.sqlite\): the bundled test serves its database from one process/);
   const second = await holder(defer, database);
   assert.match(String(second.outcome.error), /^Another process is already serving this test database/);
   // The operating system drops the lock of a killed process: no heartbeat, no expiry to wait for. Windows releases a
