@@ -7,7 +7,7 @@ import type { ExtensionActivation, ExtensionInstance, ExtensionRequest, HandlerR
 import type { HostProbe, ServerLock } from '@jimhoyd/urlcode/sqlite';
 import { Collection, OWNER_FIELD, StoreError, canonical, collectionSchema, etagOf, redirectable } from './collection.ts';
 import type { CollectionSpec, Page, Retry, Shown, StoredRecord, Transferred, Written } from './collection.ts';
-import { AUDIT_RETENTION, auditLog } from './audit.ts';
+import { AUDIT_RETENTION, auditLog, auditTapStatus, watchAuditLoss } from './audit.ts';
 import { openStoreDatabase, recordDeclarations, storeDurability } from './database.ts';
 import type { StoreDatabase, StoreDurability } from './database.ts';
 import { storeExports } from './records.ts';
@@ -146,7 +146,7 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
   const database = resolve(options.database), durability = storeDurability(options.durability);
   const probe = options.probe;
   // The live activations, oldest first, with their collections. The newest is the one being served.
-  const live: { token: symbol; collections: readonly Collection[] }[] = [];
+  const live: { token: symbol; collections: readonly Collection[]; retention: number; runtimeWarn: ((message: string) => void) | undefined }[] = [];
   // The derived indexes (interval, #902; unique, #953; list, #951) each live activation reads through, so a reload drops only indexes nobody declares.
   const indexes = new Map<symbol, string[]>();
   // The one connection and how many live activations hold it.
@@ -171,6 +171,20 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
   };
   const current = (): StoreDatabase | undefined => live.length && connection?.db?.open ? connection.db : undefined;
   const shared = storeExports(auditLog(current));
+  // The tap's gap (#1067): events pruned before the tap's consumer acknowledged them. This process warns when it first
+  // sees the count nonzero (through the activation warning when it already is at startup), then only each time the
+  // count reaches another multiple of auditRetention, so a sink that stays behind yields one record per window lost.
+  let warnedBucket: number | undefined;
+  const lossBucket = (lost: number, retention: number): number => lost === 0 ? 0 : 1 + Math.floor(lost / retention);
+  const lossMessage = (lost: number, retention: number): string => `audit log: ${lost} ${lost === 1 ? 'event was' : 'events were'} pruned (auditRetention ${retention}) before the tap's consumer acknowledged them, so its sink never received them; StoreExports.audit.status() and the audit_pruned_unacked_total metric count them`;
+  const checkLoss = (): void => {
+    const serving = live.at(-1), db = current();
+    if (!serving || !db) return;
+    let lost: number;
+    try { lost = auditTapStatus(db).lost; } catch { return; }
+    const bucket = lossBucket(lost, serving.retention);
+    if (bucket > (warnedBucket ?? 0)) { warnedBucket = bucket; serving.runtimeWarn?.(lossMessage(lost, serving.retention)); }
+  };
   const registration: RuntimeExtension = {
     name: 'store', version: '1', projectSha256: options.projectSha256, targets: ['node'],
     schema: storeConfigSchema,
@@ -256,14 +270,22 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
         // of any of these collections (a retiring activation during a reload) is refused.
         record(held.db, collections);
         if (context.seed !== undefined) seedMembers(collections, context.seed as StoreSeed);
+        if (warnedBucket === undefined) {
+          const { lost } = auditTapStatus(held.db);
+          warnedBucket = lossBucket(lost, retention);
+          if (lost > 0) context.warn?.(lossMessage(lost, retention));
+        }
+        watchAuditLoss(held.db, checkLoss);
       } catch (error) { await held.release(); throw error; }
       const exported = shared.attach(collections);
-      live.push({ token: exported, collections });
+      live.push({ token: exported, collections, retention, runtimeWarn: context.runtimeWarn });
       indexes.set(exported, collections.flatMap(collection => collection.indexes));
       dropStaleIndexes(held.db, new Set([...indexes.values()].flat()));
       let closed = false;
       return {
         handle: request => dispatch({ byMount, shortByMount, transitionByMount, readersByMount }, context, request),
+        // The tap's gap as a counter (#1067): `urlcode_extension_store_audit_pruned_unacked_total` in Prometheus.
+        metrics() { const db = current(); return db ? { audit_pruned_unacked_total: auditTapStatus(db).lost } : {}; },
         async close() {
           if (closed) return;
           closed = true;

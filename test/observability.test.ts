@@ -10,6 +10,8 @@ import { events, validateObservers, createObserverSink, createMetrics, renderPro
 import type { ObserverEvent, MetricsSnapshot } from '../packages/core/src/observability.ts';
 import type { ServerOptions } from '../packages/core/src/server.ts';
 import { project, redirect, request, param } from './helpers.ts';
+import { extensionMetrics, inspectExtensionRevision, maxExtensionMetrics } from '../packages/core/src/extensions.ts';
+import type { ExtensionRegistry, RuntimeExtension } from '../packages/core/src/extensions.ts';
 
 const forbidden = /customer-7|secret|user-agent|127\.0\.0\.1|Mozilla/i;
 const declared = (name: unknown): name is keyof typeof events => typeof name === 'string' && Object.hasOwn(events, name);
@@ -188,6 +190,30 @@ test('renderPrometheus is pure and escapes route labels', () => {
   assert.ok(!/status=|method=|requestId=/.test(text));
   for (const name of text.match(/^urlcode_[a-z_]+/gm) ?? []) assert.match(name, /^urlcode_[a-z_]+$/);
   for (const line of text.split('\n')) if (line.startsWith('# TYPE') && line.endsWith('counter')) assert.match(line, /_total counter$/);
+});
+
+// RIM-EXT-METRICS-001: an extension's own numbers reach the snapshot and the exposition, validated, never failing either.
+test('extension metrics reach runtime.metrics(), app.metrics() and the Prometheus text, invalid entries dropped', async t => {
+  const root = await project(t, { '/demo/*': { extension: 'demo', methods: ['GET'] } }, {}, { extensions: { demo: { version: '1', config: {} } } });
+  let lost = 3;
+  const demo: RuntimeExtension = { name: 'demo', version: '1', projectSha256: await inspectExtensionRevision(root), targets: ['node'], schema: { type: 'object', additionalProperties: false },
+    activate: () => ({ handle: () => ({ status: 404, headers: [] }), metrics: () => ({ audit_pruned_unacked_total: lost, queue_depth: 2, 'Bad-Name': 1, negative_total: -1, infinite: Infinity, text: '4' as unknown as number }) }) };
+  const runtime = await createRuntime(root, { origin: 'https://metrics.example.test', extensions: [demo] });
+  t.after(() => runtime.close());
+  assert.deepEqual(runtime.metrics().extensions, { demo: { audit_pruned_unacked_total: 3, queue_depth: 2 } });
+  const app = await startServer({ project: root, origin: 'https://metrics.example.test', port: 0, log: () => {}, extensions: [demo] });
+  t.after(() => app.close());
+  lost = 5;
+  const snapshot = app.metrics();
+  assert.deepEqual(snapshot.extensions, { demo: { audit_pruned_unacked_total: 5, queue_depth: 2 } }, 'read afresh at every snapshot');
+  const text = renderPrometheus(snapshot);
+  for (const line of ['# TYPE urlcode_extension_demo_audit_pruned_unacked_total counter', 'urlcode_extension_demo_audit_pruned_unacked_total 5',
+    '# TYPE urlcode_extension_demo_queue_depth gauge', 'urlcode_extension_demo_queue_depth 2']) assert.ok(text.includes(line + '\n'), `missing ${line}`);
+  assert.ok(!/Bad-Name|negative|infinite|_text/.test(text));
+  const registry = (metrics: () => Record<string, number>): Pick<ExtensionRegistry, 'entries'> => ({ entries: new Map([['odd', { instance: { handle: () => ({ status: 404, headers: [] }), metrics } }]]) as unknown as ExtensionRegistry['entries'] });
+  assert.deepEqual(extensionMetrics(registry(() => { throw new Error('broken'); })), {}, 'a throwing metrics() reports nothing');
+  assert.equal(Object.keys(extensionMetrics(registry(() => Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`n${i}_total`, i]))))['odd']!).length, maxExtensionMetrics);
+  assert.deepEqual(extensionMetrics(undefined), {});
 });
 
 test('observers validate like plugins and the sink isolates the fallback logger', () => {

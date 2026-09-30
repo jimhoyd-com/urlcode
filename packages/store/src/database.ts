@@ -87,6 +87,11 @@ const MIGRATIONS: readonly string[] = [
      FROM store_audit_outbox ORDER BY seq;
    DROP TABLE store_audit_outbox;
    DROP TABLE store_audit_drain;`,
+  // 7 -> 8. The tap's gap (#1067): one row. `consumer` becomes 1 at the tap's first `peek` or `ack`; from then on every
+  // prune adds the events it removed while still unforwarded to `lost`, in the same write transaction.
+  `CREATE TABLE store_audit_tap(id INTEGER PRIMARY KEY CHECK (id = 1), consumer INTEGER NOT NULL DEFAULT 0 CHECK (consumer IN (0, 1)),
+     lost INTEGER NOT NULL DEFAULT 0 CHECK (lost >= 0));
+   INSERT INTO store_audit_tap(id) VALUES (1);`,
 ];
 export const STORE_SCHEMA_VERSION = MIGRATIONS.length;
 /**
