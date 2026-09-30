@@ -1,4 +1,5 @@
-import type { HostProbe, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
+import type { RuntimeExtension } from '@jimhoyd/urlcode/extensions';
+import type { HostProbe } from '@jimhoyd/urlcode/sqlite';
 
 /** Plain JSON a producer may attach as metadata. Never secrets or submitted values. */
 export type AuditValue = string | number | boolean | null | readonly AuditValue[] | { readonly [key: string]: AuditValue };

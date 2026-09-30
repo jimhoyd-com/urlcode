@@ -7,8 +7,8 @@ import { lstat, mkdir, open, realpath } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { SQLInputValue, StatementSync } from 'node:sqlite';
-import { refuseNetworkFilesystem } from '@jimhoyd/urlcode/extensions';
-import type { HostProbe } from '@jimhoyd/urlcode/extensions';
+import { refuseNetworkFilesystem } from '@jimhoyd/urlcode/sqlite';
+import type { HostProbe } from '@jimhoyd/urlcode/sqlite';
 
 /** PRAGMA application_id of a store database: "USTR". */
 export const STORE_APPLICATION_ID = 0x55535452;
