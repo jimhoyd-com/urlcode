@@ -96,6 +96,7 @@ const helpEntries: HelpEntry[] = [
 ` },
   { name:'recipes', group:'Author', text:
 `  urlcode recipes [list|search <text>|show <name>|add <name> --out new-directory] [--dry-run] [--json]
+  urlcode recipes add <name> --project existing-project [--dry-run]  # merge into a project (app in a site): routes, includes, extension config, fixtures, seed and tests/audit.json; any clash refuses it all, naming each; writes all or nothing
 ` },
   { name:'examples', group:'Author', text:
 `  urlcode examples [list|search <text>|add <name> --out new-directory] [--dry-run] [--json]  # bundled runnable examples and the cookbook route index; add copies one so its tests.commands run there
@@ -465,7 +466,7 @@ try {
       print(converted.text); if(!converted.report.ok)process.exitCode=1;
     }else if(['recipes','recipe','examples','example','docs','build-typescript','bulk-import','verify-provider','mcp'].includes(command)){
       const {runEcosystemCommand}=await import('./ecosystem-cli.ts');
-      await runEcosystemCommand(command,positionals.slice(1),values,print);
+      await runEcosystemCommand(command,positionals.slice(1),{...values,projectGiven:parsed.project!==undefined},print);
     }else if(command==='explain'||command==='manifest'){
       const {runExplainCommand}=await import('./explain-cli.ts');
       const exitCode=await runExplainCommand(command,arg,{project:values.project,target:values.target,origin:values.origin,json:values.json,extensions:operatorHost.extensions},print);

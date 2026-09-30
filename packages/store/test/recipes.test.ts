@@ -84,3 +84,89 @@ test('the store-approval recipe locks an approved request and serves reviewers a
   assert.deepEqual(files.filter(file => !/\.(ya?ml|json|md)$/.test(file)), []);
   assert.doesNotMatch(await readFile(join(approval.project, 'urlcode.yaml'), 'utf8'), /\b(function|middleware|module):/);
 });
+
+// #1014: `urlcode recipes add <name> --project app` merges a recipe into a site created by `urlcode init` and
+// `urlcode extensions add auth store`, instead of the files being copied by hand. These are the files those two
+// commands write (test/addons.integration.ts runs the real commands); the recipe's routes/auth.yaml is the same file.
+const siteYaml = `# yaml-language-server: $schema=https://raw.githubusercontent.com/jimhoyd-com/urlcode/v0.6.5/schemas/urlcode.schema.json
+# Start with no routes. Add only the files and routes your application needs.
+version: "1"
+routes: {}
+extensions:
+  auth:
+    version: "1"
+    config: {}
+  store:
+    version: "1"
+    config:
+      collections: {}
+includes:
+  - routes/auth.yaml
+`;
+const authRoutes = `# Routes for the auth extension (urlcode extensions remove auth deletes this file). Mounts are exclusive to it.
+version: "1"
+routes:
+  /api/auth/*:
+    extension: auth
+    methods:
+      - GET
+      - POST
+    description: "Better Auth: sign-in, sign-out and sessions."
+`;
+async function mergedSite(t: Parameters<typeof cleanup>[0], names: string[]) {
+  const root = await mkdtemp(join(tmpdir(), 'store-merge-'));
+  cleanup(t, () => rm(root, { recursive: true, force: true }));
+  const project = join(root, 'app'), database = join(root, 'data', 'store.sqlite');
+  await mkdir(join(project, 'routes'), { recursive: true });
+  await mkdir(join(project, 'tests'));
+  await mkdir(join(root, 'data'));
+  await writeFile(join(project, 'urlcode.yaml'), siteYaml);
+  await writeFile(join(project, 'routes', 'auth.yaml'), authRoutes);
+  await writeFile(join(project, 'tests', 'audit.json'), '{\n  "expectRoutes": 1\n}\n');
+  await writeFile(join(root, 'host.mjs'), hostFile(database));
+  const { PROJECT_SHA256: _pin, URLCODE_ORIGIN: _origin, URLCODE_POLICY: _policy, ...env } = process.env;
+  const cliRun = (...args: string[]) => spawnSync(process.execPath, ['--conditions=development', cli, ...args], { cwd: root, encoding: 'utf8', timeout: 120000, env });
+  const add = (name: string) => cliRun('recipes', 'add', name, '--project', 'app', '--json');
+  for (const name of names) {
+    const added = add(name);
+    assert.equal(added.status, 0, added.stdout + added.stderr);
+    const report = JSON.parse(added.stdout) as { includes: { unchanged: string[]; added: string[] } };
+    // The site's routes/auth.yaml is the recipe's own: not a clash, and not written again.
+    assert.deepEqual(report.includes, { added: [], unchanged: ['routes/auth.yaml'] });
+  }
+  const run = (...args: string[]) => cliRun(...args, '--project', 'app', '--host-file', 'host.mjs', '--local-review');
+  let routes = 1;
+  for (const name of names) routes += (await showRecipe(name)).routes! - 1;
+  return { project, database, run, add, routes };
+}
+
+for (const name of ['store-booking', 'store-credits', 'store-approval'] as const) {
+  test(`recipes add ${name} --project merges it into an init + extensions add auth store site that validates, tests and audits ready`, async t => {
+    const merged = await mergedSite(t, [name]);
+    assert.equal(merged.routes, (await showRecipe(name)).routes);
+    // The audit's committed route count moved with the routes the merge added, so audit needs no --expect-routes.
+    assert.deepEqual(JSON.parse(await readFile(join(merged.project, 'tests', 'audit.json'), 'utf8')), { expectRoutes: merged.routes });
+    commands(merged);
+    const audited = merged.run('audit');
+    assert.equal(audited.status, 0, audited.stdout + audited.stderr);
+    assert.match(audited.stdout, /"countMatches":true/);
+    assert.equal(existsSync(merged.database), false);
+  });
+}
+
+test('two recipes merge into one site when they do not clash, sharing its auth mount, and a clash refuses with nothing written', async t => {
+  const merged = await mergedSite(t, ['store-booking', 'protected-download']);
+  commands(merged);
+  const seed = JSON.parse(await readFile(join(merged.project, 'tests', 'seed.json'), 'utf8')) as { auth: { users: { id: string }[] } };
+  assert.deepEqual(seed.auth.users.map(user => user.id), ['alice', 'bob', 'carol', 'ada']);
+
+  // A site whose bookings collection was changed after the merge: adding the recipe again names that clash.
+  const file = join(merged.project, 'urlcode.yaml'), text = (await readFile(file, 'utf8')).replace('enum: [atlas, borealis]', 'enum: [atlas, borealis, cosmos]');
+  await writeFile(file, text);
+  const before = await readFile(join(merged.project, 'tests', 'requests.json'), 'utf8');
+  const refused = merged.add('store-booking');
+  assert.notEqual(refused.status, 0);
+  assert.match(refused.stderr, /extensions\.store\.config\.collections\.bookings in app\/urlcode\.yaml differs/);
+  assert.equal(await readFile(file, 'utf8'), text);
+  assert.equal(await readFile(join(merged.project, 'tests', 'requests.json'), 'utf8'), before);
+});

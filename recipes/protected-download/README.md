@@ -22,9 +22,10 @@ urlcode audit --project . --expect-routes 2 --host-file /operator/host.mjs --loc
 `tests/seed.json` in a throwaway database. The fixtures sign in through
 `POST /api/auth/sign-in/email`, read the session and download the report; the
 asserted sign-in and session read cover the auth mount for the audit. In a
-site created with `urlcode extensions add auth`, copy `urlcode.yaml`,
-`files/report.txt`, `tests/requests.json` and `tests/seed.json` into `app/`
-unchanged and set `expectRoutes` in `app/tests/audit.json` to 2.
+site created with `urlcode extensions add auth`,
+`urlcode recipes add protected-download --project app` merges the route,
+`files/report.txt`, the fixtures and the seed into `app/` and moves
+`expectRoutes` in `app/tests/audit.json` to 2.
 
 Serving needs the revision the operator reviewed, which covers the attachment:
 replacing it or editing `urlcode.yaml` makes a pinned command refuse with a

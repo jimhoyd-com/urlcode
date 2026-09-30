@@ -7,6 +7,8 @@ interface Options {
   target?:string|undefined;origin?:string|undefined;'dry-run'?:boolean|undefined;
   'timeout-ms'?:string|undefined;release?:string|undefined;'git-commit'?:string|undefined;'allow-authoring'?:boolean|undefined;'host-file'?:string|undefined;policy?:string|undefined;
   global?:boolean|undefined;
+  /** --project was passed explicitly, not defaulted to the site's app/. */
+  projectGiven?:boolean|undefined;
 }
 export async function runEcosystemCommand(command:string,args:string[],options:Options,print:(value:unknown)=>unknown):Promise<void> {
   if(command==='recipes'||command==='recipe'){
@@ -16,7 +18,13 @@ export async function runEcosystemCommand(command:string,args:string[],options:O
     if(operation==='list'){assert(name===undefined,'Unexpected recipe name');const recipes=await listRecipes();print(options.json?recipes:formatCatalog(recipes));}
     else if(operation==='search'){assert(name,'Provide search text');const found=await searchRecipes(name);print(options.json?found:formatSearch(found.query,found.results));}
     else if(operation==='show'){assert(name,'Provide a recipe name');const recipe=await showRecipe(name);print(options.json?recipe:formatMetadata(recipe)+Object.entries(recipe.content).map(([file,text])=>`\n--- ${file}\n${text}`).join(''));}
-    else if(operation==='add'){assert(name && options.out,'Provide a recipe name and --out new-directory');print(await addRecipe(name,options.out,{dryRun:options['dry-run']}));}
+    else if(operation==='add'){
+      assert(name,'Provide a recipe name, then --out new-directory or --project existing-project');
+      assert(!(options.out&&options.projectGiven),'Use --out new-directory to create a project, or --project existing-project to merge the recipe into one, not both');
+      assert(options.out||options.projectGiven,'Provide --out new-directory to create a project, or --project existing-project (app in a site) to merge the recipe into it');
+      if(options.out)print(await addRecipe(name,options.out,{dryRun:options['dry-run']}));
+      else{const {mergeRecipe}=await import('./recipe-merge.ts');print(await mergeRecipe(name,options.project,{dryRun:options['dry-run']}));}
+    }
     else assert(false,'Use recipes list, search, show or add');
   }else if(command==='examples'||command==='example'){
     const {listExamples,searchExamples,addExample,exampleAddCommand}=await import('./examples.ts');
