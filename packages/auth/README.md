@@ -86,12 +86,13 @@ fixture's cookie jar keeps the session, and `"origin":"{{origin}}"` passes the
 same-origin check. There is no test principal that skips the gate. See
 [authenticated routes][readiness-authenticated-routes].
 
-`urlcode test`, `audit` and `benchmark` never open the site's
+`urlcode test`, `audit` and `benchmark`, and a `--local-review` `validate` or
+`routes` with no operator pin, never open the site's
 `data/auth.sqlite`: each run uses a fresh database in a temporary directory,
 creates Better Auth's tables itself, signs sessions with a secret that lives
 only for the run (the `database` and `secretFile` options and
-`BETTER_AUTH_SECRET` are ignored), and creates the accounts `app/tests/seed.json`
-declares, with the ids a store membership names:
+`BETTER_AUTH_SECRET` are ignored). `test` and `audit` then create the accounts
+`app/tests/seed.json` declares, with the ids a store membership names:
 
 ```json
 {"auth": {"users": [{"id": "alice", "email": "alice@example.test", "password": "alice-local-demo-password", "name": "Alice"}]}}
@@ -145,13 +146,15 @@ auth({
 ```
 
 `BETTER_AUTH_SECRET` overrides the secret file. The extension always keeps
-Better Auth's rate limiter on (10 sign-in attempts per client address a
-minute), keyed by the client address URLCode admitted, and telemetry off; the
-`betterAuth` option cannot change either. The limiter counts in the auth
-database (`rateLimit.storage: 'database'`), so several server processes on one
-host serving the same `data/auth.sqlite` share one limit rather than each
-allowing 10; `betterAuth.rateLimit.storage` can choose Better Auth's
-per-process `memory` instead.
+Better Auth's rate limiter on, keyed by the client address URLCode admitted,
+and telemetry off; the `betterAuth` option cannot change either. By default
+the limiter allows 10 sign-in attempts per client address a minute and counts
+in the auth database (`rateLimit.storage: 'database'`), so several server
+processes on one host serving the same `data/auth.sqlite` share one limit
+rather than each allowing 10. `betterAuth.rateLimit` can replace `storage`
+(Better Auth's per-process `memory`), `window`, `max` and `customRules`; a
+`customRules` replaces the default sign-in and sign-up rules rather than adding
+to them.
 
 Several processes may open the database at once: a serving process,
 `urlcode-auth create-user` beside it, or more than one server behind a proxy on
@@ -165,14 +168,12 @@ serves, with or without the store. Activation (and `urlcode-auth migrate`,
 `create-user` and `find-user`) refuses a database directory on a network
 filesystem by its Linux `statfs` type, the list the store refuses (not checked
 on macOS or Windows). Each activation also keeps a lease row in `auth_servers`
-in `auth.sqlite` (hostname, Linux boot id, pid; renewed every 5 seconds) and is
-refused while a live peer runs on another host; processes and containers on one
-host are accepted ([several serving processes][store-several-processes]).
-Another host's row is judged by whether its heartbeat advances, never by
-comparing clocks: a row a crashed host left is deleted after 20 seconds of
-silence. A process that finds another host serving the database logs it and
-answers `503 auth_unavailable` to every auth request until that host is gone.
-The lease is checked once per request, before Better Auth runs.
+in `auth.sqlite` and is refused while a live peer runs on another host;
+processes and containers on one host are accepted. A process that finds another
+host serving the database logs it and answers `503 auth_unavailable` to every
+auth request until that host is gone. The lease is checked once per request,
+before Better Auth runs. How the lease judges a peer, and its timing, are in
+[several serving processes][store-several-processes].
 
 A storage failure answers `503 auth_unavailable`, never a false success or a
 false sign-out. Better Auth itself answers a sign-out whose session delete
@@ -203,7 +204,7 @@ See [SECURITY.md](SECURITY.md) for the security model.
 
 Every key `auth` accepts, rendered from this package's `urlcode.json` (the schema the runtime validates against). Required means required within its containing object; `*` is a key you choose and `[]` an array item.
 
-**Schema-valid is not activatable.** JSON Schema checks shape only. Activation also checks what a schema cannot express: the route for each declared mount exists, referenced fields and collections are declared, peers are installed and active, and the cross-field rules the descriptions state. A project that validates can still refuse to start; run `urlcode validate --project . --host-file <host.mjs> --origin <origin>`, which activates it.
+**Schema-valid is not activatable.** JSON Schema checks shape only. Activation also checks what a schema cannot express: the route for each declared mount exists, referenced fields and collections are declared, peers are installed and active, and the cross-field rules the descriptions state. A project that validates can still refuse to start; run `urlcode validate --local --project app --host-file host.mjs --local-review` (`npm run validate`), which activates it.
 
 **Peers.** none.
 
@@ -228,7 +229,7 @@ Accounts and sessions served by Better Auth on one extension mount. Protect a ro
 - **mount** (extension, `urlcode.yaml#routes`): Mount Better Auth at one path, for example /api/auth/* with extension: auth and methods [GET, POST]. Only the operator-enabled Better Auth endpoints answer; everything else under it is 404.
 - **route protection** (configuration, `urlcode.yaml#routes`): `auth: true` on a route requires a verified Better Auth session and refuses cross-origin unsafe methods; the route receives no cookie or Authorization header. It is the principal-providing policy a store `ownership: owner` mount, `readers` mount or `by: others` transition mount needs.
 
-Fast checks: `urlcode validate --project app`, `urlcode validate --local --project app --host-file host.mjs --origin <origin>`.
+Fast checks: `urlcode validate --project app`, `urlcode validate --local --project app --host-file host.mjs --local-review`.
 <!-- extension-reference:end -->
 
 <!-- urlcode-current-version:start -->

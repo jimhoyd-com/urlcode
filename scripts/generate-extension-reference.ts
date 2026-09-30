@@ -20,8 +20,11 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { parseArgs } from 'node:util';
 import { parseDescriptor } from '../packages/core/src/addon-manifest.ts';
 import type { AddonDescriptor } from '../packages/core/src/addon-manifest.ts';
+import { commandOptions, localReviewCommands, pinFreeReviewCommands } from '../packages/core/src/cli-command-metadata.ts';
+import { projectScripts } from '../packages/core/src/context.ts';
 import { propertyPointers, undescribed } from './schema-descriptions.ts';
 import { addons, repositoryRoot } from './workspaces.ts';
 
@@ -85,6 +88,25 @@ export async function agentProblems(source: ExtensionSource): Promise<string[]> 
   }
   if (!agent.references.some(reference => reference.path === 'README.md')) problems.push(`${source.packageName}: no agent reference names README.md, which carries the generated field reference`);
   return problems;
+}
+
+/**
+ * Why a published fast check would not run as printed on a site `urlcode init` created (#994); empty when it would.
+ * A check that loads the operator host is one of the site's own npm script commands, so it reviews the current revision
+ * with `--local-review` rather than being refused with revision-pin-required; a check without the host needs no pin.
+ */
+export function fastCheckProblems(check: string): string[] {
+  const [program, ...args] = check.split(' ');
+  if (program !== 'urlcode') return [`\`${check}\` is not a urlcode command`];
+  if (/[<>]/.test(check)) return [`\`${check}\` has a placeholder; a fast check runs as printed`];
+  let parsed;
+  try { parsed = parseArgs({ args, options: commandOptions, allowPositionals: true, strict: true }); }
+  catch (error) { return [`\`${check}\`: ${(error as Error).message}`]; }
+  const command = parsed.positionals[0] ?? '', scripts: Record<string, string> = projectScripts();
+  if (['serve', 'dev', 'benchmark'].includes(command)) return [`\`${check}\`: ${command} needs the reviewed revision pin, so it is not a fast check`];
+  if (parsed.values['host-file'] === undefined || (pinFreeReviewCommands as readonly string[]).includes(command)) return [];
+  if (!(localReviewCommands as readonly string[]).includes(command)) return [`\`${check}\`: ${command} with --host-file is not a local-review check (${localReviewCommands.join('/')})`];
+  return check === scripts[command] ? [] : [`\`${check}\` would be refused without a pin; use the site's npm script command \`${scripts[command]}\``];
 }
 
 // ---- rendering ----------------------------------------------------------------------------------------------------
@@ -163,7 +185,7 @@ export function renderReference(source: ExtensionSource): string {
   const { name, descriptor } = source, config = `extensions.${name}.config.`;
   const out: string[] = [GENERATED_NOTE, '', '## Field reference', ''];
   out.push(`Every key \`${name}\` accepts, rendered from this package's \`urlcode.json\` (the schema the runtime validates against). Required means required within its containing object; \`*\` is a key you choose and \`[]\` an array item.`);
-  out.push('', `**Schema-valid is not activatable.** JSON Schema checks shape only. Activation also checks what a schema cannot express: the route for each declared mount exists, referenced fields and collections are declared, peers are installed and active, and the cross-field rules the descriptions state. A project that validates can still refuse to start; run \`urlcode validate --project . --host-file <host.mjs> --origin <origin>\`, which activates it.`);
+  out.push('', `**Schema-valid is not activatable.** JSON Schema checks shape only. Activation also checks what a schema cannot express: the route for each declared mount exists, referenced fields and collections are declared, peers are installed and active, and the cross-field rules the descriptions state. A project that validates can still refuse to start; run \`${projectScripts().validate}\` (\`npm run validate\`), which activates it.`);
   const peers: string[] = [];
   if (descriptor.requires.length) peers.push(`requires ${descriptor.requires.map(peer => `\`${peer}\``).join(', ')} (\`urlcode extensions add ${name}\` installs them too)`);
   if (descriptor.uses?.length) peers.push(`uses ${descriptor.uses.map(peer => `\`${peer}\``).join(', ')} when installed (optional: the features that need one refuse to activate without it)`);
@@ -235,6 +257,7 @@ export async function expected(root = repositoryRoot): Promise<{ files: Map<stri
     const missing = missingDescriptions(source.descriptor);
     if (missing.length) problems.push(`${source.packageName}: ${missing.length} declared propert${missing.length === 1 ? 'y has' : 'ies have'} no description; give each one a sentence in the extension's schema (src/), then npm run build:addons:\n${missing.map(pointer => `    urlcode.json${pointer}`).join('\n')}`);
     problems.push(...await agentProblems(source));
+    problems.push(...(source.descriptor.authoring?.fastChecks ?? []).flatMap(check => fastCheckProblems(check).map(problem => `${source.packageName}: fast check ${problem}`)));
     files.set(join(source.directory, 'README.md'), splice(source.readme, renderReference(source)));
   }
   const indexPath = join(root, INDEX), index = await readFile(indexPath, 'utf8').catch(() => undefined);

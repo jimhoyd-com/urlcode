@@ -170,13 +170,12 @@ Several serving processes on one host may share `data/audit.sqlite` (WAL, a
 2 second busy timeout). With the store, one process at a time drains its
 outbox. A database directory on a Linux network filesystem is refused. From
 its first activation until it closes, a serving process keeps a lease row in
-`audit_servers` in `audit.sqlite` (hostname, Linux boot id, pid; renewed every
-5 seconds), and activation is refused while a live peer runs on another host,
-with or without the store; processes and containers on one host are accepted
-([several serving processes][store-several-processes]). Another host's row is
-judged by whether its heartbeat advances, never by comparing clocks. A process
-that finds another host serving the database logs it and stores nothing
-(`503 audit_unavailable`) until that host is gone. Producers keep their events
+`audit_servers` in `audit.sqlite`, and activation is refused while a live peer
+runs on another host, with or without the store; processes and containers on
+one host are accepted. A process that finds another host serving the database
+logs it and stores nothing (`503 audit_unavailable`) until that host is gone.
+How the lease judges a peer, and its timing, are in
+[several serving processes][store-several-processes]. Producers keep their events
 meanwhile and deliver them once it holds the lease again.
 
 <!-- urlcode-current-version:start -->
@@ -192,7 +191,7 @@ Requires the matching `@jimhoyd/urlcode` core as a peer. Apache-2.0.
 
 Every key `audit` accepts, rendered from this package's `urlcode.json` (the schema the runtime validates against). Required means required within its containing object; `*` is a key you choose and `[]` an array item.
 
-**Schema-valid is not activatable.** JSON Schema checks shape only. Activation also checks what a schema cannot express: the route for each declared mount exists, referenced fields and collections are declared, peers are installed and active, and the cross-field rules the descriptions state. A project that validates can still refuse to start; run `urlcode validate --project . --host-file <host.mjs> --origin <origin>`, which activates it.
+**Schema-valid is not activatable.** JSON Schema checks shape only. Activation also checks what a schema cannot express: the route for each declared mount exists, referenced fields and collections are declared, peers are installed and active, and the cross-field rules the descriptions state. A project that validates can still refuse to start; run `urlcode validate --local --project app --host-file host.mjs --local-review` (`npm run validate`), which activates it.
 
 **Peers.** none.
 
@@ -208,5 +207,5 @@ Durable, bounded audit log. It serves no routes: other extensions record into it
 
 - **retention** (configuration, `urlcode.yaml#extensions.audit.config.retention`): Newest events kept (1000..10000000, default 100000); older ones are pruned as new ones arrive.
 
-Fast checks: `urlcode validate --project . --host-file <host.mjs> --origin <origin>`.
+Fast checks: `urlcode validate --local --project app --host-file host.mjs --local-review`.
 <!-- extension-reference:end -->

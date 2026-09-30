@@ -475,8 +475,8 @@ heartbeat advances, never by comparing clocks
 ([store](STORE.md#several-serving-processes-on-one-host)). Two consequences
 for an operator:
 
-- A server that finds another host's lease row at startup waits up to 20
-  seconds watching it, and logs one line saying so. That row can come from a
+- A server that finds another host's lease row at startup waits up to the
+  lease's time to live watching it, and logs one line saying so. That row can come from a
   host that crashed, or from this machine before a reboot, since a reboot
   changes the Linux boot id. The row is deleted if it stays silent, and the
   server starts. No manual clean-up is needed.

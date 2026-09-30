@@ -169,19 +169,12 @@ not pinned (`revisionMatch: false` in `explain`, `revisionPinned: false` and a
 note in `extensions`), and every activation refuses it with
 `revision-pin-required` before anything else is checked, so it can never serve.
 `serve`, `dev`, `validate` (with or without `--local`), `test`, `routes`,
-`audit` and `benchmark` still need the reviewed pin.
+`audit` and `benchmark` still need the reviewed pin, except that `validate`,
+`test`, `routes` and `audit` can review the current revision locally with
+`--local-review` instead, as the generated npm scripts do
+([the local review loop][docs/EXTENSIONS.md#the-local-review-loop]).
 With a pin, the inspection commands compose pinned registrations exactly as
-before. `validate`, `test`, `routes` and `audit` also accept `--local-review`,
-which the generated npm scripts pass: with no operator pin, it pins that one
-run to the current revision, reads no policy, defaults the origin to
-`http://localhost` and activates the extensions on throwaway data. `explain`,
-`context`, `plan-feature`, `review`, `report` and `openapi` need no pin and
-ignore the flag; `serve`, `dev` and every other command refuse it, naming
-themselves
-([the local review loop][docs/EXTENSIONS.md#the-local-review-loop]). The
-authoring MCP runners `run_validate`, `run_test` and `run_audit` pass it too,
-the in-process `run_tests` applies the same rule, and `get_context`'s check
-commands carry it.
+before.
 
 ## Project context
 
@@ -1383,13 +1376,9 @@ What it can do, all inside the selected project root (resolved with realpath):
   environment variable a runner passes is `PROJECT_SHA256`, and only with a host
   file and when the server's own value is a well-formed 64-hex revision: it is
   the revision pin the server already loaded its own (composed) host under, not
-  a credential. Every runner also passes a fixed `--local-review`: when neither
-  that `--policy` nor `PROJECT_SHA256` reaches the child, the run is pinned to
-  the project's current revision for that run only, reads no policy (no
-  binding or egress grant) and defaults the origin to `http://localhost`, so an
-  edited extension site is checked without a new pin and the output carries a
-  `local_review` event; an operator pin always wins, a stale one still refuses,
-  and serving never accepts the flag
+  a credential. Every runner also passes a fixed `--local-review`, so an edited
+  extension site is checked without a new pin unless that `--policy` or
+  `PROJECT_SHA256` reaches the child
   ([the local review loop][docs/EXTENSIONS.md#the-local-review-loop]). No other
   variable goes along, no tool argument can add a flag, and no grant is created
   or changed. The host file is operator-supplied trusted code: the
@@ -1413,12 +1402,9 @@ What it can do, all inside the selected project root (resolved with realpath):
   `urlcode test` does, against a disposable local server instance and a scratch
   data directory it removes afterward, and returns `total`, `failed` and the
   per-case `events`. With neither the server's `--policy` nor
-  `PROJECT_SHA256` it is a local review, the rule the runners' `--local-review`
-  applies: it pins that one run to the project's current revision, reads no
-  policy (no grant) and defaults the origin to `http://localhost`, and the
-  result adds `localReview` (`revision`, `origin`) and a `local_review` event,
-  so an edited extension site is tested without a new pin; an operator pin
-  always wins and a stale one still refuses
+  `PROJECT_SHA256` it is a local review
+  ([the local review loop][docs/EXTENSIONS.md#the-local-review-loop]), and the
+  result adds `localReview` (`revision`, `origin`) and a `local_review` event
   ([#964](https://github.com/jimhoyd-com/urlcode/issues/964)). It **executes the project's code**: ordinary trusted
   `function`/`middleware` modules and registered extensions run with full Node
   access and may write or delete files, spawn processes or reach the network.
