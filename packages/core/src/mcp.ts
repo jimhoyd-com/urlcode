@@ -9,11 +9,9 @@ import type {ErrorObject} from 'ajv';
 import {ConfigError,describeError} from './errors.ts';
 import {buildBootstrap} from './bootstrap.ts';
 import {inspectProject,validateProject,explainRoute,getCapabilities,getCapability,getSchemaFragment,listRecipes,showRecipe,searchRecipes,searchExamples,describeExtensions,buildContext,buildTaskContext,planFeature,reviewProject} from './tooling.ts';
-import {runProjectTests} from './project-tests.ts';
+import {localReviewEvent,localReviewFor,runHermeticFixtures} from './fixture-run.ts';
 import {loadOperatorHost} from './operator-host.ts';
-import {loadOperatorPolicy,prepareFunctionSnapshot} from './policy.ts';
-import {loadDocument} from './config.ts';
-import {localReviewNote,localReviewOrigin} from './cli-command-metadata.ts';
+import {loadOperatorPolicy} from './policy.ts';
 import {buildManifest} from './manifest.ts';
 import {buildOpenApi} from './openapi.ts';
 import {authoringDefinitions,authoringAnnotations,callAuthoringTool} from './mcp-authoring.ts';
@@ -143,16 +141,13 @@ export async function serveMcp(options:McpOptions):Promise<void> {
    case 'inspect':{const deployTarget=deployTargetOf(args);return inspectProject(project,{...base,...(args.offset!==undefined?{offset:args.offset as number}:{}),...(args.limit!==undefined?{limit:args.limit as number}:{}),...(deployTarget!==undefined?{target:deployTarget}:{})});}
    case 'validate':return validateProject(project,base);
    // Reachable only when --allow-authoring listed it: the names check above refuses it otherwise.
-   // Each run composes its own host on a fresh, empty data directory, as `urlcode test` does (RIM-EXT-HERMETIC-001):
-   // never the site's live data, and never what an earlier run wrote.
-   // The CLI runners' local review (#932, #964): with no operator pin (no --policy, no PROJECT_SHA256) this one run is
-   // pinned to the project's current revision, reads no policy (so no grant exists) and defaults the origin to
-   // loopback, and says so in a local_review event. An operator pin always wins, so a stale one still refuses.
-   case 'run_tests':{const events:unknown[]=[],review=policy===undefined&&!process.env.PROJECT_SHA256?{revision:(await prepareFunctionSnapshot(await loadDocument(project))).projectSha256,origin:options.origin||localReviewOrigin}:undefined;
-    if(review)events.push({event:'local_review',...review,note:localReviewNote});
-    const runHost=options.hostFile===undefined?undefined:await loadOperatorHost(options.hostFile,project,{revision:policy?.projectSha256??review?.revision,hermetic:true});
-    try{const result=await runProjectTests(project,{...base,...(review?{origin:review.origin}:{}),extensions:runHost?.extensions,...(policy?{permissions:policy}:{}),log:(event:object)=>{events.push(event);}});return {...result,...(review?{localReview:review}:{}),events};}
-    finally{await runHost?.close?.();}}
+   // The in-process adapter of the fixture core `urlcode test` (and so run_test) uses (#1095): the same local review
+   // (#932, #964) and a hermetic host of its own per run (RIM-EXT-HERMETIC-001). It returns every event, not the
+   // CLI's filtered output, and keeps its existing inputs: no alias origins, and no host plugins.
+   case 'run_tests':{const events:unknown[]=[],review=await localReviewFor(project,{pinned:policy!==undefined,origin:options.origin||undefined});
+    if(review)events.push(localReviewEvent(review));
+    const result=await runHermeticFixtures(project,{hostFile:options.hostFile,policy,review,origin:options.origin||undefined,log:(event:object)=>{events.push(event);}});
+    return {...result,...(review?{localReview:review}:{}),events};}
    case 'list_capabilities':return getCapabilities(deployTargetOf(args));
    case 'get_capability':return getCapability(args.name as string);
    case 'get_schema':return getSchemaFragment(args.path as string);
