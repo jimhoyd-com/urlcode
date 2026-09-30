@@ -19,7 +19,7 @@ export const auditAuthoring: ExtensionAuthoringContract = {
   surfaces: [
     { kind: 'configuration', name: 'retention', description: 'Newest events kept (1000..10000000, default 100000); older ones are pruned as new ones arrive.', path: 'urlcode.yaml#extensions.audit.config.retention' },
   ],
-  fastChecks: ['urlcode validate --project . --host-file <host.mjs> --origin <origin>'],
+  fastChecks: ['urlcode validate --local --project app --host-file host.mjs --local-review'],
 };
 
 function retentionOf(value: unknown): number {

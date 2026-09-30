@@ -1889,6 +1889,7 @@ generated `npm run validate`, `npm test`, `npm run routes` and
 ```sh
 npm run validate   # urlcode validate --local --project app --host-file host.mjs --local-review
 npm test           # urlcode test --project app --host-file host.mjs --local-review
+npm run routes     # urlcode routes --project app --host-file host.mjs --local-review
 npm run audit      # urlcode audit --project app --host-file host.mjs --local-review
 ```
 
@@ -1897,7 +1898,7 @@ With the flag and no operator pin (no `--policy`, `URLCODE_POLICY` or
 the host to it for that one run. `--origin` defaults to `http://localhost`. It
 prints one `{"event":"local_review","revision":"…","origin":"…"}` line on
 stderr, so the output shows the run was not a reviewed one. Edit, run the
-three scripts, and repeat. When the change is ready, review it, pin the
+checks, and repeat. When the change is ready, review it, pin the
 revision (`urlcode permissions --project app`), then serve.
 
 A local review also activates the extensions on a fresh, empty temporary data

@@ -9,7 +9,7 @@ import { describeInstalledAgentTooling, hostIdentifier } from '../packages/core/
 import { readAddonCatalog } from '../packages/core/src/addon-manifest.ts';
 import type { AddonDescriptor } from '../packages/core/src/addon-manifest.ts';
 import { searchDocs } from '../packages/core/src/agent-context.ts';
-import { agentProblems, declaredProperties, declaredSchemas, END, expected, firstPartyExtensions, INDEX, missingDescriptions, renderReference, rows, START } from '../scripts/generate-extension-reference.ts';
+import { agentProblems, declaredProperties, declaredSchemas, END, expected, fastCheckProblems, firstPartyExtensions, INDEX, missingDescriptions, renderReference, rows, START } from '../scripts/generate-extension-reference.ts';
 
 // #822: every first-party extension's configuration, route-policy and hook schemas are described and rendered into a
 // generated field reference; #823: every first-party extension ships agent references, so an installed one is never
@@ -101,6 +101,32 @@ test('the generated READMEs and index are fresh and every reference path resolve
     assert.ok(index.includes(link), `${INDEX} links ${link}`);
     await access(join(repo, 'packages', name, 'README.md'));
   }
+});
+
+// #994: the fast checks each README printed (and get_extensions served) passed neither a pin nor --local-review, so a
+// fresh site refused them with revision-pin-required. Every one must run as printed on a site `urlcode init` created.
+test('every first-party fast check runs without a revision pin, as printed (#994)', () => {
+  let checks = 0;
+  for (const source of sources) {
+    for (const check of source.descriptor.authoring?.fastChecks ?? []) {
+      checks++;
+      assert.deepEqual(fastCheckProblems(check), [], `${source.name}: ${check}`);
+      assert.ok(source.readme.includes(`\`${check}\``), `${source.name} README prints ${check}`);
+    }
+  }
+  assert.ok(checks >= 4, `the four extensions publish ${checks} fast checks`);
+});
+
+test('the fast-check rule refuses a check the CLI would refuse without a pin (#994)', () => {
+  assert.deepEqual(fastCheckProblems('urlcode validate --local --project app --host-file host.mjs --local-review'), []);
+  assert.deepEqual(fastCheckProblems('urlcode test --project app --host-file host.mjs --local-review'), []);
+  // No host file activates nothing, so the schema-only validate needs no pin.
+  assert.deepEqual(fastCheckProblems('urlcode validate --project app'), []);
+  assert.match(fastCheckProblems('urlcode validate --project app --host-file host.mjs')[0]!, /refused without a pin/);
+  assert.match(fastCheckProblems('urlcode validate --project . --host-file <host.mjs> --origin <origin>')[0]!, /placeholder/);
+  assert.match(fastCheckProblems('urlcode serve --project app --host-file host.mjs')[0]!, /needs the reviewed revision pin/);
+  assert.match(fastCheckProblems('urlcode validate --project app --no-such-flag')[0]!, /no-such-flag/);
+  assert.match(fastCheckProblems('npm run validate')[0]!, /not a urlcode command/);
 });
 
 /** A site with `name` installed as core's development manifest pins it, declared in YAML and imported by host.mjs. */

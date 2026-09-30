@@ -16,7 +16,7 @@ import { join } from 'node:path';
 import ts from 'typescript';
 import { buildAddonCatalog } from '../packages/core/src/addon-manifest.ts';
 import type { AddonDescriptor } from '../packages/core/src/addon-manifest.ts';
-import { missingDescriptions } from '../scripts/generate-extension-reference.ts';
+import { fastCheckProblems, missingDescriptions } from '../scripts/generate-extension-reference.ts';
 
 const repoRoot = fileURLToPath(new URL('../', import.meta.url));
 const scriptPath = join(repoRoot, 'scripts', 'create-extension.ts');
@@ -79,6 +79,7 @@ test('a blank scaffold creates the new extension shape, and the generated packag
   assert.deepEqual(missingDescriptions(descriptor as unknown as AddonDescriptor), [], 'every generated schema property is described (#822)');
   assert.equal(JSON.stringify(descriptor.schema), JSON.stringify(definition.schema), 'key order matches, so build:addons --check sees no drift');
   assert.equal(JSON.stringify(descriptor.authoring), JSON.stringify(definition.authoring));
+  for (const check of (descriptor.authoring as { fastChecks: string[] }).fastChecks) assert.deepEqual(fastCheckProblems(check), [], `generated fast check ${check} runs without a pin (#994)`);
   assert.doesNotThrow(() => buildAddonCatalog(coreVersion, [{ descriptor, package: `@jimhoyd/urlcode-${name}`, version: coreVersion, source: 'urlcode.json' }]));
   for (const relative of ['README.md', 'SECURITY.md', 'CHANGELOG.md', 'AGENTS.md', 'llms.txt', 'NOTICE', 'LICENSE', 'tsconfig.json', 'tsconfig.build.json']) {
     assert.ok((await stat(join(dir, relative))).isFile(), `${relative} was not created`);

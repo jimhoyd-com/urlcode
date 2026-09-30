@@ -41,11 +41,9 @@ is installed).
 
 Once a site has an extension, the host is pinned to a reviewed project
 revision, and every edit changes the revision. `npm run validate`, `npm test`,
-`npm run routes` and `npm run audit` pass `--local-review`. With no reviewed
-pin, each run is pinned to the current revision for that run only, on
-`http://localhost` and throwaway data, and reads no policy, so it grants no
-binding and needs nothing set up in `data/`. Edit and rerun them without
-re-pinning. The audit's expected route count lives in one file,
+`npm run routes` and `npm run audit` review each edit locally, so edit and
+rerun them without re-pinning
+([the local review loop][docs/EXTENSIONS.md#the-local-review-loop]). The audit's expected route count lives in one file,
 `app/tests/audit.json`; `extensions add` and `remove` move it, and you change
 it deliberately when you add or remove routes yourself.
 
@@ -84,6 +82,7 @@ URLCode is licensed under the Apache License 2.0.
 
 <!-- urlcode-current-version:start -->
 [proofs/private-requests/client/main.js]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/private-requests/client/main.js
+[docs/EXTENSIONS.md#the-local-review-loop]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-local-review-loop
 [docs/FUNCTION-SECURITY.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/FUNCTION-SECURITY.md
 [docs/READINESS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md
 <!-- urlcode-current-version:end -->

@@ -591,7 +591,8 @@ export interface HostContext {
   /**
    * True for a run that replays requests: `test`, `audit` and `benchmark`, and the MCP server's `run_tests`, and for
    * a local review: `validate` or `routes` with `--local-review` and no operator pin (RIM-EXT-HERMETIC-001). This
-   * obligation is what extension contract 2 added (#976): a contract-1 extension is refused. The run must never read or write the site's live data, and must start from nothing on
+   * obligation is what extension contract 2 added (#976): a contract-1 extension is refused. The run must never read or
+   * write the site's live data, and must start from nothing on
    * every run: keep every file under `data` whatever the operator's options or environment name (a `database` path,
    * an environment variable), create what serving would expect an operator to have created (a schema, a signing
    * secret that lives only as long as the host), and only then offer a `seedSchema`, so a declared test seed

@@ -1917,7 +1917,8 @@ operator says made the change, not proof of it. Commands that change nothing
 - One SQLite database per site, through Node's built-in `node:sqlite`:
   `store({database})` in `host.mjs`, else `STORE_DATABASE`, else
   `data/store.sqlite` beside `host.mjs`. `urlcode test`, `audit` and
-  `benchmark` ignore all three and use a fresh database of their own per run
+  `benchmark`, and a `--local-review` `validate` or `routes` with no operator
+  pin, ignore all three and use a fresh database of their own per run
   ([test data and seeds](READINESS.md#test-data-and-seeds)). It must be outside the project
   (checked after symlink resolution). Its directory is created `0700` and the
   file `0600`; a symlinked, hard-linked or group- or other-readable file is
