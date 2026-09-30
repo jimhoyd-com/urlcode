@@ -686,14 +686,15 @@ string or key in a parsed value holds an unpaired surrogate, and
 `illFormedMember(object)` names the first top-level member that does, for an
 error that names the argument (the MCP extension answers `-32602` with it).
 
-An extension that keeps a SQLite database runs two setup checks before it
-serves, the ones the store, auth and audit share
-([several serving processes](STORE.md#several-serving-processes-on-one-host)):
+An extension that keeps a SQLite database is served by one process. The
+store, auth and audit share these helpers
+([one serving process per database](STORE.md#one-serving-process-per-database)):
 
 | Helper | What it does |
 |---|---|
-| `refuseNetworkFilesystem(directory, what, probe?)` | Refuses a database directory on a network filesystem by its Linux `statfs` type (`NETWORK_FILESYSTEMS`); skipped on macOS and Windows. |
-| `joinHostLease(db, {table, what, probe?, now?, log?})` | Creates the extension's lease table in its own database when absent, refuses while a live peer runs on another host (another Linux boot id, or another hostname when either has none), and inserts this process's row. Another host's row is live while its heartbeat advances, judged on this process's monotonic clock (`SERVER_LEASE`; the timing and rules are in [store](STORE.md#several-serving-processes-on-one-host)), so joining may wait up to the lease's time to live watching one. A heartbeat that finds another host's row loses the lease (`held` turns false, the loss is logged) until none is left. Call `verify()` inside every write, under its write lock: first in each write transaction, or from a trigger of statements you cannot wrap (auth's temporary triggers on Better Auth's tables). It reads the lease table every time and never trusts this process's clock. Refuse the write with a 503 when it throws. `renew()` is a cheap per-request gate (and runs the heartbeat that rejoins), never a write check. `close()` stops the heartbeat and deletes the row. `db` is a `node:sqlite` `DatabaseSync` or an object with `transaction`, `run` and `all`. |
+| `holdServerLock(database, what, probe?)` | Before serving: creates the database's directory (0700) when absent, refuses it on a network filesystem, then takes an exclusive OS lock on `<database>.server-lock` (SQLite's file lock, held by a transaction that never ends) and returns `{path, release()}`. Another process holding it refuses with `Another process is already serving this <what> database`. Holders in one process share it (a dev reload), and the operating system releases it when the process exits or is killed. No heartbeat, timestamp or clock. Call `release()` from the activation's `close()` and when activation fails. |
+| `serverLockHeld(database)` | Whether a serving process (this one or another) holds that lock now, read without taking it: an operator command asks before writing with a declaration the server may not share. |
+| `refuseNetworkFilesystem(directory, what, probe?)` | Refuses a database directory on a network filesystem by its Linux `statfs` type (`NETWORK_FILESYSTEMS`); skipped on macOS and Windows. Operator commands, which never take the lock, run it before they open the database. |
 
 ### OpenAPI description
 

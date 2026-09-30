@@ -308,16 +308,13 @@ jobs:
       - run: npm run test:ecosystem
       # The same application with Auth.js, an independent provider package, in place of Better Auth (#841).
       - run: npm run test:proof:authjs
-  # Several serving processes on one host (#927): three real `urlcode serve`
-  # children on one site's data directory (store, auth and audit), racing the
-  # store invariants over HTTP, bursting sign-ins, and SIGKILLing the audit
-  # drain holder mid-load before PRAGMA integrity_check and the invariant
-  # checks. Linux only: the supported topology is one Linux host, the
-  # network-filesystem refusal reads Linux statfs, and PR CI is Linux anyway.
-  # It runs in the full lane whatever changed, extension-only diffs included,
-  # because store, auth, audit and core serving all meet here. About a minute
-  # of test time; it bounds its own load rather than soaking.
-  multiprocess:
+  # A really full filesystem (#902): `urlcode serve` with its data directory
+  # (store, auth and audit) on a 16 MiB tmpfs that the harness fills to
+  # ENOSPC, then frees. Linux only: it mounts a tmpfs with sudo, and PR CI is
+  # Linux anyway. It runs in the full lane whatever changed, extension-only
+  # diffs included, because store, auth, audit and core serving all meet here.
+  # The harness refuses a filesystem larger than 64 MiB.
+  disk-full:
     needs: plan
     if: needs.plan.outputs.lane == 'full'
     runs-on: ubuntu-latest
@@ -334,10 +331,6 @@ jobs:
       - run: npm run build
       # Every add-on, in dependency order: the site's host.mjs imports audit, auth and store from their dist/.
       - run: node scripts/workspaces.ts run build
-      - run: npm run test:multiprocess
-      # A really full filesystem (#902): `urlcode serve` with its data directory
-      # on a 16 MiB tmpfs that the harness fills to ENOSPC, then frees. The
-      # harness refuses a filesystem larger than 64 MiB.
       - run: sudo mkdir -p /mnt/urlcode-disk-full && sudo mount -t tmpfs -o size=16m,mode=1777 tmpfs /mnt/urlcode-disk-full
       - run: npm run test:disk-full
         env:
@@ -427,7 +420,7 @@ jobs:
   verify-complete:
     # A skip is accepted only when the successful classifier required it.
     if: always()
-    needs: [plan, docs, static, verify, checks, workspace-verify, workspace-integration, multiprocess, audit, action, build-fidelity, container, package-floor-smoke]
+    needs: [plan, docs, static, verify, checks, workspace-verify, workspace-integration, disk-full, audit, action, build-fidelity, container, package-floor-smoke]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

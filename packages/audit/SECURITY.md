@@ -41,10 +41,10 @@ contract in the [README](README.md#being-a-producer):
    before it releases anything. `record` resolves only after a durable commit
    (`synchronous=FULL`). If it rejects, the action answers 503 and releases
    nothing.
-6. **One host writes the log.** Every ingest checks the host lease inside its
-   own transaction. A process that finds another host serving `audit.sqlite`
-   stores nothing (`503 audit_unavailable`) until that host is gone, so
-   producers keep their events in their outboxes (#978).
+6. **One process writes the log.** The serving process holds an OS lock on
+   `audit.sqlite.server-lock`, and a second serving process is refused at
+   activation. The lock detects a misconfiguration, not an adversary who can
+   write the files.
 
 A producer that writes an invalid event or an event with another `source` has
 broken the contract: audit stops draining it, reports it through

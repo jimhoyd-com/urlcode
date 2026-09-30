@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startServer } from '@jimhoyd/urlcode';
-import { inspectExtensionRevision } from '@jimhoyd/urlcode/extensions';
+import { inspectExtensionRevision, serverLockHeld } from '@jimhoyd/urlcode/extensions';
 import { betterAuth } from 'better-auth';
 import { createAuthEndpoint } from 'better-auth/api';
 import { betterAuthOptions, createAuthExtension, migrate } from '../src/index.ts';
@@ -57,7 +57,7 @@ async function serve(at: Awaited<ReturnType<typeof project>>, settings: Partial<
   };
   return { call, jar, base };
 }
-/** A server in its own process on the project's database, as a second `urlcode serve` would be; its base URL. */
+/** The server in its own process on the project's database, as `urlcode serve` runs it; its base URL. */
 async function serveProcess(at: Awaited<ReturnType<typeof project>>, settings: object = {}): Promise<string> {
   const child = spawn(process.execPath, ['--conditions=development', serveChild, at.app, at.database, at.projectSha256, JSON.stringify(settings)], { stdio: ['pipe', 'pipe', 'inherit'] });
   const exited = new Promise(resolve => child.once('exit', resolve));
@@ -105,77 +105,42 @@ test('an auth database directory on a network filesystem is refused on Linux and
   at.defer(() => ext4.close());
 });
 
-test('activation refuses while a live peer serves the auth database from another host, never one on this host (#941)', async t => {
-  const at = await project(t); await withUser(at);
-  const boot = (id: string, host = 'web-1') => ({ hostname: () => host, bootId: async () => id });
-  const here = '11111111-1111-4111-8111-111111111111';
-  const start = (probe: object) => startServer({ project: at.app, origin, port: 0, log: () => {}, extensions: [createAuthExtension({ projectSha256: at.projectSha256, database: at.database, secret, probe })] });
-  // The joiner's monotonic clock, which its `sleep` moves; `beat` stands in for the first server's heartbeat meanwhile.
-  const watching = (beat: () => void) => { let now = 0; return { monotonic: () => now, sleep: async (ms: number) => { now += ms; beat(); } }; };
-  const db = new DatabaseSync(at.database, { timeout: 5000 }); at.defer(() => { if (db.isOpen) db.close(); });
-  const first = await start(boot(here));
-  // Another container on the same kernel: its own hostname, the same boot id.
-  const container = await start(boot(here, 'web-2'));
-  await container.close();
-  const beating = watching(() => { db.prepare("UPDATE auth_servers SET heartbeat_at = heartbeat_at + 1 WHERE host = 'web-1'").run(); });
-  await assert.rejects(start({ ...boot('22222222-2222-4222-8222-222222222222'), ...beating }), /Another server on host "web-1" holds a live lease on this auth database: an auth database is served from one host only/);
-  await first.close();
-  // Its lease went with it; a row a vanished host left is watched for the TTL, then deleted.
-  assert.equal((db.prepare('SELECT count(*) AS n FROM auth_servers').get() as { n: number }).n, 0);
-  db.prepare("INSERT INTO auth_servers(instance, host, boot, pid, heartbeat_at, expires_at) VALUES ('gone', 'gone', 'boot-gone', 1, 0, ?)").run(Date.now() + 86_400_000);
-  const elsewhere = await start({ ...boot('22222222-2222-4222-8222-222222222222'), ...watching(() => {}) });
-  at.defer(() => elsewhere.close());
-});
-
-test('a server that lost the auth database\'s host lease answers 503 until it holds it again (#978)', async t => {
+test('a second serving process for the auth database is refused, and a restart after SIGKILL is accepted', async t => {
   const at = await project(t), userId = await withUser(at);
-  let now = 0;
-  const { call } = await serve(at, { probe: { hostname: () => 'web-1', bootId: async () => 'boot-1', monotonic: () => now } });
-  assert.equal((await call('/api/auth/sign-in/email', { method: 'POST', body: { email: 'ann@example.test', password: 'ann-local-password' } })).status, 200);
-  // Another host took the lease over (it watched this server's row stay unchanged for the TTL and replaced it).
-  const db = new DatabaseSync(at.database, { timeout: 5000 }); at.defer(() => { if (db.isOpen) db.close(); });
-  db.exec("DELETE FROM auth_servers; INSERT INTO auth_servers(instance, host, boot, pid, heartbeat_at, expires_at) VALUES ('other', 'web-9', 'boot-9', 1, 1, 1)");
-  now += 10_000;
-  for (const path of ['/me', '/api/auth/get-session']) {
-    const refused = await call(path);
-    assert.equal(refused.status, 503, path);
-    assert.deepEqual(await refused.json(), { error: 'auth_unavailable' });
-  }
-  assert.deepEqual(db.prepare('SELECT host FROM auth_servers').all().map(row => row.host), ['web-9'], 'the server did not re-insert its row');
-  // That host stopped cleanly: at its next heartbeat this server rejoins and serves again.
-  db.exec('DELETE FROM auth_servers');
-  now += 1000;
-  assert.deepEqual(await (await call('/me')).json(), { identity: { userId }, cookie: null });
+  /** A server process (serve-child.ts) killed with SIGKILL by the test; resolves with its port, or its stderr if it exits first. */
+  const launch = async (): Promise<{ port?: number; stderr: string; kill(): Promise<void> }> => {
+    const child = spawn(process.execPath, ['--conditions=development', serveChild, at.app, at.database, at.projectSha256, '{}'], { stdio: ['pipe', 'pipe', 'pipe'] });
+    const exited = new Promise(resolve => child.once('exit', resolve));
+    const kill = async () => { if (child.exitCode === null && child.signalCode === null) { child.kill('SIGKILL'); await exited; } };
+    at.defer(kill);
+    let stderr = '';
+    child.stderr.setEncoding('utf8').on('data', (chunk: string) => { stderr += chunk; });
+    return new Promise(resolve => {
+      let out = '';
+      child.stdout.setEncoding('utf8').on('data', (chunk: string) => { out += chunk; if (out.includes('\n')) resolve({ port: (JSON.parse(out.slice(0, out.indexOf('\n'))) as { port: number }).port, stderr, kill }); });
+      void exited.then(() => resolve({ stderr, kill }));
+    });
+  };
+  const first = await launch();
+  assert.ok(first.port, first.stderr);
+  const second = await launch();
+  assert.equal(second.port, undefined);
+  assert.match(second.stderr, /Another process is already serving this auth database \(.+auth\.sqlite\): URLCode serves each database from one process/);
+  // The first one is killed: the operating system drops its lock, and a restart serves the same accounts at once.
+  await first.kill();
+  const restarted = await launch();
+  assert.ok(restarted.port, restarted.stderr);
+  const answered = await signIn(`http://127.0.0.1:${restarted.port!}`, 'ann-local-password');
+  assert.equal(answered.status, 200);
+  assert.equal(((await answered.json()) as { user: { id: string } }).user.id, userId);
 });
 
-test('a Better Auth write after another host took over is refused under its own lock, not only at the request check (#1010)', async t => {
-  const at = await project(t), userId = await withUser(at);
-  // This server's monotonic clock never moves: its per-request check keeps trusting its last heartbeat, as it would
-  // after a stall between that check and Better Auth's statements (SIGSTOP, a paused VM, a blocked event loop).
-  const { call } = await serve(at, { probe: { hostname: () => 'web-1', bootId: async () => 'boot-1', monotonic: () => 0 } });
-  const signIn = () => call('/api/auth/sign-in/email', { method: 'POST', body: { email: 'ann@example.test', password: 'ann-local-password' } });
-  assert.equal((await signIn()).status, 200);
-  const db = new DatabaseSync(at.database, { timeout: 5000 }); at.defer(() => { if (db.isOpen) db.close(); });
-  const sessions = () => (db.prepare('SELECT count(*) AS n FROM session').get() as { n: number }).n;
-  const before = sessions();
-  // Another host took the lease over meanwhile.
-  db.exec("DELETE FROM auth_servers; INSERT INTO auth_servers(instance, host, boot, pid, heartbeat_at, expires_at) VALUES ('other', 'web-9', 'boot-9', 1, 1, 1)");
-  const refused = await signIn();
-  assert.equal(refused.status, 503);
-  assert.deepEqual(await refused.json(), { error: 'auth_unavailable' });
-  assert.equal(refused.headers.getSetCookie().length, 0, 'no session cookie');
-  assert.equal(sessions(), before, 'Better Auth wrote no session');
-  assert.deepEqual(db.prepare('SELECT host FROM auth_servers').all().map(row => row.host), ['web-9']);
-  assert.equal((db.prepare('SELECT count(*) AS n FROM session WHERE userId = ?').get(userId) as { n: number }).n, before);
-});
-
-test('an activation that fails after joining the host lease releases it (#979)', async t => {
+test('an activation that fails after taking the server lock releases it (#979)', async t => {
   const at = await project(t);
   const registration = createAuthExtension({ projectSha256: at.projectSha256, database: at.database, secret, hermetic: true });
   const users = [{ id: 'ann', email: 'ann@example.test', password: 'ann-local-password' }, { id: 'bob', email: 'ann@example.test', password: 'bob-local-password' }];
   await assert.rejects(startServer({ project: at.app, origin, port: 0, log: () => {}, extensions: [registration], seed: { auth: { users } } }), /UNIQUE constraint failed/);
-  const db = new DatabaseSync(at.database, { readOnly: true }); at.defer(() => { if (db.isOpen) db.close(); });
-  assert.deepEqual(db.prepare('SELECT host FROM auth_servers').all(), []);
+  assert.equal(serverLockHeld(at.database), false);
 });
 
 test('a hermetic host ignores the site database and secret, creates the tables and seeds accounts with their ids (#930)', async t => {
@@ -374,12 +339,16 @@ test('a storage failure during sign-in answers 503 auth_unavailable and sets no 
   assert.equal((await call('/api/auth/sign-in/email', { method: 'POST', body: { email: 'ann@example.test', password: 'ann-local-password' } })).status, 200);
 });
 
-test('the sign-in limit is one budget across every process serving the database', async t => {
+test('the sign-in limit is kept in the database, so a restart does not reset it', async t => {
   const at = await project(t); await withUser(at);
-  const [first, second] = await Promise.all([serveProcess(at), serveProcess(at)]);
   const statuses: number[] = [];
-  // Alternating between the processes: an in-memory limiter would let each take 10.
-  for (let attempt = 0; attempt < 12; attempt++) statuses.push((await signIn(attempt % 2 ? second! : first!, 'guess')).status);
+  for (const round of [0, 1]) {
+    const server = await startServer({ project: at.app, origin, port: 0, log: () => {}, extensions: [createAuthExtension({ projectSha256: at.projectSha256, database: at.database, secret })] });
+    try { for (let attempt = 0; attempt < 6; attempt++) statuses.push((await signIn(`http://127.0.0.1:${server.address.port}`, 'guess')).status); }
+    finally { await server.close(); }
+    assert.equal(statuses.length, 6 * (round + 1));
+  }
+  // An in-memory limiter would start over at the restart and let each run take 10.
   assert.deepEqual(statuses, [...Array<number>(10).fill(401), 429, 429]);
 });
 

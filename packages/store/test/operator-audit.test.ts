@@ -182,8 +182,7 @@ test('a writing operator command reports its undelivered audit events and warns 
   await seed(store.database, 'requests', [{ id: randomUUID(), createdAt: at, updatedAt: at, title: 'b', status: 'pending' }]);
   // The serving process declares the collection audited, so a command carrying another declaration is refused (#927)...
   await assert.rejects(deleteOwnerless(store.database, { collections: unaudited, collection: 'requests' }), { status: 503, code: 'storage_unavailable', message: /the serving process declares it differently/ });
-  // ...and proceeds once no server holds a live lease on the database. Closing the serving store stops its heartbeat and
-  // removes its lease; deleting the row under a running server raced the heartbeat, which renews it every 5 s (#971).
+  // ...and proceeds once no server holds the database's server lock.
   await store.close();
   const plain = await deleteOwnerless(store.database, { collections: unaudited, collection: 'requests' });
   assert.equal(plain.undeliveredEvents, undefined);

@@ -1,4 +1,4 @@
-// One serving process for the multi-process tests in auth.test.ts: `serve-child.ts <project> <database> <sha256> [settings JSON]`.
+// The serving process for the cross-process tests in auth.test.ts: `serve-child.ts <project> <database> <sha256> [settings JSON]`.
 // Prints {"port": n} once listening and closes the server (and so its SQLite handle) on SIGTERM or a closed stdin.
 import { startServer } from '@jimhoyd/urlcode';
 import { createAuthExtension } from '../src/index.ts';
