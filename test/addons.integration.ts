@@ -12,7 +12,7 @@ import { pathToFileURL } from 'node:url';
 import type { TestContext } from 'node:test';
 import { addons, repositoryRoot } from '../scripts/workspaces.ts';
 import { loadDocument } from '../packages/core/src/config.ts';
-import { packAddons } from '../scripts/pack-addons.ts';
+import { packAddons, shippedManifest } from '../scripts/pack-addons.ts';
 import type { PackedAddons } from '../scripts/pack-addons.ts';
 
 const cli = join(repositoryRoot, 'dist', 'cli.js');
@@ -194,6 +194,26 @@ test('a blank install adds every capability and no sample endpoint (#711)', { ti
   const unused = await urlcode(t, (await site(t)).dir, ['extensions', 'add', 'store', '--ack', 'store:public-write']);
   assert.notEqual(unused.status, 0);
   assert.match(unused.stderr, /--ack store:public-write has no effect/);
+});
+
+test('the packed core carries its add-on pins, so init --with from it installs that core and those add-ons with no URLCODE_ADDONS (#1002)', { timeout: 900000 }, async t => {
+  const { core, manifest } = await pack();
+  assert.equal(shippedManifest(core), await readFile(manifest, 'utf8'), 'the core tarball carries the manifest written beside it');
+  const root = await mkdtemp(join(tmpdir(), 'urlcode-packed-cli-'));
+  t.after(() => rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }));
+  // The CLI is the packed core installed on its own, as a user installs it; it reads only its own dist/addons.json.
+  const tool = join(root, 'cli');
+  await mkdir(tool);
+  await writeFile(join(tool, 'package.json'), '{"private": true}\n');
+  const installed = npmRun(['install', '--ignore-scripts', '--no-audit', '--no-fund', core], tool);
+  assert.equal(installed.status, 0, installed.stderr);
+  const env = { ...process.env };
+  delete env.URLCODE_ADDONS;
+  const created = spawnSync(process.execPath, [join(tool, 'node_modules', '@jimhoyd', 'urlcode', 'dist', 'cli.js'), 'init', 'site', '--with', 'auth', '--json'], { cwd: root, encoding: 'utf8', timeout: 600000, env });
+  assert.equal(created.status, 0, created.stderr);
+  const dependencies = (JSON.parse(await readFile(join(root, 'site', 'package.json'), 'utf8')) as { dependencies: Record<string, string> }).dependencies;
+  assert.equal(dependencies['@jimhoyd/urlcode'], `file:${core}`, 'the site installs the core packed with the add-ons, not the registry release of the same version');
+  assert.match(dependencies['@jimhoyd/urlcode-auth'] ?? '', /^file:.*\.tgz$/, 'the add-on is the pinned tarball, not a source directory');
 });
 
 test('artifacts install inert, and a tarball that does not match its pin rolls back', { timeout: 600000 }, async t => {
