@@ -734,17 +734,21 @@ what to use.
   file kind, lines that are neither blank nor only a comment. It also reports
   physical lines, which is what the #843 approval's "127 lines removed"
   counted.
-- Both sides run on the same `host.mjs`. The counterexample adds two lines to
-  register its extension, counted as code.
+- Both sides run on the same `host.mjs`: the real auth extension and the
+  store, as `urlcode extensions add auth store` writes it. The counterexample
+  adds two lines to register its extension, counted as code.
 
 Counted after the recipes gained slot lengths, a staff-only create and a
 handle directory
-([#956](https://github.com/jimhoyd-com/urlcode/issues/956)):
+([#956](https://github.com/jimhoyd-com/urlcode/issues/956)), and the
+`includes` line of the auth mount their fixtures sign in through
+([#1001](https://github.com/jimhoyd-com/urlcode/issues/1001)), which both
+versions carry:
 
 | Contract | Declared: YAML / code | Host transaction: YAML / code | Code removed | Physical lines, declared / host |
 |---|---:|---:|---:|---:|
-| Scheduling (`store-booking`) | 50 / 0 | 49 / 139 | 139 | 58 / 217 |
-| Credits (`store-credits`) | 51 / 0 | 50 / 186 | 186 | 62 / 272 |
+| Scheduling (`store-booking`) | 51 / 0 | 50 / 139 | 139 | 60 / 219 |
+| Credits (`store-credits`) | 52 / 0 | 51 / 186 | 186 | 64 / 274 |
 
 When the counterexamples were added, before #956, the counts were 38 / 0
 against 39 / 137 for scheduling and 42 / 0 against 43 / 170 for credits.

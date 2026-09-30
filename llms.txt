@@ -113,7 +113,9 @@ Draft `tests/requests.json` from `urlcode fixtures suggest --json` (MCP `suggest
 includes, covers only routes the YAML alone determines and lists function, middleware, proxy, extension, pattern and
 binding routes as `gaps` to test by hand. An `auth: true` route is covered by a `steps` fixture that signs in through
 the provider's own endpoint, with `"origin": "{{origin}}"` on unsafe requests, and its accounts and memberships are
-declared in `tests/seed.json` (each test and audit run starts from a fresh database holding exactly that seed); `expectJson`
+declared in `tests/seed.json` (each test and audit run starts from a fresh database holding exactly that seed); the auth
+mount is a route too, covered by an `expectJson` on each sign-in (`/user/id`) and a `GET /api/auth/get-session` case, as
+the `auth: true` recipes' fixtures do, which run unchanged in a site with `urlcode extensions add auth`; `expectJson`
 asserts chosen values of a JSON body by JSON Pointer; a passing case counts only with
 `expectBody`, `expectJson` or `expectHeaders`, a covered GET implies HEAD, `expectSignals` asserts the signals a request emits
 (`urlcode test` and `audit` record them and deliver none; `urlcode dev --signal-sink stdout` prints them), and `audit`'s `coverageNotes` names what is missing
