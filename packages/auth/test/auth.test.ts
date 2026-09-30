@@ -308,6 +308,35 @@ test('sign-in is throttled per admitted client address, whatever forwarding head
   assert.ok(statuses.includes(429), statuses.join(','));
 });
 
+test('a served, non-hermetic mount answers 429 on the eleventh sign-in within a minute (#1019)', async t => {
+  const at = await project(t); await withUser(at);
+  const { call } = await serve(at);
+  const statuses: number[] = [];
+  for (let attempt = 0; attempt < 11; attempt++) statuses.push((await call('/api/auth/sign-in/email', { method: 'POST', body: { email: 'ann@example.test', password: 'ann-local-password' } })).status);
+  assert.deepEqual(statuses, [...Array<number>(10).fill(200), 429]);
+});
+
+test('a hermetic instance allows ten times each rate limit and still answers 429 past it (#1019)', async t => {
+  const at = await project(t); await withUser(at);
+  const rules = (options: ReturnType<typeof betterAuthOptions>) => { (options.database as DatabaseSync).close(); return options.rateLimit!; };
+  const served = rules(betterAuthOptions({ database: at.database, secret }, origin, '/api/auth'));
+  assert.deepEqual([served.enabled, served.storage, served.max, served.customRules], [true, 'database', 100, { '/sign-in/email': { window: 60, max: 10 }, '/sign-up/email': { window: 60, max: 5 } }]);
+  const hermetic = rules(betterAuthOptions({ database: at.database, secret, hermetic: true }, origin, '/api/auth'));
+  assert.deepEqual([hermetic.enabled, hermetic.storage, hermetic.max, hermetic.customRules], [true, 'database', 1000, { '/sign-in/email': { window: 60, max: 100 }, '/sign-up/email': { window: 60, max: 50 } }]);
+  // An operator's own rules are scaled the same way; one they disabled stays disabled, and a rule function's answer is scaled.
+  const custom = rules(betterAuthOptions({ database: at.database, secret, hermetic: true, betterAuth: { rateLimit: { max: 7, customRules: { '/sign-in/email': () => ({ window: 30, max: 3 }), '/ok': false } } } }, origin, '/api/auth'));
+  assert.equal(custom.max, 70);
+  assert.equal(custom.customRules!['/ok'], false);
+  const rule = custom.customRules!['/sign-in/email'];
+  assert.ok(typeof rule === 'function');
+  assert.deepEqual(await rule(new Request(origin), { window: 60, max: 10 }), { window: 30, max: 30 });
+  // Served for a hermetic run: the limiter is still on, keyed by the admitted address, at its raised bound.
+  const { call } = await serve(at, { hermetic: true, betterAuth: { rateLimit: { customRules: { '/sign-in/email': { window: 60, max: 2 } } } } });
+  const statuses: number[] = [];
+  for (let attempt = 0; attempt < 21; attempt++) statuses.push((await call('/api/auth/sign-in/email', { method: 'POST', body: { email: 'ann@example.test', password: 'ann-local-password' } })).status);
+  assert.deepEqual(statuses, [...Array<number>(20).fill(200), 429]);
+});
+
 test('a storage failure while verifying a session answers 503, not a false 401; a bad session stays 401', async t => {
   const at = await project(t), userId = await withUser(at);
   // updateAge 0: every verification refreshes the session, so it needs the write lock.
