@@ -18,6 +18,7 @@ import { initSiteWith, parseWithNames } from './init-with.ts';
 import { declaredExtensionTargetsOf, validateDeclaredExtensions } from './addon-install.ts';
 import { planUpgrade, upgradeSite } from './upgrade.ts';
 import { runProjectTests, startRestartable } from './project-tests.ts';
+import { hostRevision, localReviewEvent, localReviewFor, reportedWithoutVerbose, type LocalReview } from './fixture-run.ts';
 import { verifyDeployment, failLevels } from './verify-deployment.ts';
 import type { FailOn } from './verify-deployment.ts';
 import { loadOperatorPolicy, prepareFunctionSnapshot, requestedPermissions, type OperatorPolicy } from './policy.ts';
@@ -33,7 +34,7 @@ import { access, readFile, realpath, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { runAddonCommand } from './extensions-cli.ts';
 import { createJsonLogger, createDevEventFormatter } from './logging.ts';
-import { commandOptions as options, aliasOriginCommands, hermeticHostCommands, hostFileCommands, inspectionHostCommands, localReviewCommands, localReviewNote, localReviewOrigin, pinFreeReviewCommands, policyCommands } from './cli-command-metadata.ts';
+import { commandOptions as options, aliasOriginCommands, hermeticHostCommands, hostFileCommands, inspectionHostCommands, localReviewCommands, pinFreeReviewCommands, policyCommands } from './cli-command-metadata.ts';
 import type { CliValues as Values } from './cli-command-metadata.ts';
 import { addressInUseMessage, argumentError, contextFromEnv, missingContextCodes, missingContextCommand, missingContextMessage, systemErrorMessages } from './cli-errors.ts';
 import { cliInvocation, shellWord } from './context.ts';
@@ -398,15 +399,14 @@ try {
   else {
     // #932: a local, non-serving review. It pins the host to the current revision only when the operator supplied no
     // pin, reads no policy (so no grant exists) and defaults the origin to loopback; an operator pin always wins.
-    let localReview: { revision: string } | undefined;
+    let localReview: LocalReview | undefined;
     if (values['local-review'] && !(pinFreeReviewCommands as readonly string[]).includes(command)) {
       if (command === 'serve' || command === 'dev') throw new ConfigError(`${command} does not take --local-review: serving always needs the reviewed revision pin (--policy or PROJECT_SHA256)`, { code: 'local-review-unsupported' });
       if (!(localReviewCommands as readonly string[]).includes(command)) throw new ConfigError(`${command} does not take --local-review; it is for the checks ${localReviewCommands.join('/')} and the pin-free read-only commands ${pinFreeReviewCommands.join('/')}`, { code: 'local-review-unsupported' });
-      if (values.policy === undefined && !process.env.PROJECT_SHA256) {
-        localReview = { revision: (await prepareFunctionSnapshot(await loadDocument(values.project))).projectSha256 };
-        values.origin ??= localReviewOrigin;
-        supplied.origin = values.origin;
-        process.stderr.write(JSON.stringify({ event:'local_review', revision:localReview.revision, origin:values.origin, note:localReviewNote }) + '\n');
+      localReview = await localReviewFor(values.project, { pinned:values.policy !== undefined, origin:values.origin });
+      if (localReview) {
+        values.origin = supplied.origin = localReview.origin;
+        process.stderr.write(JSON.stringify(localReviewEvent(localReview)) + '\n');
       }
     }
     if (values['host-file'] !== undefined) {
@@ -416,7 +416,7 @@ try {
         // A verified --policy pins the host to its reviewed revision, so no PROJECT_SHA256 bridge is needed (#723).
         // Only the revision reaches the host; the grants stay with core.
         if (values.policy !== undefined && (policyCommands as readonly string[]).includes(command)) verifiedPolicy = await loadOperatorPolicy(values.policy, values.project);
-        operatorHost = await loadOperatorHost(values['host-file'], values.project, { revision: verifiedPolicy?.projectSha256 ?? localReview?.revision, inspection: (inspectionHostCommands as readonly string[]).includes(command) && !(command === 'extensions' && arg !== undefined), hermetic: (hermeticHostCommands as readonly string[]).includes(command) || localReview !== undefined });
+        operatorHost = await loadOperatorHost(values['host-file'], values.project, { revision: hostRevision(verifiedPolicy, localReview), inspection: (inspectionHostCommands as readonly string[]).includes(command) && !(command === 'extensions' && arg !== undefined), hermetic: (hermeticHostCommands as readonly string[]).includes(command) || localReview !== undefined });
         if (verifiedPolicy && operatorHost.extensions?.length) {
           const actual = (await prepareFunctionSnapshot(await loadDocument(values.project))).projectSha256;
           if (verifiedPolicy.projectSha256 !== actual) throw new ConfigError(`The extension host is pinned by --policy${revisionPinHint(verifiedPolicy.projectSha256, actual)}`, { code: 'revision-pin-mismatch' });
@@ -704,7 +704,7 @@ try {
           if (!arg) throw new ConfigError('Provide an HTTP(S) destination URL');
           print({ event:'added', path:await addRedirect(values.project,arg,values.alias) }); break;
         case 'test': {
-          const result = await runProjectTests(values.project, { ...hostOptions, log:values.verbose ? print : (event:object) => { const { event:kind, pass } = event as {event?:string;pass?:boolean}; if ((kind === 'test' && pass === false) || kind === 'warning' || kind === 'extension_warning') print(event); }, permissions, origin:values.origin, aliasOrigins:values['alias-origin'] });
+          const result = await runProjectTests(values.project, { ...hostOptions, log:values.verbose ? print : (event:object) => { if (reportedWithoutVerbose(event)) print(event); }, permissions, origin:values.origin, aliasOrigins:values['alias-origin'] });
           print(result); if (result.failed) process.exitCode = 1; break;
         }
         case 'doctor':

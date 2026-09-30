@@ -1497,6 +1497,23 @@ What it can do, all inside the selected project root (resolved with realpath):
   `--allow-authoring`. Its bindings come from the operator's `--policy`, as
   for the runners; without one, bindings that need a grant fail as usual.
 
+`run_tests` or `run_test`? Both replay the same fixtures through one execution
+core, the one `urlcode test` uses: the same local review, the same revision pin
+for the operator host, a fresh data directory per run, and the same per-case
+outcome. A fix there reaches both
+([#1095](https://github.com/jimhoyd-com/urlcode/issues/1095)). Use `run_tests`
+when you want structured results: `total`, `failed`, `localReview` and every
+per-case event, passes included, as JSON. It runs in the server process,
+without the runners' deadline or output cap. Use `run_test`
+when you want exactly what `urlcode test` prints and its exit status, with the
+project isolated from the server process: a minimal environment, the two-minute
+deadline and output capped at 32 KiB. What stays separate is deliberate. Each
+tool keeps its own process, environment, timeout, host lifetime and result
+shape, and callers depend on both. The child also receives the host file's
+`plugins`. `run_tests` passes the operator host's extensions and no plugins,
+and takes no `--alias-origin`, as before
+([#1112](https://github.com/jimhoyd-com/urlcode/issues/1112)).
+
 `create_route`, `add_recipe`, `merge_recipe` and `scaffold_feature` return `validation`, the
 `validateProject` verdict of the project after the operation, computed with the
 registrations of the operator's `--host-file` when the server has one, as MCP
