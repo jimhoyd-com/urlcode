@@ -1,0 +1,7 @@
+node_modules/
+data/
+operator/policy.json
+app/public/assets/app.js
+.env
+.env.*
+.urlcode/
