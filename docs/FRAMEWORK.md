@@ -1,22 +1,21 @@
 # The URLCode framework
 
-One page for people and AI agents. It says what the five workspace packages are, how a
+One page for people and AI agents. It says what the four workspace packages are, how a
 project grows from a handful of redirects into an application with accounts,
 data and tools, and which facts an agent must not guess. Every
 claim here is implemented in the linked repository; nothing is roadmap.
 
-## Five workspace packages, one project shape
+## Four workspace packages, one project shape
 
 | Package | Source | What it adds | How a project declares it |
 |---|---|---|---|
-| `@jimhoyd/urlcode` | this repository | The runtime: YAML routes, functions and middleware (trusted by default, `sandbox: true` opt-in), pages and assets, policies, site conventions, CLI, provider adapters, a fetch handler for hosting inside another Node framework, the extension contract | `urlcode.yaml` with `version: "1"` |
-| `@jimhoyd/urlcode-audit` | [`packages/audit`](../packages/audit) | The durable audit log: producers (audited store collections) write events into their own transactional outbox, and audit drains them into one bounded SQLite log with a query API, retention and an operator CLI | `extensions.audit`; no route |
+| `@jimhoyd/urlcode` | this repository | The runtime: YAML routes, functions and middleware (trusted by default, `sandbox: true` opt-in), pages and assets, policies, site conventions, CLI, provider adapters, a fetch handler for hosting inside another Node framework, the extension contract (the audit event contract and its tap included) | `urlcode.yaml` with `version: "1"` |
 | `@jimhoyd/urlcode-auth` | [`packages/auth`](../packages/auth) | A thin adapter over [Better Auth](https://better-auth.com/): Better Auth owns accounts, passwords, sessions, cookies and its tables (in the bundled SQLite file, or the owner's own database); the extension serves an allowlist of its endpoints on one mount, gates protected routes and hands their code the verified user id (`context.capabilities.auth.identity.userId`). No roles or permissions; Node only; requires nothing | `extensions.auth: {version: "1", config: {}}` plus an `/api/auth/*` mount (`methods: [GET, POST]`) and `auth: true` (`policies.extensions.auth: {}`) on protected routes |
-| `@jimhoyd/urlcode-store` | [`packages/store`](../packages/store) | Durable bounded collections in one SQLite database exposed as a typed JSON CRUD API; a collection with `audit: true` records its writes through `audit` | `extensions.store` plus a protected collection mount |
+| `@jimhoyd/urlcode-store` | [`packages/store`](../packages/store) | Durable bounded collections in one SQLite database exposed as a typed JSON CRUD API; a collection with `audit: true` records its writes in the store's own audit log, in the transaction of each write, and `StoreExports.audit` is the tap a sink forwards them through | `extensions.store` plus a protected collection mount |
 | `@jimhoyd/urlcode-mcp` | [`packages/mcp`](../packages/mcp) | Declarative [MCP](https://modelcontextprotocol.io) tool server over the official MCP SDK (stateless Streamable HTTP): a bounded, project-declared map of tools, resources and prompts with trusted handlers | `extensions.mcp` plus a `POST, HEAD` mount (streamed progress when the operator opts into `mcp({ streaming: true })`, not on aws); `urlcode extensions add mcp` wires the extension but leaves the server/tool declaration and its trusted handler module for the operator (every tool needs project code) |
 
-All five are Apache-2.0. Core is published through npm, GitHub Releases and
-Homebrew. The four extensions, and the inert `store-schema` artifact in
+All four are Apache-2.0. Core is published through npm, GitHub Releases and
+Homebrew. The three extensions, and the inert `store-schema` artifact in
 [`artifacts/store-schema`](../artifacts/store-schema), are add-ons: each is
 released as a tarball on the same GitHub Release as core, at core's version,
 and core pins every one of them (download URL and sha512) in its own
@@ -24,8 +23,8 @@ and core pins every one of them (download URL and sha512) in its own
 artifacts add`, never by choosing an npm package. See
 [add-ons](EXTENSIONS.md#add-ons-extensions-and-artifacts).
 
-Prefer tested first-party extensions when suitable. External/private extensions
-are also supported through the same public host contract; follow the
+Inspect the installed stack first; first-party extensions are defaults, not
+requirements. External/private extensions are also supported through the same public host contract; follow the
 [external-extension workflow](EXTENSIONS.md#external-extensions-and-ai-tooling)
 for installation, AI discovery and validation outside the release catalog.
 
@@ -100,7 +99,7 @@ reads the verified user id from
 Better Auth owns accounts and sessions; the application owns its business
 rules and authorization. The
 [native-storage proof](../proofs/native-storage/README.md) is such an
-application with no store or audit extension installed: its function routes
+application with no store extension installed: its function routes
 call `node:sqlite` directly, behind `auth: true` through the independent
 Auth.js provider, and store declarations in its `urlcode.yaml` are refused
 rather than emulated.
@@ -110,10 +109,9 @@ above (see [docs/STORE.md](STORE.md)); core has no native `link` route.
 
 Rungs 1 to 3 need only the core package. Rungs 4 to 6 need an extension added
 to the site with `urlcode extensions add`, which wires it into the explicit
-operator host. Auth and audit additionally need the Node/SQLite
-runtime their packages document; mcp declares Node, AWS and Vercel targets (its opt-in streaming transport is
+operator host. Auth additionally needs the Node/SQLite
+runtime its package documents; mcp declares Node, AWS and Vercel targets (its opt-in streaming transport is
 self-hosted only), while store (its database is `node:sqlite`) is Node-only. See each package's README ([auth](../packages/auth/README.md),
-[audit](../packages/audit/README.md),
 [store](../packages/store/README.md),
 [mcp](../packages/mcp/README.md)) for the exact requirement.
 
@@ -228,19 +226,21 @@ call, for example `auth({signUp: true})`.
 The whole graph, as each extension declares it:
 
 ```
-audit    requires []
 auth     requires []
-store    requires []                  uses [audit]
+store    requires []
 mcp      requires []
 ```
 
 A `requires` entry must be installed and declared; a `uses` entry is optional,
-and the extension works without it (store refuses only a collection that asks
-for `audit: true` when audit is absent).
+and the extension works without it. The name is the role: an independent
+package may provide `auth`, `store` or another first-party name while the
+first-party package of that name is not installed (for example an owner's own
+`audit` sink that `requires: [store]` and pulls the store's audit tap, see
+[STORE.md](STORE.md#audited-writes)).
 
 Treat that composition as one application with package ownership boundaries. Keep accounts, passwords and sessions in
 Better Auth behind the auth extension, roles and permissions in the
-application's own data, the durable log in audit and email delivery in the
+application's own data, the audit log in the store and email delivery in the
 application's own function code, through the provider's library, and the
 frontend, its components and styling in the application's own source.
 Apply product differences through the installed extensions' declared authoring
@@ -265,7 +265,7 @@ origins ([site origins](EXTENSIONS.md#site-origins-and-same-origin-checks)).
 A SQLite-backed extension refuses a network filesystem and a second serving
 process through core's `refuseNetworkFilesystem` and `holdServerLock`
 (`@jimhoyd/urlcode/sqlite`, kept off the generic extension contract), an OS
-lock on a file beside its own database, so store, auth and audit enforce one
+lock on a file beside its own database, so store and auth enforce one
 rule: one serving process per database ([request helpers](EXTENSIONS.md#request-helpers)).
 An extension reports a startup condition the operator should act on through
 the activation's generic `warn()`, which reaches the operator's startup log as
@@ -881,7 +881,7 @@ body that names it.
 | Write or change routes | [YAML guide](YAML-GUIDE.md), [field reference](YAML-REFERENCE.md), [cookbook](../examples/cookbook/README.md) |
 | Configure an extension: every key it accepts | [extension field references](EXTENSION-REFERENCE.md) (each package README ends with one, generated from its `urlcode.json`) |
 | Add accounts | [auth README](../packages/auth/README.md), [auth security](../packages/auth/SECURITY.md) |
-| Audit log | [audit](../packages/audit/README.md) |
+| Audit log | [audited writes](STORE.md#audited-writes) |
 | Rate limits, email | [`policies.throttle`](POLICIES.md), [contact-form recipe](../recipes/contact-form/README.md) |
 | Build the frontend | [private-requests client](../proofs/private-requests/client/main.js), [what the caller may run](STORE.md#what-the-caller-may-run), [staging source assets](EXTENSIONS.md#staging-source-assets) |
 | Write an extension | [extensions](EXTENSIONS.md), [authoring rules](EXTENSIONS.md#generic-add-on-authoring-rules) |

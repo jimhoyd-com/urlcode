@@ -117,8 +117,9 @@ function packageJson(name: string, description: string, core: CoreManifest, fork
     bugs: { url: 'https://github.com/jimhoyd-com/urlcode/issues' },
     engines: { node: core.engines.node },
     exports: {
-      '.': { types: './dist/index.d.ts', default: './dist/index.js' },
-      './extension': { types: './dist/extension.d.ts', default: './dist/extension.js' },
+      // `development` names the source so the workspace resolves it with no build; packing strips it (#1056).
+      '.': { development: './src/index.ts', types: './dist/index.d.ts', default: './dist/index.js' },
+      './extension': { development: './src/extension.ts', types: './dist/extension.d.ts', default: './dist/extension.js' },
     },
     files: ['dist', 'urlcode.json', 'README.md', 'LICENSE', 'NOTICE', 'SECURITY.md'],
     scripts: {
@@ -343,7 +344,7 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 }
 
 function tsconfigJson(): string { return `{\n  "extends": "../../tsconfig.base.json",\n  "include": [\n    "src",\n    "test"\n  ]\n}\n`; }
-function tsconfigBuildJson(): string { return `{"extends":"./tsconfig.json","compilerOptions":{"rootDir":"src","outDir":"dist","declaration":true},"include":["src"]}\n`; }
+function tsconfigBuildJson(): string { return `{"extends":"./tsconfig.json","compilerOptions":{"rootDir":"src","outDir":"dist","declaration":true,"customConditions":[]},"include":["src"]}\n`; }
 function noticeText(name: string): string { return `URLCode ${name} (@jimhoyd/urlcode-${name})\nCopyright (c) the URLCode contributors\n\nThis product is licensed under the Apache License, Version 2.0 (see LICENSE).\n`; }
 
 function indexTs(name: string, Name: string, camel: string): string {
@@ -473,7 +474,7 @@ async function boot(t: test.TestContext) {
   t.after(() => rm(site, { recursive: true, force: true }));
   const project = join(site, 'app');
   await mkdir(project);
-  const scaffolded = await ${camel}.definition.scaffold!({ site, project, installed: ['${name}'], acknowledgements: [] });
+  const scaffolded = await ${camel}.definition.scaffold!({ site, project, installed: ['${name}'], principalProviders: [], acknowledgements: [] });
   await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { '${name}': { version: '1', config: scaffolded.config } }, routes: scaffolded.routes }));
   const previous = process.env.PROJECT_SHA256;
   process.env.PROJECT_SHA256 = await inspectExtensionRevision(project);
@@ -487,7 +488,7 @@ async function boot(t: test.TestContext) {
 test('the definition shares the runtime schema and scaffolds a route for its own mount', async () => {
   assert.equal(${camel}.definition.name, '${name}');
   assert.equal(${camel}.definition.schema, ${camel}ConfigSchema);
-  const scaffolded = await ${camel}.definition.scaffold!({ site: '/tmp/site', project: '/tmp/site/app', installed: ['${name}'], acknowledgements: [] });
+  const scaffolded = await ${camel}.definition.scaffold!({ site: '/tmp/site', project: '/tmp/site/app', installed: ['${name}'], principalProviders: [], acknowledgements: [] });
   assert.deepEqual(Object.keys(scaffolded.routes), ['/${name}/*']);
 });
 

@@ -1,7 +1,7 @@
 version: "1"
 extensions:
   # Who is signed in: Auth.js through the independent @example/urlcode-authjs package. Its secret and providers
-  # belong to the operator's host.mjs and data directory, not here. No store or audit extension is declared.
+  # belong to the operator's host.mjs and data directory, not here. No store extension is declared.
   authjs: {version: "1", config: {}}
 routes:
   /api/auth/*:

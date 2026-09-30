@@ -1,8 +1,8 @@
 # Operator-installed extensions
 
 Extensions are trusted operator modules, separate from a project's own
-`function`/`middleware` code. The first-party extensions (`audit`,
-`auth`, `store`, `mcp`) are workspace packages in this repository
+`function`/`middleware` code. The first-party extensions (`auth`,
+`store`, `mcp`) are workspace packages in this repository
 (`packages/<name>`); the runtime supplies only the generic integration contract
 and never imports them. No project file can import a host extension or choose
 a package: the operator's `host.mjs` does that (see
@@ -18,11 +18,9 @@ The `store` extension is the data-owning counterpart: it serves declared,
 bounded collections as a CRUD API from an operator-owned directory. See
 [data store](STORE.md).
 
-The `audit` extension serves no route and exists for other extensions to use
-through its typed exports. It is the durable audit log: a producer (every store
-collection with `audit: true`) writes each event into its own outbox in the
-same transaction as the change it records, and audit drains the outboxes into
-one bounded SQLite log ([audit log](#audit-log)).
+The store also keeps the audit log: a collection with `audit: true` records
+each write's event in the store database, in the same transaction as the
+change ([audit log](#audit-log)).
 
 No extension renders or processes forms. A form is an ordinary frontend that
 posts JSON to a store mount, or to a route whose `request.body.POST.schema`
@@ -467,8 +465,7 @@ invocation. The first-party `auth` extension declares one capability,
 id as `context.capabilities.auth.identity.userId`, and a `sandbox: true` route
 cannot name `auth`. The core fixture `test/extension-capability.test.ts` proves
 the seam with a synthetic, non-first-party provider; naming the specific store
-and audit operations an application can reach this way is a later, separate
-decision for each package.
+operations an application can reach this way is a later, separate decision.
 
 `urlcode explain` and `urlcode report` show the capabilities a registration
 declares on every route that names it (`handler receives
@@ -502,13 +499,14 @@ token outlives sign-out until it expires). Its protected routes say
 `policies.extensions.authjs`, and `urlcode openapi` and `urlcode review` treat
 `authjs` as the sign-in gate. Capability names stay provider-specific: its
 handlers read `context.capabilities.authjs.identity`. An independent package
-still cannot name itself `auth`, a reserved first-party catalog name.
+may also name itself `auth` while the first-party `auth` is not installed
+([a name is a role](#audit-log)).
 
 **Owner choice of storage.** The bundled store is a default, not a
 prerequisite. The [native-storage proof](../proofs/native-storage/README.md)
 keeps its records with `node:sqlite`, called directly from trusted function
 routes that read `context.capabilities.authjs.identity.userId`, in the
-directory the operator grants as `URLCODE_DATA_DIR`. Neither store nor audit is
+directory the operator grants as `URLCODE_DATA_DIR`. The store is not
 installed. URLCode supplies the routing, the `auth: true` gate, review and the
 hermetic `urlcode test` and `audit` runs. The store's guarantees do not carry
 over, and `extensions.store` without the store extension is refused before
@@ -697,7 +695,7 @@ string or key in a parsed value holds an unpaired surrogate, and
 `illFormedMember(object)` names the first top-level member that does, for an
 error that names the argument (the MCP extension answers `-32602` with it).
 
-The bundled store, auth and audit extensions each keep a SQLite file, served
+The bundled store and auth extensions each keep a SQLite file, served
 by one process
 ([one serving process per database](STORE.md#one-serving-process-per-database)).
 The helpers they share are published on their own subpath,
@@ -1403,7 +1401,7 @@ check it against core's pin.
 
 The first-party add-ons are:
 
-- Extensions: `audit`, `auth`, `store`, `mcp`.
+- Extensions: `auth`, `store`, `mcp`.
 - Artifacts: `store-schema`, the `store` extension's configuration schema and an
   example configuration. Its schema is generated from the store extension's
   definition by `npm run build:addons`, so the two cannot drift.
@@ -1613,8 +1611,8 @@ package was downloaded and extracted but never run: every npm call passes
 command adds (including requirements it pulls in), refuses when none of them
 ships an example or when nothing is added, and never changes an extension that
 is already installed. The first-party examples are store's `todos` collection
-on `/api/todos` (per-user `ownership: owner` when `auth` is installed); audit,
-auth and mcp ship none.
+on `/api/todos` (per-user `ownership: owner` and `audit: true` when `auth` is
+installed); auth and mcp ship none.
 
 Some scaffolds or examples refuse until the operator acknowledges a named risk; for example
 the `store` example without `auth` would expose public write on its collection. The refusal
@@ -1778,7 +1776,8 @@ against its descriptor's schemas, and `remove` takes it out by name.
 
 `add` refuses a package with no valid extension descriptor, a descriptor of
 kind `artifact`, a descriptor or definition built for another
-[extension contract](#the-extension-contract), a name that a first-party add-on of this core already has,
+[extension contract](#the-extension-contract), a first-party name while that
+first-party add-on is installed ([a name is a role](#audit-log)),
 a `@jimhoyd/urlcode*` package (those install from core's pins), two installed
 packages providing the same name, an independent extension whose
 `requires` are not installed, and any package that brings a nested copy of
@@ -1801,9 +1800,7 @@ Each extension declares what it needs:
 
 | Extension | `requires` | `uses` (optional) | Contributes to |
 |---|---|---|---|
-| `audit`, `mcp` | none | none | |
-| `auth` | none | none | |
-| `store` | none | `audit` | |
+| `auth`, `mcp`, `store` | none | none | |
 
 A sibling add-on is an optional exact peer dependency, never a nested
 dependency, so every add-on is installed once at the top level of the site;
@@ -1826,27 +1823,41 @@ exports nothing to other extensions; it reaches them only through the
 
 | Export | From | Read by |
 |---|---|---|
-| `AuditExports` | `audit` | producers (`attach` an outbox, `validate` an event; the store's audited collections) and readers (`query`, `record`) |
-| `StoreExports` | `store` | no first-party reader: an ownership-honouring records API for an operator's own extension |
+| `StoreExports` | `store` | no first-party reader: an ownership-honouring records API and the audit log's tap (`audit`) for an operator's own extension |
 
 Two copies of one extension cannot exist in a site, so duplicate-instance bugs
 cannot happen.
 
 ### Audit log
 
-The `audit` extension keeps the one durable log of privileged actions. Its
-guarantee: an event is written into the producer's own outbox in the same
-transaction as the change it records (the `audit` array of an audited store
-collection's data file), so a change and its
-event are stored together or not at all. Audit drains every attached outbox
-into `data/audit.sqlite` while the host runs, at least once and deduplicated by
-event id, so nothing is lost across a crash. A producer fails closed: when its
-outbox reaches its cap (`auditOutboxLimits`: 1000 per store collection) the
-write answers 503 until audit catches up. The log keeps the newest `retention`
-events (default 100000). Events carry names, ids and field names, never
-submitted values or secrets. Operators read the log with `urlcode-audit list`.
-See the [audit package](../packages/audit/README.md)
-and its [security notes](../packages/audit/SECURITY.md).
+The store keeps the one durable log of privileged actions. A collection that
+declares `audit: true` records each write's event as a row of the store
+database, in the same transaction as the change, so an event exists exactly
+when its change committed. The newest `auditRetention` events are kept
+(default 100000). Events carry names, ids and field names, never submitted
+values or secrets. Operators read the log with `urlcode-store audit`; it is in
+every `urlcode-store backup`. See [audited writes](STORE.md#audited-writes).
+
+The event contract is core's: `@jimhoyd/urlcode/extensions` exports the event
+types, `validateAuditEvent`, `validateAuditQuery`, `AuditError`, `auditLimits`
+and the `AuditTap`, `AuditLog`, `AuditEvent`, `AuditStoredEvent`, `AuditQuery`
+and `AuditPage` types. `StoreExports.audit` is an `AuditLog`: an extension that
+`requires: [store]` forwards events anywhere by calling `peek(limit)`, writing
+the batch, then `ack(ids)`, at least once and deduplicated on the event id
+([forwarding events to a sink](STORE.md#forwarding-events-to-a-sink)). There
+is no first-party audit extension: a first-party sink would add a second
+database, a drain and a delivery guarantee to maintain, while the tap lets an
+owner forward to the destination they want in a few lines.
+
+**A name is a role.** Such a sink may be named `audit`. An independent package
+whose `urlcode.json` names itself `audit`, `store`, `auth` or any other
+first-party name installs with `urlcode extensions add <spec>` while the
+first-party package of that name is not installed, and stands in for it. While
+the first-party one is installed, `add` refuses the stand-in (`Refusing <pkg>:
+it names itself <name>, and the first-party <name> is installed; remove it
+first`); while a stand-in provides the name, `urlcode extensions add <name>`
+refuses the first-party one (`Refusing <name>: <pkg> provides <name>; remove it
+first`).
 
 ### Rate limits
 
@@ -1881,14 +1892,17 @@ export default defineExtension<MyHostOptions>({
 The static fields (`name` to `authoring`) are what `npm run build:addons` writes
 into `urlcode.json`.
 
-`scaffold({site, project, installed, acknowledgements})` writes nothing. It
+`scaffold({site, project, installed, principalProviders, acknowledgements})` writes nothing. It
 returns `{config, routes, files?, env?, acknowledged?, routeNotes?, notes?}`,
 and core writes it as described above. `example` takes the same request and
 returns the same shape; with `--example` core merges it into the scaffold's
 result before writing: `config` deep-merges (plain objects key by key, any
 other example value replaces), a route both return refuses, and the lists and
 `env` are appended. `installed` lists every extension in the
-site after this add; `acknowledgements` holds the sorted `--ack` values. To
+site after this add; `principalProviders` lists, sorted, the installed ones
+whose descriptors declare `providesPrincipal`, so a scaffold that wants a
+protected mount asks for any sign-in provider rather than one package name;
+`acknowledgements` holds the sorted `--ack` values. To
 require an acknowledgement, a scaffold throws an `Error` carrying
 `acknowledgement: '<name>:<id>'` whose message states the risk, and lists each
 one it used in `acknowledged`. `routeNotes` are single-line comments written

@@ -122,17 +122,16 @@ Each bound refuses rather than growing without limit:
 
 | Resource | Bound | When full |
 |---|---|---|
-| Audit log | keeps the newest `extensions.audit.config.retention` events (default 100,000; 1,000 to 10,000,000) | older events are pruned |
+| Store audit log | keeps the newest `extensions.store.config.auditRetention` events of every audited collection together (default 100,000; 1,000 to 10,000,000), in `store.sqlite` | each audited write prunes the oldest, forwarded or not ([audited writes](STORE.md#audited-writes)) |
 | Store records | `maxRecords` per collection (default 1,000, at most 10,000), `maxRecordBytes` each (default 4,096, at most 65,536), at most 32 collections, all in one SQLite database | a create answers `409 collection_full`, an oversized record `413` |
 | Store writes | one SQLite transaction at a time per database, each fsynced (`synchronous=FULL`, unless the operator chose [`durability: 'normal'`](STORE.md#durability)) before it answers; statements are synchronous, so each commit blocks the event loop for its fsync | a write blocked by another process's lock for 2 s answers `503 storage_unavailable` |
 | Store sorted or filtered lists | one counted keyset query through an index per `sortable` or `filterable` property; only while the collection holds a row that index cannot order is the page ordered in memory from every record in scope ([how](STORE.md#sorting-and-filtering)) | bounded by `maxRecords` and `pageSize` (at most 200) |
-| Audit outboxes | 1,000 undelivered events per audited store collection | the write that would add an event answers `503 audit_backlog` and changes nothing |
-| Disk space for `store.sqlite`, `auth.sqlite` and `audit.sqlite` | the free space of the data directory's filesystem; no quota of its own | a store write answers `503 storage_unavailable`, a sign-in `503 auth_unavailable`, audit delivery waits in the outbox; nothing partial is written, and writes resume once space frees ([disk-full tests](STORE.md#what-the-disk-full-tests-prove)) |
+| Disk space for `store.sqlite` and `auth.sqlite` | the free space of the data directory's filesystem; no quota of its own | a store write answers `503 storage_unavailable` (with no audit event), a sign-in `503 auth_unavailable`; nothing partial is written, and writes resume once space frees ([disk-full tests](STORE.md#what-the-disk-full-tests-prove)) |
 
-The store's database path and commit durability are operator choices in `host.mjs`; the store and
-audit bounds are reviewed YAML. See the
-[store](STORE.md#storage-and-concurrency-what-it-does-and-does-not-guarantee)
-and [audit](../packages/audit/README.md) packages. One local measurement of the store
+The store's database path and commit durability are operator choices in `host.mjs`; the store's
+bounds, `auditRetention` included, are reviewed YAML. See the
+[store](STORE.md#storage-and-concurrency-what-it-does-and-does-not-guarantee).
+One local measurement of the store
 follows; establish your own on your disk before relying on it.
 
 ### Measured: the SQLite store
@@ -149,12 +148,15 @@ SSD, Node 26.10.0 with its bundled SQLite 3.53.4, 2026-09-28. Two full runs;
 the figures below are the first, and the second agreed within about 15%.
 
 **Method.** The server runs in a child process (`startServer` with the store,
-audit and a header-based principal extension, no TLS, no proxy, logging off);
+the audit extension of that time and a header-based principal extension, no TLS, no proxy, logging off);
 the parent drives it with a keep-alive `node:http` client at a fixed
 concurrency over loopback. The collection is `ownership: owner` with
 `idempotency: {maxKeys: 1000}`, `maxRecords: 10000`, `pageSize: 100`, two
 sortable and one filterable field and a declared transition; one copy has
-`audit: true` (its events drain into a real audit database), one does not.
+`audit: true` (its events then drained into a separate audit database), one
+does not. The store now keeps its audit log in its own database with no drain
+([audited writes](STORE.md#audited-writes)); this measurement predates that and
+has not been repeated, so the audit-on figures describe the earlier design.
 Every write sends a fresh `Idempotency-Key`; each `PATCH` and transition sends
 the record's current `If-Match`. The server samples its own event loop with
 `monitorEventLoopDelay` (1 ms resolution, so values near 1 ms are the floor)
@@ -172,7 +174,8 @@ server starts, all owned by the calling principal.
 Event-loop delay during these writes was 1.9–4.8 ms at p50 and at most
 19 ms, which at concurrency 16 is mostly the queue of ordinary request work,
 not the commit. Auditing roughly halves write throughput: each event is a
-second row in the same transaction plus a drain into the audit database.
+second row in the same transaction plus, in that design, a drain into the
+audit database.
 
 **Commit cost in isolation** (one-row `BEGIN IMMEDIATE` transactions on a WAL
 database, 3,000 each; the store's own setting was not changed):
@@ -376,7 +379,7 @@ tables are dropped on a snapshot reload. Sharing state across instances is a
 
 ### One serving process per database
 
-A site whose extensions keep SQLite files (store, auth, audit) is served by
+A site whose extensions keep SQLite files (store, auth) is served by
 **one** `urlcode serve` process. A second serving process on the same
 database is refused before it writes anything, by an OS-held lock that a
 crashed or killed process releases at once
@@ -389,8 +392,8 @@ A site without SQLite-backed extensions has no such limit, with the
 per-instance caveats above.
 
 A restart after an unclean shutdown needs no wait: the lock is gone with the
-process. An operator command (`urlcode-store`, `urlcode-auth`,
-`urlcode-audit`) running beside the server shares the write lock; a server
+process. An operator command (`urlcode-store`, `urlcode-auth`) running beside
+the server shares the write lock; a server
 write that waits past the 2 second busy timeout answers
 `503 storage_unavailable`.
 

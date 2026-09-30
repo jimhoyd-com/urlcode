@@ -230,7 +230,7 @@
           },
           "audit": {
             "type": "boolean",
-            "description": "true: every write is recorded in the audit log (property names and the principal, never values), in the same transaction as the write. On a membership collection, adding or removing a member (from any path, the operator CLI included) records store.membership.added or store.membership.removed with the member's principal id in the subject. Needs the audit extension; writes answer 503 audit_backlog while 1000 events wait to drain."
+            "description": "true: every write is recorded in the audit log (property names and the principal, never values), in the same transaction as the write. On a membership collection, adding or removing a member (from any path, the operator CLI included) records store.membership.added or store.membership.removed with the member's principal id in the subject. The event is a row of the store database, kept among the newest auditRetention events; urlcode-store audit reads them, and a sink forwards them through StoreExports.audit."
           },
           "transitions": {
             "description": "Declared conditional state changes by name: POST <mount>/<id>/<name> moves one record from the from values to the set (and stamp) values in one transaction, honouring If-Match and Idempotency-Key; a record not in the from state answers 409 transition_conflict and nothing is written. Not an expression language.",
@@ -679,6 +679,12 @@
           }
         }
       }
+    },
+    "auditRetention": {
+      "type": "integer",
+      "minimum": 1000,
+      "maximum": 10000000,
+      "description": "How many of the newest audit events (from collections that declare audit: true) the store database keeps, default 100000; each audited write prunes the oldest past it in its own transaction. Read on every activation, so removing the key returns to the default."
     }
   }
 }

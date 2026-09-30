@@ -110,11 +110,10 @@ refuses one too (#1021): `urlcode.yaml`, its includes and bulk import
 fail with `invalid-unicode` naming the location, since a `respond.text` body
 or redirect URL would otherwise reach the client as U+FFFD and a
 `respond.json` string as the raw escape. The operator policy file
-(`policy-invalid`) and `urlcode-audit` input refuse it as well; neither stores
-a string, but an audit path would otherwise name a different file. Invalid
+(`policy-invalid`) refuses it as well. Invalid
 UTF-8 is refused where a library would decode it leniently: a `urlcode mcp`
 stdio line and an MCP extension request body answer a `-32700` parse error
-with a null id, and `urlcode-audit` input fails. This is data consistency, not
+with a null id. This is data consistency, not
 an authorization boundary.
 
 Add-on packages are trusted by pin, not by review. A released add-on is pinned

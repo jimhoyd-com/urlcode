@@ -1,10 +1,7 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "noEmit": true,
-    // test/disk-full.test.ts imports the store's source, which imports audit's types by package name. The root
-    // typecheck runs before any add-on is built, so it reads audit's source rather than its unbuilt dist.
-    "paths": { "@jimhoyd/urlcode-audit": ["./packages/audit/src/index.ts"] }
+    "noEmit": true
   },
   "include": ["packages/core/src", "scripts", "test"]
 }

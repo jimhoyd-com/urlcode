@@ -5,7 +5,7 @@
 //   npm run bench:store -- --json out.json
 //
 // Four parts, each printed as a table (`--intervals` runs only the fourth, `--lists` only the list parts of 1 and 3):
-//   1. HTTP: a real server (a child process running startServer with the store, audit and a header principal) driven
+//   1. HTTP: a real server (a child process running startServer with the store and a header principal) driven
 //      by a bounded keep-alive node:http client at fixed concurrency. Creates (Idempotency-Key), PATCH with If-Match
 //      and declared transitions on an owned collection with audit off and on, then list latency at page sizes 20 and
 //      100 over 1,000 and 10,000 records (the configurable maximum). The server samples its own event-loop delay
@@ -65,9 +65,9 @@ const synthetic = (i: number): Row => ({ id: randomUUID(), title: word(i), prior
 // Server role: the child process. Seeds `seed` records into `items` directly (the way an earlier run would have left
 // them), starts the server and answers loop-delay requests over IPC.
 async function serve(): Promise<void> {
-  const [{ startServer }, { inspectExtensionRevision }, { composeHost }, { default: store }, { default: audit }, { openStoreDatabase }] = await Promise.all([
+  const [{ startServer }, { inspectExtensionRevision }, { composeHost }, { default: store }, { openStoreDatabase }] = await Promise.all([
     import('@jimhoyd/urlcode'), import('@jimhoyd/urlcode/extensions'), import('@jimhoyd/urlcode/host'),
-    import('../src/extension.ts'), import('@jimhoyd/urlcode-audit/extension'), import('../src/database.ts'),
+    import('../src/extension.ts'), import('../src/database.ts'),
   ]);
   const { root, seed } = JSON.parse(process.env.STORE_BENCH_SERVER!) as { root: string; seed: number };
   const project = join(root, 'app');
@@ -75,7 +75,7 @@ async function serve(): Promise<void> {
   const guarded = { policies: { extensions: { badge: {} } } };
   await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({
     version: '1',
-    extensions: { badge: { version: '1', config: {} }, audit: { version: '1', config: { retention: 1_000_000 } }, store: { version: '1', config: { collections } } },
+    extensions: { badge: { version: '1', config: {} }, store: { version: '1', config: { collections, auditRetention: 1_000_000 } } },
     routes: Object.fromEntries(Object.values(collections).map(spec => [`${spec.mount}/*`, { extension: 'store', methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'], ...guarded }])),
   }));
   const sha = await inspectExtensionRevision(project);
@@ -105,7 +105,7 @@ async function serve(): Promise<void> {
       };
     },
   };
-  const host = await composeHost(pathToFileURL(join(root, 'host.mjs')), [store(), audit()]);
+  const host = await composeHost(pathToFileURL(join(root, 'host.mjs')), [store()]);
   const app = await startServer({ project, origin, port: 0, log: () => {}, extensions: [...host.extensions!, badge as never] });
   const loop = monitorEventLoopDelay({ resolution: 1 });
   process.on('message', (message: { type: string }) => {

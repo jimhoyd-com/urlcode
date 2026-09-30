@@ -11,14 +11,12 @@ import type { TestContext } from 'node:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createAudit } from '@jimhoyd/urlcode-audit';
-import type { AuditExports } from '@jimhoyd/urlcode-audit';
-import { StoreError, createStore, deleteOwnerless, normalize } from '../src/index.ts';
+import { StoreError, createStore, normalize } from '../src/index.ts';
 import type { CollectionSpec } from '../src/index.ts';
 import { cleanup } from './cleanup.ts';
 import { direct, pin, race } from './direct.ts';
 import type { Answer } from './direct.ts';
-import { counts, execute, outbox, records, seed } from './rows.ts';
+import { auditEvents, counts, execute, records } from './rows.ts';
 
 const balanceSchema = (minimum: number) => ({ type: 'object', additionalProperties: false, required: ['name', 'balance'], properties: { name: { type: 'string', maxLength: 20 }, balance: { type: 'integer', minimum } } });
 /**
@@ -189,32 +187,20 @@ test('200 interleaved transfers conserve the total, in one process and across co
   assert.ok(Object.values(balances(store.database, 'accounts')).every(balance => (balance as number) >= 0), 'no balance went below the floor');
 });
 
-/** A real audit database for event validation, with a drain that never runs, so undelivered events stay countable. */
-async function auditFor(t: TestContext, root: string): Promise<AuditExports & { woken(): number }> {
-  const log = await createAudit({ projectSha256: pin, database: join(root, 'audit.sqlite') });
-  cleanup(t, () => log.close());
-  await log.registration.activate({}, { origin: 'https://direct.example.test', target: 'node', projectSha256: pin, mounts: [], root });
-  let woken = 0;
-  return { ...log.exports, get active() { return log.exports.active; }, validate: value => log.exports.validate(value), attach: () => ({ notify() { woken++; }, async close() {} }), woken: () => woken };
-}
-
 test('audit: both records\' events commit with the transfer, and an injected failure rolls back all of it', async t => {
   const root = await mkdtemp(join(tmpdir(), 'store-transfer-audit-'));
   cleanup(t, () => rm(root, { recursive: true, force: true, maxRetries: 5 }));
-  const audit = await auditFor(t, root);
-  const store = await direct(t, { collections: { accounts: { ...accounts, audit: true } } }, { mounts: ['/api/accounts'], audit });
+  const store = await direct(t, { collections: { accounts: { ...accounts, audit: true } } }, { mounts: ['/api/accounts'] });
   const { a, b } = await funded(store, ['a', 'b'], 'ann') as { a: string; b: string };
-  const woken = audit.woken(), before = { counts: counts(store.database), accounts: records(store.database, 'accounts'), outbox: outbox(store.database) };
+  const before = { counts: counts(store.database), accounts: records(store.database, 'accounts'), audit: auditEvents(store.database) };
   // The credited record's write fails inside SQLite, after the debit and its audit event were written.
   execute(store.database, `CREATE TRIGGER fail_b BEFORE UPDATE ON store_records WHEN NEW.id = '${b}' BEGIN SELECT RAISE(ABORT, 'injected'); END;`);
   const failed = await store.call('POST', '/api/accounts/transfers/move', { who: 'ann', body: { from: a, to: b, amount: 10 }, headers: { 'idempotency-key': 'once' } });
   assert.equal(failed.status, 503); assert.equal(code(failed), 'storage_unavailable');
-  assert.deepEqual({ counts: counts(store.database), accounts: records(store.database, 'accounts'), outbox: outbox(store.database) }, before, 'no debit, claim or event survives');
-  assert.equal(audit.woken(), woken, 'a rolled-back transfer wakes nothing');
+  assert.deepEqual({ counts: counts(store.database), accounts: records(store.database, 'accounts'), audit: auditEvents(store.database) }, before, 'no debit, claim or event survives');
   execute(store.database, 'DROP TRIGGER fail_b');
   assert.equal((await store.call('POST', '/api/accounts/transfers/move', { who: 'ann', body: { from: a, to: b, amount: 10 }, headers: { 'idempotency-key': 'once' } })).status, 200, 'the retry runs');
-  assert.equal(audit.woken(), woken + 1, 'one wake-up after the commit');
-  const events = outbox(store.database).slice(before.outbox.length);
+  const events = auditEvents(store.database).slice(before.audit.length);
   assert.deepEqual(events.map(event => [event.action, event.actor, event.subject, event.metadata]), [
     ['store.record.transferred', 'ann', `accounts/${a}`, { collection: 'accounts', transfer: 'move', side: 'from', counterpart: b, fields: ['balance'] }],
     ['store.record.transferred', 'ann', `accounts/${b}`, { collection: 'accounts', transfer: 'move', side: 'to', counterpart: a, fields: ['balance'] }],
@@ -304,26 +290,6 @@ test('a host transaction\'s remove refuses a record holding a balance, and the w
   });
   assert.equal(sum(store.database, 'accounts'), 0);
   assert.deepEqual(balances(store.database, 'accounts'), { a: 200 });
-});
-
-test('ownerless-delete refuses as a whole while any ownerless record holds a balance (#928)', async t => {
-  const root = await mkdtemp(join(tmpdir(), 'store-transfer-ownerless-'));
-  cleanup(t, () => rm(root, { recursive: true, force: true, maxRetries: 5 }));
-  const database = join(root, 'store.sqlite'), at = '2026-09-01T00:00:00.000Z';
-  const row = (id: string, name: string, balance: number, owner?: string) => ({ id, createdAt: at, updatedAt: at, ...(owner ? { _owner: owner } : {}), name, balance });
-  const ids = ['00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000003', '00000000-0000-4000-8000-000000000004'];
-  // Written while the collection was shared: an issued supply of 5, a zero record, and one owned record holding -5.
-  await seed(database, 'wallets', [row(ids[0]!, 'held', 5), row(ids[1]!, 'zero', 0), row(ids[2]!, 'mint', -5, 'tess'), row(ids[3]!, 'owed', 0)]);
-  const options = { collections: config.collections as never, collection: 'wallets' };
-  const before = records(database, 'wallets');
-  await assert.rejects(deleteOwnerless(database, options), (error: unknown) => error instanceof StoreError && error.status === 409 && error.code === 'balance_not_zero');
-  assert.deepEqual(records(database, 'wallets'), before, 'not even the zero-balance ownerless records were deleted');
-  // Once the ownerless balances are 0 (moved to an owned record), the command deletes them.
-  execute(database, `UPDATE store_records SET data = json_set(data, '$.balance', 0) WHERE id = '${ids[0]}'`);
-  execute(database, `UPDATE store_records SET data = json_set(data, '$.balance', 0) WHERE id = '${ids[2]}'`);
-  const report = await deleteOwnerless(database, options);
-  assert.deepEqual(report.ids, [ids[0], ids[1], ids[3]]);
-  assert.deepEqual(records(database, 'wallets').map(record => record.name), ['mint']);
 });
 
 test('activation refuses a transfer it could not keep whole', () => {

@@ -90,7 +90,7 @@ const code = ['static', 'verify', 'checks', 'package-floor-smoke', 'workspace-ve
 const coreJobs = ['verify', 'checks', 'package-floor-smoke', 'audit', 'action', 'build-fidelity', 'container'];
 const shards = (...legs: string[]): string[] => legs.flatMap(leg => [1, 2, 3].map(shard => `${leg}/${shard}`));
 const EVERY_LEG = ['ubuntu-latest', 'macos-latest', 'windows-latest'].flatMap(os => ['22', '24', '26'].map(node => `${os}/${node}`));
-const ALL = ['audit', 'auth', 'store', 'mcp'];
+const ALL = ['auth', 'store', 'mcp'];
 
 test('the prose lane is narrow: every changed path must be reviewed contributor prose', () => {
   for (const path of ['docs/CI.md', 'docs/nested/page.md', 'AGENTS.md', 'llms-full.txt', 'packages/auth/CONTRIBUTING.md']) {
@@ -125,7 +125,7 @@ test('exact-commit coverage is the full OS x Node matrix whatever changed', () =
     const selected = jobs(scenario);
     assert.deepEqual(selected.verify, shards(...EVERY_LEG));
     assert.deepEqual(selected.checks, EVERY_LEG);
-    assert.equal(selected['workspace-verify']!.length, 9 * 4);
+    assert.equal(selected['workspace-verify']!.length, 9 * ALL.length);
     // The packed integration runs on every OS before a release and on dispatch; the sweep and the queue skip it.
     const integration = scenario.event === 'workflow_dispatch' || scenario.release ? ['ubuntu-latest/24', 'macos-latest/24', 'windows-latest/24'] : undefined;
     assert.deepEqual(selected['workspace-integration'], integration, JSON.stringify(scenario));
@@ -150,7 +150,7 @@ test('routine pull requests and main pushes are Linux Node 24', () => {
 test('an extension-only change skips the core proofs and runs the extension with its dependents', () => {
   for (const [path, packages] of [
     ['packages/auth/src/auth.ts', ['auth']], ['packages/store/src/query.ts', ['store']], ['packages/mcp/src/mcp.ts', ['mcp']],
-    ['packages/audit/src/audit.ts', ['audit', 'store']], ['packages/store/README.md', ['store']],
+    ['packages/store/README.md', ['store']],
   ] as const) {
     const selected = jobs({ event: 'push', paths: [path] });
     for (const name of coreJobs) assert.equal(selected[name], undefined, `${name}: ${path}`);
@@ -162,7 +162,7 @@ test('an extension-only change skips the core proofs and runs the extension with
   for (const path of ['packages/core/src/cli.ts', 'package-lock.json', 'action/action.yml', 'test/ci-lanes.test.ts', 'docs/CI.md']) {
     const selected = jobs({ event: 'push', paths: ['packages/auth/src/auth.ts', path] });
     for (const name of coreJobs) assert(selected[name], `${name}: ${path}`);
-    assert.equal(selected['workspace-verify']!.length, 4, path);
+    assert.equal(selected['workspace-verify']!.length, ALL.length, path);
   }
 });
 
@@ -219,14 +219,14 @@ test('a high-impact pull request adds Windows core shards and the Linux packed i
 test('a pull request that changes extension code runs the selected suites on Windows Node 24 too (#824)', () => {
   // The #819/#820 case: a package test that only fails on Windows.
   assert.deepEqual(jobs({ event: 'pull_request', paths: ['packages/store/test/store.test.ts'] })['workspace-verify'], ['ubuntu-latest/24/store', 'windows-latest/24/store']);
-  assert.deepEqual(jobs({ event: 'pull_request', paths: ['packages/audit/src/audit.ts'] })['workspace-verify'], ['ubuntu-latest/24/audit', 'ubuntu-latest/24/store', 'windows-latest/24/audit', 'windows-latest/24/store']);
+  assert.deepEqual(jobs({ event: 'pull_request', paths: ['packages/auth/src/auth.ts'] })['workspace-verify'], ['ubuntu-latest/24/auth', 'windows-latest/24/auth']);
   // An extension-only high-impact change gets its Windows leg from the package suites; the core shards skip.
   const manifest = jobs({ event: 'pull_request', paths: ['packages/auth/package.json'] });
   assert.equal(manifest.verify, undefined);
   assert.deepEqual(manifest['workspace-verify'], ['ubuntu-latest/24/auth', 'windows-latest/24/auth']);
   assert.deepEqual(manifest['workspace-integration'], ['ubuntu-latest/24']);
   // A core change beside it widens the suites to every extension, on both.
-  assert.equal(jobs({ event: 'pull_request', paths: ['packages/core/src/runtime.ts', 'packages/mcp/src/mcp.ts'] })['workspace-verify']!.length, 2 * 4);
+  assert.equal(jobs({ event: 'pull_request', paths: ['packages/core/src/runtime.ts', 'packages/mcp/src/mcp.ts'] })['workspace-verify']!.length, 2 * ALL.length);
   // Core-only and contributor-prose-only package paths add no Windows suites.
   for (const paths of [['packages/core/src/runtime.ts'], ['scripts/ci-build-fidelity.ts'], ['packages/auth/CONTRIBUTING.md', 'packages/core/src/cli.ts']]) {
     assert(jobs({ event: 'pull_request', paths })['workspace-verify']!.every(leg => leg.startsWith('ubuntu-latest/')), paths.join());

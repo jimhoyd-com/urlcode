@@ -46,7 +46,7 @@ jobs:
       core: ${{ !(steps.lanes.outcome == 'success' && steps.lanes.outputs.any == 'true' && steps.lanes.outputs.core == 'false') }}
       highImpact: ${{ !(steps.lanes.outcome == 'success' && steps.lanes.outputs.any == 'true' && steps.lanes.outputs.highImpact == 'false') }}
       extensionCode: ${{ !(steps.lanes.outcome == 'success' && steps.lanes.outputs.any == 'true' && steps.lanes.outputs.extensionCode == 'false') }}
-      packages: ${{ steps.lanes.outcome == 'success' && steps.lanes.outputs.any == 'true' && steps.packages.outcome == 'success' && steps.packages.outputs.changes || '["audit","auth","store","mcp"]' }}
+      packages: ${{ steps.lanes.outcome == 'success' && steps.lanes.outputs.any == 'true' && steps.packages.outcome == 'success' && steps.packages.outputs.changes || '["auth","store","mcp"]' }}
       os: ${{ (inputs.release == true || (github.event_name != 'pull_request' && github.event_name != 'push')) && '["ubuntu-latest","macos-latest","windows-latest"]' || '["ubuntu-latest"]' }}
       node: ${{ (inputs.release == true || (github.event_name != 'pull_request' && github.event_name != 'push')) && '["22","24","26"]' || '["24"]' }}
       # A high-impact pull request (#744) adds Windows Node 24 core shards.
@@ -92,9 +92,9 @@ jobs:
             # its tests, the Action, the image or the reproducible build.
             core:
               - '**'
-              - '!packages/{audit,auth,store,mcp}/**'
+              - '!packages/{auth,store,mcp}/**'
             extensionCode:
-              - 'packages/{audit,auth,store,mcp}/**'
+              - 'packages/{auth,store,mcp}/**'
               - '!packages/*/{CONTRIBUTING,CODE_OF_CONDUCT,GOVERNANCE}.md'
             # Paths that once passed the Linux lane and failed on Windows or at
             # the packed add-on boundary during release coverage (#668, #669, #673, #744).
@@ -123,8 +123,8 @@ jobs:
               - '!llms.txt'
               - '!llms-full.txt'
       # The extension suites to run: a changed extension and every extension
-      # that builds against it (`store` uses `audit`), or all of them when a
-      # path outside the extensions changed. Its `changes` output is that list.
+      # that builds against it (none today), or all of them when a path outside
+      # the extensions changed. Its `changes` output is that list.
       - id: packages
         if: inputs.release != true && (github.event_name == 'pull_request' || github.event_name == 'push')
         continue-on-error: true
@@ -133,18 +133,15 @@ jobs:
           token: ''
           predicate-quantifier: some-with-excludes
           filters: |
-            audit:
-              - '**'
-              - '!packages/{auth,store,mcp}/**'
             auth:
               - '**'
-              - '!packages/{audit,store,mcp}/**'
+              - '!packages/{store,mcp}/**'
             store:
               - '**'
               - '!packages/{auth,mcp}/**'
             mcp:
               - '**'
-              - '!packages/{audit,auth,store}/**'
+              - '!packages/{auth,store}/**'
   docs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -327,9 +324,9 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run build
-      # Every add-on in dependency order (`store` imports `audit`'s built
-      # declarations), so this package's typecheck and build can resolve them.
-      - run: node scripts/workspaces.ts run build
+      # No extension builds against another (`auth`, `store` and `mcp` only peer
+      # on core); one that did would build it here first, in dependency order,
+      # with `node scripts/workspaces.ts run build`.
       - run: npm run verify --workspace @jimhoyd/urlcode-${{ matrix.package }}
   # Cross-package checks that need every workspace package already built:
   # the publish audit and the integration suite (init --with <ext>, which
@@ -365,13 +362,13 @@ jobs:
       - run: npm run test:ecosystem
       # The same application with Auth.js, an independent provider package, in place of Better Auth (#841).
       - run: npm run test:proof:authjs
-      # Owner choice (#1052): node:sqlite called directly from trusted routes, auth: true through Auth.js, no store or audit.
+      # Owner choice (#1052): node:sqlite called directly from trusted routes, auth: true through Auth.js, no store.
       - run: npm run test:proof:native
   # A really full filesystem (#902): `urlcode serve` with its data directory
-  # (store, auth and audit) on a 16 MiB tmpfs that the harness fills to
+  # (store, its audit log included, and auth) on a 16 MiB tmpfs that the harness fills to
   # ENOSPC, then frees. Linux only: it mounts a tmpfs with sudo, and PR CI is
   # Linux anyway. It runs in the full lane whatever changed, extension-only
-  # diffs included, because store, auth, audit and core serving all meet here.
+  # diffs included, because store, auth and core serving all meet here.
   # The harness refuses a filesystem larger than 64 MiB.
   disk-full:
     needs: plan
@@ -388,7 +385,7 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run build
-      # Every add-on, in dependency order: the site's host.mjs imports audit, auth and store from their dist/.
+      # Every add-on, in dependency order: the site's host.mjs imports auth and store from their dist/.
       - run: node scripts/workspaces.ts run build
       - run: sudo mkdir -p /mnt/urlcode-disk-full && sudo mount -t tmpfs -o size=16m,mode=1777 tmpfs /mnt/urlcode-disk-full
       - run: npm run test:disk-full

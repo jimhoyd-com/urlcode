@@ -145,17 +145,24 @@ test('private-requests with Auth.js: an independently owned provider behind the 
     assert.equal(checkout(t, fresh, ['extensions', 'remove', 'authjs', '--json']).status, 0);
   });
 
-  await t.test('an independent package cannot take the first-party name auth, and the auth: short form does not need it', async () => {
+  await t.test('the name is the role: an independent package takes the name auth while the first-party auth is not installed (#1052)', async () => {
     const renamed = join(root, 'renamed');
     await cp(provider, renamed, { recursive: true });
     const descriptor = JSON.parse(await readFile(join(renamed, 'urlcode.json'), 'utf8')) as { name: string };
     await writeFile(join(renamed, 'urlcode.json'), JSON.stringify({ ...descriptor, name: 'auth' }));
+    const code = join(renamed, 'extension.js');
+    await writeFile(code, (await readFile(code, 'utf8')).replaceAll("name: 'authjs'", "name: 'auth'").replaceAll("extension: 'authjs'", "extension: 'auth'"));
     const pkgFile = join(renamed, 'package.json'), pkg = JSON.parse(await readFile(pkgFile, 'utf8')) as { name: string };
     await writeFile(pkgFile, JSON.stringify({ ...pkg, name: '@example/urlcode-authjs-as-auth' }));
     const renamedTarball = packDirectory(t, renamed, join(root, 'packed'));
-    const refused = checkout(t, join(root, 'fresh'), ['extensions', 'add', renamedTarball, '--json']);
-    assert.notEqual(refused.status, 0);
-    assert.match(refused.stdout + refused.stderr, /names itself auth, which is a first-party extension released with this core/);
+    const added = checkout(t, join(root, 'fresh'), ['extensions', 'add', renamedTarball, '--json']);
+    assert.equal(added.status, 0, added.stdout + added.stderr);
+    assert.deepEqual((JSON.parse(added.stdout) as { added: string[] }).added, ['auth']);
+    assert.match(await readFile(join(root, 'fresh', 'host.mjs'), 'utf8'), /import auth from '@example\/urlcode-authjs-as-auth\/extension'/);
+    const first = checkout(t, join(root, 'fresh'), ['extensions', 'add', 'auth', '--json']);
+    assert.notEqual(first.status, 0, 'the first-party auth is refused while the stand-in holds the role');
+    assert.match(first.stdout + first.stderr, /@example\/urlcode-authjs-as-auth provides auth; remove it first/);
+    assert.equal(checkout(t, join(root, 'fresh'), ['extensions', 'remove', 'auth', '--json']).status, 0);
   });
 
   const site = join(root, 'site');

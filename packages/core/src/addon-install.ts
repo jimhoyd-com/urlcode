@@ -573,6 +573,9 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
       throw new ConfigError(pin ? `${name} is an ${pin.kind}; use \`urlcode ${kindNoun(pin.kind)} add ${name}\`` : `Unknown ${kind} ${name}; this core (${manifest.version}) has: ${valid.join(', ') || 'none'}`);
     }
   }
+  // An independent package installed in a first-party role (#1052) keeps it until it is removed.
+  const standIns = names.length ? [...(await installedProviders(site.site, manifest)).providers.values()].filter(provider => !provider.catalog && names.includes(provider.name)) : [];
+  if (standIns.length) throw new ConfigError(`Refusing ${standIns.map(provider => provider.name).join(', ')}: ${standIns.map(provider => `${provider.package} provides ${provider.name}`).join('; ')}; remove it first (\`urlcode ${kindNoun(kind)} remove ${standIns[0]!.name}\`)`);
   const pkg = await readJson<PackageJson>(site.packageFile);
   const before = new Set(managedNames(manifest, pkg));
   const wanted = withRequirements(manifest, names);
@@ -636,7 +639,9 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
         catch (error) { throw new ConfigError(`Refusing ${dependency}: it carries no valid urlcode.json ${kind} descriptor (${error instanceof Error ? error.message : String(error)})`); }
         assert(descriptor.kind === kind, `Refusing ${dependency}: its descriptor declares an ${descriptor.kind}; add it with \`urlcode ${kindNoun(descriptor.kind)} add\``);
         assert(!dependency.startsWith('@jimhoyd/urlcode'), `Refusing ${dependency}: first-party packages install from core's pins with \`urlcode ${kindNoun(kind)} add ${descriptor.name}\``);
-        assert(!manifest.addons[descriptor.name], `Refusing ${dependency}: it names itself ${descriptor.name}, which is a first-party ${manifest.addons[descriptor.name]?.kind} released with this core`);
+        // The name is the role (#1052): an independent package may take a first-party name, standing in for it, only
+        // while the first-party package is not installed; two providers of one name are refused below as well.
+        assert(!before.has(descriptor.name), `Refusing ${dependency}: it names itself ${descriptor.name}, and the first-party ${descriptor.name} is installed; remove it first (\`urlcode ${kindNoun(kind)} remove ${descriptor.name}\`)`);
         // Its declared contract is read from the descriptor before anything is imported (#844).
         const incompatible = contractProblem(descriptor.contract, `${dependency}@${locked[`node_modules/${dependency}`]?.version ?? '(unknown)'}`);
         if (incompatible) throw new ConfigError(`Refusing ${dependency}: ${incompatible}`);
@@ -691,6 +696,7 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
     if (newExtensions.length) {
       const { providers } = await installedProviders(site.site, manifest);
       const installed = [...providers.values()].filter(provider => provider.descriptor.kind === 'extension').map(provider => provider.name).sort();
+      const principalProviders = [...providers.values()].filter(provider => provider.descriptor.kind === 'extension' && provider.descriptor.providesPrincipal === true).map(provider => provider.name).sort();
       const definitions = new Map<string, ExtensionDefinition<unknown>>();
       for (const name of newExtensions) definitions.set(name, await loadDefinition(site.site, name, packageOf(name), manifest));
       // Within the new set, an extension follows the ones it requires and the ones it uses.
@@ -701,7 +707,7 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
         const definition = definitions.get(name)!;
         for (const requirement of definition.requires ?? []) assert(installed.includes(requirement), `${name} requires ${requirement}`);
         assert(!Object.hasOwn(loaded.document.extensions ?? {}, name), `${PROJECT_DIRECTORY}/urlcode.yaml already declares extensions.${name}; remove that block first`);
-        const request = { site: site.site, project: site.project, installed, acknowledgements };
+        const request = { site: site.site, project: site.project, installed, principalProviders, acknowledgements };
         const call = async (step: (value: typeof request) => ScaffoldResult | Promise<ScaffoldResult>): Promise<ScaffoldResult> => {
           try { return await step(request); }
           catch (error) {
@@ -847,7 +853,7 @@ export async function removeAddon(directory: string, kind: AddonKind, name: stri
       await loadDocument(site.project);
       if (definition?.scaffold) {
         // The files its scaffold would write are listed, never deleted; a scaffold that refuses without its acknowledgement lists none.
-        const preview = await (async () => definition.scaffold!({ site: site.site, project: site.project, installed: [...providers.keys()].filter(other => providers.get(other)!.descriptor.kind === 'extension').sort(), acknowledgements: [] }))().catch(() => undefined);
+        const preview = await (async () => definition.scaffold!({ site: site.site, project: site.project, installed: [...providers.keys()].filter(other => providers.get(other)!.descriptor.kind === 'extension').sort(), principalProviders: [...providers.keys()].filter(other => providers.get(other)!.descriptor.kind === 'extension' && providers.get(other)!.descriptor.providesPrincipal === true).sort(), acknowledgements: [] }))().catch(() => undefined);
         for (const file of preview?.files ?? []) { if (file.content instanceof Uint8Array) file.content.fill(0); if (await exists(join(site.site, file.path))) kept.push(file.path); }
       }
     }

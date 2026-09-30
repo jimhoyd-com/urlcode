@@ -8,7 +8,7 @@ built-in [`node:sqlite`](https://nodejs.org/api/sqlite.html), used through its
 own API: `DatabaseSync`, prepared statements and an explicit transaction, in
 [`app/functions/notes.mjs`](app/functions/notes.mjs). Nothing sits between
 the route and the database: no URLCode store, adapter, descriptor or catalog
-entry. The bundled store and audit extensions are not installed. It is a
+entry. The bundled store extension is not installed. It is a
 proof, not a supported storage integration or a release claim.
 
 ## Who does what
@@ -44,8 +44,9 @@ The integration test asserts this.
 - **Serving.** The operator sets `URLCODE_DATA_DIR` to an absolute directory
   and grants it in the reviewed policy (`urlcode permissions` proposes the
   grant for both notes routes). `notes.sqlite` is created there. Without the
-  variable, `validate` and `serve` refuse before serving (`Missing required
-  environment binding`), and the function refuses a relative path.
+  variable, `validate` and `serve` refuse before serving (`Environment binding
+  DATA_DIR reads URLCODE_DATA_DIR, which is not set`), and the function refuses
+  a relative path.
 - **Tests and audit.** Each run creates an empty temporary directory, offers it
   as `URLCODE_DATA_DIR` and removes it when the run ends. The first signed-in
   fixture step expects zero notes, so a second run passes only because it

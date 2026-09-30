@@ -9,10 +9,12 @@
 //   - lib: only auth omitted DOM/DOM.Iterable (a leftover from before its
 //     browser-adjacent types existed): every package needs the same globals
 //     as its siblings, so DOM/DOM.Iterable is included for all.
-//   - customConditions: ["development"]: auth was missing this (packages
-//     resolve sibling workspace imports through their `development`
-//     condition); root's own exports map has no "development" condition,
-//     so adding it here is a no-op for root.
+//   - customConditions: ["development"]: every exports entry of core and of
+//     each add-on lists `development` first, naming its `.ts` source, so a
+//     typecheck resolves `@jimhoyd/urlcode/...` and sibling add-ons to source
+//     with no build (#1056). Each add-on's tsconfig.build.json sets it back to
+//     [] so its emit (rootDir src) reads core's built declarations instead.
+//     Packing strips the condition (scripts/published-manifest.mjs).
 // `noEmit` is deliberately NOT here: the root's typecheck config sets it
 // directly, and each package's tsconfig.build.json (which must emit `dist/`)
 // extends the same tsconfig.json a package's `tsc --noEmit` typecheck uses,

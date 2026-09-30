@@ -7,6 +7,8 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { betterAuth } from 'better-auth';
 import type { BetterAuthOptions } from 'better-auth';
+import { runWithEndpointContext } from '@better-auth/core/context';
+import type { AuthEndpointContext } from '@better-auth/core/context';
 import { getMigrations } from 'better-auth/db/migration';
 import { mkdir } from 'node:fs/promises';
 import { clientKey, ExtensionHttpError, isSameOriginRequest, jsonResponse, principalIdPattern, readBody } from '@jimhoyd/urlcode/extensions';
@@ -26,7 +28,7 @@ export const signUpPath = '/sign-up/email';
 export const clientAddressHeader = 'x-urlcode-client-address';
 /** The mount Better Auth serves when the operator's tooling needs one before activation (the CLI). */
 export const defaultBasePath = '/api/auth';
-/** How long one statement waits for a lock another process holds before failing: the store's and audit's bound. */
+/** How long one statement waits for a lock another process holds before failing: the store's bound too. */
 const BUSY_TIMEOUT_MS = 2000;
 const unsafe = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 /**
@@ -93,7 +95,7 @@ class AuthDatabase extends DatabaseSync {
 
 /**
  * Opens Better Auth's SQLite file: creates it 0600 (its directory 0700) when absent and refuses anything but a private
- * regular file with one link, as the store and audit do; then WAL with FULL synchronous commits and a busy timeout, so
+ * regular file with one link, as the store does; then WAL with FULL synchronous commits and a busy timeout, so
  * the serving process and `urlcode-auth create-user` wait for each other's commits instead of failing with "database
  * is locked". SQLite creates the `-wal` and `-shm` files with the database file's permissions.
  */
@@ -114,7 +116,7 @@ export function openAuthDatabase(path: string): DatabaseSync {
 
 /**
  * Creates the auth database's directory (0700) when absent and refuses it on a network filesystem by its Linux `statfs`
- * type, the list the store and audit refuse (core's `refuseNetworkFilesystem`; skipped on macOS and Windows). The
+ * type, the list the store refuses (core's `refuseNetworkFilesystem`; skipped on macOS and Windows). The
  * operator commands run it before they open the database; serving runs it through `holdServerLock`.
  */
 export async function refuseRemoteAuthDatabase(path: string, probe?: Partial<HostProbe>): Promise<void> {
@@ -238,19 +240,43 @@ export async function migrate(options: BetterAuthOptions): Promise<void> {
   await (await getMigrations(options)).runMigrations();
 }
 
+/** Better Auth's APIError body code, when the error is one. */
+function apiErrorCode(error: unknown): string | undefined {
+  const body = error !== null && typeof error === 'object' && 'body' in error ? error.body : undefined;
+  const code = body !== null && typeof body === 'object' && 'code' in body ? body.code : undefined;
+  return typeof code === 'string' ? code : undefined;
+}
+
 /**
  * Creates the seeded accounts through Better Auth's own API (its internal adapter, with the owner's database hooks, and
  * its password hashing), as its email sign-up does: a user, then its `credential` account, except that the user id is
  * the seed's. No SQL, so it works on whatever database Better Auth serves.
+ *
+ * It runs in a hermetic seed context (#1058): the endpoint context Better Auth gives `user.validateUserInfo` and the
+ * `databaseHooks`, as a server-side call has one, with no request (`request` and `path` undefined) and empty
+ * `headers`, so no client address or cookie. `validateUserInfo` sees `{method: 'email-password', action:
+ * 'create-user'}`. A hook that rejects a seeded user refuses the run, naming it.
  */
 async function seedUsers(auth: ReturnType<typeof betterAuth>, seed: AuthSeed): Promise<void> {
   const context = await auth.$context;
-  for (const user of seed.users) {
-    const password = await context.password.hash(user.password);
-    const created = await context.internalAdapter.createUser({ id: user.id, email: user.email, name: user.name ?? user.email, emailVerified: false }, { method: 'email-password' });
-    if (created?.id !== user.id) throw new Error(`auth: seeded user ${user.id} was stored as ${String(created?.id)}; this Better Auth configuration generates its own ids`);
-    await context.internalAdapter.linkAccount({ userId: created.id, providerId: 'credential', accountId: created.id, password });
-  }
+  const seedContext = { context: { ...context, returned: undefined, responseHeaders: undefined, session: null }, headers: new Headers(), request: undefined, path: undefined } as unknown as AuthEndpointContext;
+  await runWithEndpointContext(seedContext, async () => {
+    for (const user of seed.users) {
+      const password = await context.password.hash(user.password);
+      let created: { id: string } | null;
+      try {
+        created = await context.internalAdapter.createUser({ id: user.id, email: user.email, name: user.name ?? user.email, emailVerified: false }, { method: 'email-password' });
+      } catch (error) {
+        const code = apiErrorCode(error);
+        if (code?.startsWith('validation_context') || code === 'validation_source_missing' || !code || !context.options.user?.validateUserInfo) throw error;
+        throw new Error(`auth: seeded user ${user.id} was refused by betterAuth.user.validateUserInfo (${code}${error instanceof Error && error.message !== code ? `: ${error.message}` : ''}); seeds run it with {method: 'email-password', action: 'create-user'} and no request`, { cause: error });
+      }
+      if (created === null) throw new Error(`auth: seeded user ${user.id} was not created: a betterAuth.databaseHooks.user.create.before hook returned false`);
+      if (created.id !== user.id) throw new Error(`auth: seeded user ${user.id} was stored as ${String(created.id)}; this Better Auth configuration generates its own ids`);
+      const account = await context.internalAdapter.linkAccount({ userId: created.id, providerId: 'credential', accountId: created.id, password });
+      if (account === null) throw new Error(`auth: seeded user ${user.id} has no password account: a betterAuth.databaseHooks.account.create.before hook returned false`);
+    }
+  });
 }
 
 /** Better Auth's APIError for a 4xx: the request's own session is missing or invalid. */

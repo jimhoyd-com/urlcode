@@ -1,4 +1,4 @@
-// urlcode-store backup (#859): a consistent online copy through SQLite's backup API, beside a serving server, into a
+// urlcode-store backup and restore (#859): a consistent online copy through SQLite's backup API, beside a serving server, into a
 // new 0600 file that must not exist, checked as a store database before it appears.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -11,7 +11,7 @@ import { promisify } from 'node:util';
 import * as sqlite from 'node:sqlite';
 import { startServer } from '@jimhoyd/urlcode';
 import { inspectExtensionRevision } from '@jimhoyd/urlcode/extensions';
-import { STORE_SCHEMA_VERSION, backupStore, storeExtension } from '../src/index.ts';
+import { STORE_SCHEMA_VERSION, backupStore, restoreStore, storeExtension } from '../src/index.ts';
 import { cleanup } from './cleanup.ts';
 import { initialize, records, seed } from './rows.ts';
 
@@ -55,10 +55,13 @@ test('backup copies the database online while the server keeps serving, into a n
   assert.equal((await post('c')).status, 201, 'the server kept writing');
   assert.deepEqual(records(destination, 'todos').map(record => record.title), ['a', 'b'], 'the copy is a snapshot');
   assert.deepEqual(await entries(join(root, 'backups')), ['store-1.sqlite']);
-  // The copy is a database the store opens as it is: its identity and schema version survive.
+  // restore makes the same checked copy from the backup to a new path: identity and schema version survive.
   const restored = join(root, 'backups', 'restored.sqlite');
-  await backupStore({ database: destination, destination: restored });
+  const back = JSON.parse((await runCli('restore', '--backup', destination, '--destination', restored)).stdout) as { schemaVersion: number };
+  assert.equal(back.schemaVersion, STORE_SCHEMA_VERSION);
   assert.deepEqual(records(restored, 'todos').map(record => record.title), ['a', 'b']);
+  assert.match((await cliFailure('restore', '--backup', destination, '--destination', restored))!.stderr, /The destination already exists/, 'restore never replaces a file');
+  await assert.rejects(restoreStore({ backup: join(root, 'backups', 'missing.sqlite'), destination: join(root, 'backups', 'r2.sqlite') }), /The backup does not exist/);
 });
 
 test('backup of a database no server has open (no -wal or -shm) works the same', { skip }, async t => {
@@ -75,7 +78,7 @@ test('backup refuses an existing destination, a foreign or shared file, relative
   await initialize(database);
   const existing = join(backups, 'existing.sqlite');
   await writeFile(existing, 'keep me', { mode: 0o600 });
-  await assert.rejects(backupStore({ database, destination: existing }), /The backup destination already exists/);
+  await assert.rejects(backupStore({ database, destination: existing }), /The destination already exists/);
   assert.equal(await readFile(existing, 'utf8'), 'keep me', 'an existing file is never replaced');
   await assert.rejects(backupStore({ database, destination: database }), /cannot replace its source/);
   await assert.rejects(backupStore({ database: 'data/store.sqlite', destination: join(backups, 'x.sqlite') }), /must be absolute paths/);
@@ -98,7 +101,7 @@ test('backup refuses an existing destination, a foreign or shared file, relative
   const noDestination = await cliFailure('backup', '--database', database);
   assert.equal(noDestination?.code, 1); assert.match(noDestination!.stderr, /--database and --destination are required/);
   assert.match((await cliFailure('backup', '--database', database, '--destination', join(backups, 'y.sqlite'), '--collection', 'todos'))!.stderr, /--collection does not apply to backup/);
-  assert.match((await cliFailure('ownerless', '--database', database, '--collection', 'todos', '--destination', join(backups, 'y.sqlite')))!.stderr, /--destination applies to backup only/);
-  assert.match((await cliFailure('backup', '--database', database, '--destination', existing))!.stderr, /urlcode-store: The backup destination already exists/);
+  assert.match((await cliFailure('audit', '--database', database, '--destination', join(backups, 'y.sqlite')))!.stderr, /--destination does not apply to audit/);
+  assert.match((await cliFailure('backup', '--database', database, '--destination', existing))!.stderr, /urlcode-store: The destination already exists/);
   assert.match((await runCli('--help')).stdout, /urlcode-store backup --database/);
 });

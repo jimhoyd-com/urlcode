@@ -18,8 +18,8 @@ import { agentProblems, declaredProperties, declaredSchemas, END, expected, fast
 
 const repo = fileURLToPath(new URL('../', import.meta.url));
 const sources = await firstPartyExtensions();
-// The four extensions AGENTS.md names; a new one must be added here deliberately, with its reference and agent entry.
-const FIRST_PARTY = ['audit', 'auth', 'mcp', 'store'];
+// The three extensions AGENTS.md names; a new one must be added here deliberately, with its reference and agent entry.
+const FIRST_PARTY = ['auth', 'mcp', 'store'];
 
 test('the first-party extension set is the one the repository documents', () => {
   assert.deepEqual(sources.map(source => source.name).sort(), FIRST_PARTY);
@@ -30,18 +30,18 @@ test('every first-party extension ships agent references that resolve inside its
     assert.deepEqual(await agentProblems(source), [], source.name);
     for (const reference of source.descriptor.agent!.references) await access(join(source.directory, reference.path));
   }
-  const audit = sources.find(source => source.name === 'audit')!;
-  assert.deepEqual(audit.descriptor.agent!.references.map(reference => reference.path), ['README.md', 'SECURITY.md']);
-  // The release catalog carries the same agent block, so hosted discovery sees audit too.
+  const auth = sources.find(source => source.name === 'auth')!;
+  assert.deepEqual(auth.descriptor.agent!.references.map(reference => reference.path), ['README.md', 'SECURITY.md']);
+  // The release catalog carries the same agent block, so hosted discovery sees auth too.
   const catalog = await readAddonCatalog();
   for (const name of FIRST_PARTY) assert.ok(catalog.addons.find(entry => entry.name === name)?.agent?.references.length, `${name} has agent references in the release catalog`);
 });
 
 test('the agent-reference check refuses a missing entry and an unshipped path', async () => {
-  const audit = sources.find(source => source.name === 'audit')!;
-  const { agent: _agent, ...bare } = audit.descriptor;
-  assert.match((await agentProblems({ ...audit, descriptor: bare as AddonDescriptor }))[0]!, /no agent references/);
-  const unshipped = { ...audit, files: ['dist', 'urlcode.json', 'README.md'] };
+  const auth = sources.find(source => source.name === 'auth')!;
+  const { agent: _agent, ...bare } = auth.descriptor;
+  assert.match((await agentProblems({ ...auth, descriptor: bare as AddonDescriptor }))[0]!, /no agent references/);
+  const unshipped = { ...auth, files: ['dist', 'urlcode.json', 'README.md'] };
   assert.match((await agentProblems(unshipped)).join('\n'), /SECURITY\.md is not in package\.json files/);
 });
 
@@ -54,7 +54,7 @@ test('every declared configuration, route-policy and hook property has a descrip
   // 299 at the #822 audit; 243 once the Better Auth rebuild (#841) removed the old auth and admin schemas;
   // 215 once the forms-to-store composition was deleted (#883); 161 once forms, abuse and mail were; 87 once ui and
   // the store's screens were (#883).
-  assert.ok(total >= 87, `the four descriptors declare ${total} properties; at least 87 are expected in schema and policySchema alone`);
+  assert.ok(total >= 87, `the three descriptors declare ${total} properties; at least 87 are expected in schema and policySchema alone`);
 });
 
 test('every described schema still compiles under the strict Ajv options core prepares extensions with', async () => {
@@ -144,13 +144,13 @@ async function site(t: TestContext, names: readonly string[]): Promise<string> {
   return root;
 }
 
-test('an installed audit appears in get_addon_agent_tooling with references that resolve in the installed package (#823)', async t => {
-  const root = await site(t, ['audit']);
+test('an installed auth appears in get_addon_agent_tooling with references that resolve in the installed package (#823)', async t => {
+  const root = await site(t, ['auth']);
   const tooling = await describeInstalledAgentTooling(join(root, 'app'));
-  const audit = tooling.addons.find(addon => addon.name === 'audit');
-  assert.ok(audit, 'audit is listed');
-  assert.equal(audit.kind, 'extension');
-  for (const reference of audit.agent.references) await access(join(root, 'node_modules', '@jimhoyd', 'urlcode-audit', reference.path));
+  const auth = tooling.addons.find(addon => addon.name === 'auth');
+  assert.ok(auth, 'auth is listed');
+  assert.equal(auth.kind, 'extension');
+  for (const reference of auth.agent.references) await access(join(root, 'node_modules', '@jimhoyd', 'urlcode-auth', reference.path));
 });
 
 test('core plus an installed extension: a search for an extension-only key reaches its generated field reference (#822)', async t => {

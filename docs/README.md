@@ -55,7 +55,7 @@ The [specification][docs/SPECIFICATION.md] owns implemented semantics; the
 | Goal | Start here |
 |---|---|
 | Add accounts, sign-in and protected routes | [urlcode-auth][packages/auth#readme], [auth security][packages/auth/SECURITY.md] |
-| Keep an audit log | [urlcode-audit][packages/audit#readme] |
+| Keep an audit log | [store: audited writes][docs/STORE.md#audited-writes] |
 | Accept a form, rate-limit it and send email | [contact-form recipe](../recipes/contact-form/README.md), [`policies.throttle`][docs/policies/throttle.md] |
 | Build the frontend over store collections | [store: a frontend for the collection][docs/STORE.md#a-frontend-for-the-collection], [private-requests client][proofs/private-requests/client/main.js] |
 | Serve a declared collection as a CRUD API (`store` extension) | [Data store][docs/STORE.md] |
@@ -141,8 +141,8 @@ limits are deployment settings, not fields to invent in route YAML.
 [docs/COMPLIANCE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/COMPLIANCE.md
 [packages/auth#readme]: https://github.com/jimhoyd-com/urlcode/tree/v0.6.5/packages/auth#readme
 [packages/auth/SECURITY.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth/SECURITY.md
-[packages/audit#readme]: https://github.com/jimhoyd-com/urlcode/tree/v0.6.5/packages/audit#readme
 [docs/STORE.md#a-frontend-for-the-collection]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#a-frontend-for-the-collection
+[docs/STORE.md#audited-writes]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#audited-writes
 [proofs/private-requests/client/main.js]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/private-requests/client/main.js
 [docs/STORE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md
 [docs/EXTENSIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md

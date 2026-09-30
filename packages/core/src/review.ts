@@ -277,6 +277,8 @@ export async function reviewProject(project: string, options: InspectOptions = {
 
     const globalState = detectGlobalState(source);
     if (globalState) {
+      // #1052 S6: the store is one owner of durable state, not the only one; an ordinary database library is another.
+      const nativeStorage = ' A trusted (non-sandbox) function can instead keep it in an ordinary npm database library it imports (the native path; its data, migrations and backups are then the operator\'s).';
       const storeRefused = declaredExtensions.has('store') ? refusedOn('store') : undefined;
       const storeDeclared = declaredExtensions.has('store') && storeRefused === undefined;
       const storeStatus = storeDeclared ? extensionStatus('store', options.extensions, projectSha256) : undefined;
@@ -285,13 +287,13 @@ export async function reviewProject(project: string, options: InspectOptions = {
         reason: 'Module-scope let/var starts empty, later mutated: local state.',
         ...(storeDeclared ? {extension: 'store'} : {}), ...(storeRefused ? {refusedOn: storeRefused} : {}),
         ...(storeStatus?.registered ? {registered: true, revisionPinned: storeStatus.revisionPinned} : {}),
-        note: storeDeclared
+        note: `${storeDeclared
           ? storeStatus?.registered
             ? storeStatus.revisionPinned
               ? 'store is registered and revision-pinned to this project; resets on restart, not shared across multiple instances.'
               : 'store is registered but not revision-pinned to this project\'s current revision; resets on restart, not shared across multiple instances.'
             : 'store can own this once registered; resets on restart, not shared across multiple instances.'
-          : `${storeRefused ? refusedNote('store', storeRefused) : ''}Resets on restart, not shared across multiple instances; no alternative yet: a real gap.`,
+          : `${storeRefused ? refusedNote('store', storeRefused) : ''}Resets on restart, not shared across multiple instances; no declared extension owns it: a real gap. A store extension can (the bundled one: urlcode extensions add store).`}${nativeStorage}`,
       });
     }
 

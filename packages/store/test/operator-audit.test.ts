@@ -1,19 +1,17 @@
-// #875: operator commands that move or delete records in an audited owned collection record each record in the
-// same transaction (and refuse whole at the outbox backlog); `--actor` attributes every operator change; list filters
-// outside a field's declared bounds are 400s on the owner and readers mounts.
+// #875: operator commands that move records in an audited owned collection record each record in the same
+// transaction (and refuse whole past the audit retention); `--actor` attributes every operator change; `urlcode-store
+// audit` reads the log (#1052); list filters outside a field's declared bounds are 400s on the owner and readers mounts.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { validateAuditEvent } from '@jimhoyd/urlcode-audit';
-import type { AuditExports } from '@jimhoyd/urlcode-audit';
+import { validateAuditEvent } from '@jimhoyd/urlcode/extensions';
 import type { CollectionSpec } from '../src/index.ts';
-import { AUDIT_BACKLOG, addMember, assignOwnerless, deleteOwnerless, reassignOwner } from '../src/index.ts';
+import { addMember, reassignOwner } from '../src/index.ts';
 import { direct } from './direct.ts';
-import { counts, execute, outbox, records, seed, seedOutbox } from './rows.ts';
+import { auditEvents, counts, execute, records } from './rows.ts';
 
 const reviewers = { membership: true, key: 'userId', audit: true, schema: { type: 'object', additionalProperties: false, required: ['userId'], properties: { userId: { type: 'string', maxLength: 128 } } } };
 const requests = {
@@ -24,11 +22,9 @@ const requests = {
 const collections = { reviewers, requests };
 const typed = collections as unknown as Record<string, CollectionSpec>;
 const mounts = ['/api/requests', '/api/review'];
-/** An audit stand-in: audit's own validator, and a drain that never runs, so events stay in the outbox to inspect. */
-const heldAudit = { version: 1, active: true, validate: validateAuditEvent, attach: () => ({ notify() {}, async close() {} }) } as unknown as AuditExports;
 
-async function site(t: Parameters<typeof direct>[0]) {
-  const store = await direct(t, { collections }, { mounts, audit: heldAudit });
+async function site(t: Parameters<typeof direct>[0], config: Record<string, unknown> = {}) {
+  const store = await direct(t, { collections, ...config }, { mounts });
   const create = async (who: string, title: string, fields: Record<string, unknown> = {}) => {
     const created = await store.call('POST', '/api/requests', { who, body: { title, ...fields } });
     assert.equal(created.status, 201, JSON.stringify(created.body));
@@ -44,22 +40,21 @@ async function project(root: string): Promise<string> {
   await writeFile(join(app, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { store: { version: '1', config: { collections } } }, routes: Object.fromEntries(mounts.map(mount => [`${mount}/*`, route])) }));
   return app;
 }
-const recordEvents = (database: string) => outbox(database, 'requests').filter(event => event.action === 'store.record.reassigned' || (event.action === 'store.record.deleted' && event.metadata?.ownerless === true));
-const filler = (count: number, collection: string) => Array.from({ length: count }, () => validateAuditEvent({ id: randomUUID(), source: 'store', action: 'store.record.created', actor: 'x', subject: `${collection}/x`, at: Date.now(), metadata: { collection } }));
+const recordEvents = (database: string) => auditEvents(database, 'requests').filter(event => event.action === 'store.record.reassigned');
 
 test('reassign records every moved record of an audited owned collection, in the same transaction as the move', async t => {
   const store = await site(t);
   const a = await store.create('apikey:old', 'laptop'), b = await store.create('apikey:old', 'desk');
   await store.create('ann', 'chair');
   await addMember(store.database, { collections: typed, collection: 'reviewers', principal: 'apikey:old' });
-  const before = outbox(store.database).length;
+  const before = auditEvents(store.database).length;
   const dry = await reassignOwner(store.database, { from: 'apikey:old', to: 'apikey:new', collections: typed, dryRun: true });
   assert.deepEqual([dry.moved, dry.auditEvents], [2, 4], 'two records, and the membership as removed plus added');
-  assert.equal(outbox(store.database).length, before, 'a dry run records nothing');
+  assert.equal(auditEvents(store.database).length, before, 'a dry run records nothing');
   // A failure on the event insert rolls back the moves and every event already written.
-  execute(store.database, "CREATE TRIGGER fail_event BEFORE INSERT ON store_audit_outbox WHEN json_extract(NEW.event, '$.subject') = 'requests/" + b + "' BEGIN SELECT RAISE(ABORT, 'injected failure'); END;");
+  execute(store.database, "CREATE TRIGGER fail_event BEFORE INSERT ON store_audit_events WHEN NEW.subject = 'requests/" + b + "' BEGIN SELECT RAISE(ABORT, 'injected failure'); END;");
   await assert.rejects(reassignOwner(store.database, { from: 'apikey:old', to: 'apikey:new', collections: typed }), /injected failure/);
-  assert.equal(outbox(store.database).length, before, 'no event survives the rollback');
+  assert.equal(auditEvents(store.database).length, before, 'no event survives the rollback');
   assert.deepEqual(records(store.database, 'requests').map(record => record._owner), ['apikey:old', 'apikey:old', 'ann'], 'nor any move');
   assert.deepEqual(records(store.database, 'reviewers').map(record => record.userId), ['apikey:old'], 'nor the membership');
   execute(store.database, 'DROP TRIGGER fail_event');
@@ -68,51 +63,20 @@ test('reassign records every moved record of an audited owned collection, in the
   const events = recordEvents(store.database);
   assert.deepEqual(events.map(event => [event.action, event.actor, event.subject, event.metadata]), [a, b].map(id => ['store.record.reassigned', 'ops:jim', `requests/${id}`, { collection: 'requests', from: 'apikey:old', to: 'apikey:new' }]));
   for (const event of events) { assert.equal(event.source, 'store'); validateAuditEvent(event); }
-  assert.deepEqual(outbox(store.database, 'reviewers').slice(-2).map(event => [event.action, event.actor]), [['store.membership.removed', 'ops:jim'], ['store.membership.added', 'ops:jim']]);
+  assert.deepEqual(auditEvents(store.database, 'reviewers').slice(-2).map(event => [event.action, event.actor]), [['store.membership.removed', 'ops:jim'], ['store.membership.added', 'ops:jim']]);
   assert.equal((await store.call('GET', `/api/requests/${a}`, { who: 'apikey:new' })).status, 200);
 });
 
-test('reassign and the ownerless commands refuse whole, before writing, when the events would pass the backlog', async t => {
+test('reassign refuses whole, before writing, when its events would not fit in the audit retention', async t => {
   const store = await site(t);
   for (const title of ['one', 'two', 'three']) await store.create('apikey:old', title);
-  // 998 events waiting: the three moves would take the outbox to 1001.
-  await seedOutbox(store.database, 'requests', filler(AUDIT_BACKLOG - 2 - outbox(store.database, 'requests').length, 'requests'));
   const before = counts(store.database), owners = records(store.database, 'requests').map(record => record._owner);
-  for (const dryRun of [true, false]) {
-    await assert.rejects(reassignOwner(store.database, { from: 'apikey:old', to: 'ann', collections: typed, dryRun }), (error: { status: number; code: string; message: string }) =>
-      error.status === 503 && error.code === 'audit_backlog' && /collection requests would record 3 audit events with 998 already waiting, over its audit backlog of 1000/.test(error.message));
-  }
+  for (const dryRun of [true, false])
+    await assert.rejects(reassignOwner(store.database, { from: 'apikey:old', to: 'ann', collections: typed, dryRun, auditRetention: 2 }), /Nothing was moved: the move would record 3 audit events, more than the audit log keeps \(auditRetention 2\)/);
   assert.deepEqual(counts(store.database), before, 'nothing written');
   assert.deepEqual(records(store.database, 'requests').map(record => record._owner), owners);
-  // With room for exactly the three events it goes through, and the outbox is then full.
-  execute(store.database, "DELETE FROM store_audit_outbox WHERE seq = (SELECT min(seq) FROM store_audit_outbox WHERE collection = 'requests')");
-  assert.equal((await reassignOwner(store.database, { from: 'apikey:old', to: 'ann', collections: typed })).auditEvents, 3);
-  assert.equal(outbox(store.database, 'requests').length, AUDIT_BACKLOG);
-  // The ownerless commands check the same way.
-  const at = new Date().toISOString();
-  await seed(store.database, 'requests', [{ id: randomUUID(), createdAt: at, updatedAt: at, title: 'orphan', status: 'pending' }]);
-  const full = counts(store.database);
-  await assert.rejects(assignOwnerless(store.database, { collections: typed, collection: 'requests', owner: 'ann' }), { status: 503, code: 'audit_backlog' });
-  await assert.rejects(deleteOwnerless(store.database, { collections: typed, collection: 'requests' }), { status: 503, code: 'audit_backlog' });
-  assert.deepEqual(counts(store.database), full);
-  assert.equal(records(store.database, 'requests').filter(record => record._owner === undefined).length, 1);
-});
-
-test('ownerless-assign and ownerless-delete record each record on an audited collection, with the operator\'s --actor', async t => {
-  const store = await site(t);
-  const app = await project(store.root);
-  const at = new Date().toISOString(), [one, two] = [randomUUID(), randomUUID()];
-  await seed(store.database, 'requests', [{ id: one, createdAt: at, updatedAt: at, title: 'a', status: 'pending' }]);
-  const assigned = await cli('ownerless-assign', '--database', store.database, '--project', app, '--collection', 'requests', '--owner', 'ann', '--actor', 'ops:jim');
-  assert.equal(assigned.code, 0, assigned.stderr);
-  await seed(store.database, 'requests', [{ id: two, createdAt: at, updatedAt: at, title: 'b', status: 'pending' }]);
-  const deleted = await cli('ownerless-delete', '--database', store.database, '--project', app, '--collection', 'requests');
-  assert.equal(deleted.code, 0, deleted.stderr);
-  assert.deepEqual(recordEvents(store.database).map(event => [event.action, event.actor, event.subject, event.metadata]), [
-    ['store.record.reassigned', 'ops:jim', `requests/${one}`, { collection: 'requests', to: 'ann' }],
-    ['store.record.deleted', 'operator', `requests/${two}`, { collection: 'requests', ownerless: true }],
-  ]);
-  assert.deepEqual(records(store.database, 'requests').map(record => [record.id, record._owner]), [[one, 'ann']]);
+  assert.equal((await reassignOwner(store.database, { from: 'apikey:old', to: 'ann', collections: typed, auditRetention: 3 })).auditEvents, 3);
+  assert.deepEqual(auditEvents(store.database).map(event => event.action), Array(3).fill('store.record.reassigned'), 'pruned to the newest three, all of them its own');
 });
 
 test('--actor attributes every writing operator command, is validated like a principal id and applies to writes only', async t => {
@@ -121,7 +85,7 @@ test('--actor attributes every writing operator command, is validated like a pri
   const base = ['--database', store.database, '--project', app];
   assert.equal((await cli('members', 'add', ...base, '--collection', 'reviewers', '--principal', 'rita', '--actor', 'ops:jim')).code, 0);
   assert.equal((await cli('members', 'remove', ...base, '--collection', 'reviewers', '--principal', 'rita')).code, 0);
-  assert.deepEqual(outbox(store.database, 'reviewers').map(event => [event.action, event.actor]), [['store.membership.added', 'ops:jim'], ['store.membership.removed', 'operator']]);
+  assert.deepEqual(auditEvents(store.database, 'reviewers').map(event => [event.action, event.actor]), [['store.membership.added', 'ops:jim'], ['store.membership.removed', 'operator']]);
   await store.create('apikey:old', 'laptop');
   assert.equal((await cli('reassign', ...base, '--from', 'apikey:old', '--to', 'ann', '--actor', 'ops:jim')).code, 0);
   assert.equal(recordEvents(store.database).at(-1)!.actor, 'ops:jim');
@@ -129,12 +93,10 @@ test('--actor attributes every writing operator command, is validated like a pri
   const refusals: [string[], RegExp][] = [
     [['members', 'add', ...base, '--collection', 'reviewers', '--principal', 'rex', '--actor', 'jim@example.com'], /--actor must be a principal id/],
     [['reassign', ...base, '--from', 'ann', '--to', 'bob', '--actor', ''], /--actor must be a principal id/],
-    [['ownerless-assign', ...base, '--collection', 'requests', '--owner', 'ann', '--actor', 'jim@example.com'], /--actor must be a principal id/],
-    [['members', 'list', ...base, '--collection', 'reviewers', '--actor', 'ops:jim'], /--actor applies to the commands that change records/],
-    [['ownerless', '--database', store.database, '--collection', 'requests', '--actor', 'ops:jim'], /--actor applies to the commands that change records/],
-    [['ownerless', '--database', store.database, '--project', app, '--collection', 'requests'], /--project does not apply to ownerless/],
-    [['ownerless-delete', '--database', store.database, '--collection', 'requests'], /--project is required/],
-    [['ownerless-delete', ...base, '--collection', 'reviewers'], /not declared with ownership: owner/],
+    [['members', 'list', ...base, '--collection', 'reviewers', '--actor', 'ops:jim'], /--principal and --actor apply to members add and members remove only/],
+    [['audit', ...base], /--project does not apply to audit/],
+    [['backup', '--database', store.database, '--actor', 'ops:jim'], /--actor does not apply to backup/],
+    [['ownerless', '--database', store.database, '--collection', 'requests'], /Unknown command/],
   ];
   for (const [args, message] of refusals) {
     const failed = await cli(...args);
@@ -144,48 +106,50 @@ test('--actor attributes every writing operator command, is validated like a pri
   assert.deepEqual(counts(store.database), before, 'no refused command wrote anything');
 });
 
-test('a writing operator command reports its undelivered audit events and warns when no drain has kept up recently', async t => {
+test('urlcode-store audit reads one page of the log read-only, filtered and paged, beside the serving store', async t => {
   const store = await site(t);
   const app = await project(store.root);
-  const base = ['--database', store.database, '--project', app];
-  interface Delivery { undeliveredEvents?: Record<string, number>; lastAuditDrain?: string | null; warning?: string }
-  const run = async (...args: string[]): Promise<Delivery> => { const result = await cli(...args); assert.equal(result.code, 0, result.stderr); return JSON.parse(result.stdout) as Delivery; };
+  const base = ['--database', store.database];
+  const read = async (...args: string[]) => { const result = await cli('audit', ...base, ...args); assert.equal(result.code, 0, result.stderr); return JSON.parse(result.stdout) as { events: { action: string; actor: string; subject: string; seq: string }[]; next?: string; oldest?: string }; };
+  assert.deepEqual(await read(), { events: [] }, 'an empty log');
+  const a = await store.create('ann', 'laptop');
+  await store.create('bob', 'desk');
+  await addMember(store.database, { collections: typed, collection: 'reviewers', principal: 'rita' });
+  const all = await read();
+  assert.deepEqual(all.events.map(event => [event.action, event.actor]), [['store.record.created', 'ann'], ['store.record.created', 'bob'], ['store.membership.added', 'operator']]);
+  assert.equal(all.oldest, all.events[0]!.seq);
+  assert.deepEqual((await read('--actor', 'bob')).events.map(event => event.actor), ['bob']);
+  assert.deepEqual((await read('--subject', `requests/${a}`)).events.length, 1);
+  assert.deepEqual((await read('--action-prefix', 'store.membership')).events.map(event => event.action), ['store.membership.added']);
+  const first = await read('--limit', '2', '--order', 'desc');
+  assert.deepEqual(first.events.map(event => event.actor), ['operator', 'bob']);
+  assert.deepEqual((await read('--limit', '2', '--order', 'desc', '--after', first.next!)).events.map(event => event.actor), ['ann']);
+  for (const [args, message] of [[['--limit', '0'], /Invalid audit query: limit/], [['--order', 'sideways'], /Invalid audit query: order/], [['--from', 'yesterday'], /--from must be a whole number/], [['--project', app], /--project does not apply to audit/]] as [string[], RegExp][]) {
+    const failed = await cli('audit', ...base, ...args);
+    assert.equal(failed.code, 1, args.join(' ')); assert.match(failed.stderr, message);
+  }
+  assert.match((await cli('audit', '--database', `${store.database}.missing`)).stderr, /does not exist/, 'it never creates a database');
+  // The same log through the store's exports (core's AuditLog).
+  assert.deepEqual((await store.exports.audit.query({ actor: 'ann' })).events.map(event => event.subject), [`requests/${a}`]);
+});
 
-  // No drain has ever run against this database (the held audit never drains).
-  const added = await run('members', 'add', ...base, '--collection', 'reviewers', '--principal', 'rita');
-  assert.deepEqual(added.undeliveredEvents, { reviewers: 1 });
-  assert.equal(added.lastAuditDrain, null);
-  assert.match(added.warning!, /^No audit drain has run against this database: 1 audit event wait in the outbox/);
+test('audit retention prunes the oldest events in the write\'s own transaction', async t => {
+  const store = await site(t, { auditRetention: 3 });
+  for (const title of ['one', 'two', 'three', 'four', 'five']) await store.create('ann', title);
+  const kept = auditEvents(store.database);
+  assert.equal(kept.length, 3);
+  assert.deepEqual((await store.exports.audit.query()).events.map(event => event.id), kept.map(event => event.id));
+  for (const event of kept) validateAuditEvent(event);
+});
 
-  // A drain that kept up a moment ago: the events are reported, without a warning.
-  const recent = Date.now() - 5_000;
-  execute(store.database, `INSERT INTO store_audit_drain(id, drained_at) VALUES (1, ${recent})`);
-  const removed = await run('members', 'remove', ...base, '--collection', 'reviewers', '--principal', 'rita');
-  assert.deepEqual([removed.undeliveredEvents, removed.lastAuditDrain, removed.warning], [{ reviewers: 2 }, new Date(recent).toISOString(), undefined]);
-
-  // One that last kept up two minutes ago: the warning names how long.
-  execute(store.database, `UPDATE store_audit_drain SET drained_at = ${Date.now() - 120_000}`);
+test('a reassign carrying another declaration than the serving one is refused, and proceeds once no server holds the lock', async t => {
+  const store = await site(t);
   await store.create('apikey:old', 'laptop');
-  const moved = await run('reassign', ...base, '--from', 'apikey:old', '--to', 'ann');
-  assert.deepEqual(moved.undeliveredEvents, { requests: 2 }, 'the create and the move, in the one collection the move touched');
-  assert.match(moved.warning!, /^The audit drain last kept up 12\d s ago: 2 audit events wait/);
-  const dry = await run('reassign', ...base, '--from', 'ann', '--to', 'bob', '--dry-run');
-  assert.equal(dry.undeliveredEvents, undefined, 'a dry run records nothing, so it reports nothing');
-
-  const at = new Date().toISOString(), id = randomUUID();
-  await seed(store.database, 'requests', [{ id, createdAt: at, updatedAt: at, title: 'a', status: 'pending' }]);
-  const assigned = await run('ownerless-assign', ...base, '--collection', 'requests', '--owner', 'ann');
-  assert.deepEqual(assigned.undeliveredEvents, { requests: 3 });
-  assert.match(assigned.warning!, /3 audit events wait/);
-  // A collection without audit: true reports no delivery status.
   const unaudited = { ...collections, requests: { ...requests, audit: false } } as unknown as Record<string, CollectionSpec>;
-  await seed(store.database, 'requests', [{ id: randomUUID(), createdAt: at, updatedAt: at, title: 'b', status: 'pending' }]);
-  // The serving process declares the collection audited, so a command carrying another declaration is refused (#927)...
-  await assert.rejects(deleteOwnerless(store.database, { collections: unaudited, collection: 'requests' }), { status: 503, code: 'storage_unavailable', message: /the serving process declares it differently/ });
-  // ...and proceeds once no server holds the database's server lock.
+  await assert.rejects(reassignOwner(store.database, { from: 'apikey:old', to: 'ann', collections: unaudited }), { status: 503, code: 'storage_unavailable', message: /the serving process declares it differently/ });
   await store.close();
-  const plain = await deleteOwnerless(store.database, { collections: unaudited, collection: 'requests' });
-  assert.equal(plain.undeliveredEvents, undefined);
+  const plain = await reassignOwner(store.database, { from: 'apikey:old', to: 'ann', collections: unaudited });
+  assert.deepEqual([plain.moved, plain.auditEvents], [1, 0]);
 });
 
 test('a filter value outside the property\'s bounds, lengths or format is a 400 on the owner mount and the readers mount', async t => {

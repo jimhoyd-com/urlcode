@@ -47,6 +47,12 @@ export { clientKey, clientKeyIpv6Prefix } from './client-address.ts';
 /** Bounded request reading, JSON responses, cookie reading and same-origin admission (RIM-EXT-HTTP-001). */
 export { ExtensionHttpError, readBody, jsonResponse, isSameOriginRequest } from './extension-http.ts';
 export type { ExtensionHttpErrorCode, ReadBodyOptions, SameOriginOptions } from './extension-http.ts';
+/**
+ * The audit event contract (RIM-EXT-AUDIT-001): the event, its pure validator, the query, and the tap an audit log
+ * offers so a sink can forward its events. The store records and serves them; a sink named `audit` may consume them.
+ */
+export { AuditError, auditLimits, validateAuditEvent, validateAuditQuery } from './audit-events.ts';
+export type { AuditErrorCode, AuditEvent, AuditLog, AuditPage, AuditQuery, AuditStoredEvent, AuditTap, AuditValue, NormalizedAuditQuery } from './audit-events.ts';
 export interface ExtensionDeclaration { version:'1'; config:Record<string,unknown> }
 export type ExtensionPolicies = Record<string,Record<string,unknown>|false>;
 /**
@@ -555,6 +561,12 @@ export interface ScaffoldRequest {
   project:string;
   /** Every extension installed in the site after this add, including this one, sorted. */
   installed:readonly string[];
+  /**
+   * The installed extensions, a subset of `installed` and sorted, whose descriptors declare `providesPrincipal`: the
+   * sign-in providers a scaffold can protect a mount with (`auth: true`). Check this rather than a package name, so
+   * an independent principal provider serves a scaffold as well as the bundled `auth` does.
+   */
+  principalProviders:readonly string[];
   /**
    * Operator acknowledgements from repeated `--ack <extension>:<id>` flags, sorted and de-duplicated; empty when none. Core treats
    * them as opaque strings and never invents one. An extension reads only the ones qualified with its own name. To require one, throw

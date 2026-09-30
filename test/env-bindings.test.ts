@@ -7,6 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { validateDocument } from '../packages/core/src/config.ts';
 import { createRuntime } from '../packages/core/src/runtime.ts';
+import { explainError } from '../packages/core/src/agent-context.ts';
 import { project, request, approveBindings } from './helpers.ts';
 import { startServer } from '../packages/core/src/server.ts';
 import type { TestContext } from 'node:test';
@@ -70,7 +71,25 @@ test('once granted, an env binding with a default prefers the host value when se
 test('an env-only binding with no default is unaffected: still fails activation when unset, even when granted', async t => {
   const root = await project(t, { '/hello': { function: { source: 'f.mjs' }, env: { GREETING: { env: 'GREETING' } } } }, { 'f.mjs': `export default (_r,{env}) => Response.json({greeting:env.GREETING});` });
   const permissions = await approveBindings(root);
-  await assert.rejects(createRuntime(root, { permissions, environment: {} }), /Missing required environment binding/);
+  await assert.rejects(createRuntime(root, { permissions, environment: {} }), (error: Error & { details?: { code?: string; route?: string } }) => {
+    assert.match(error.message, /^Route \/hello: Environment binding GREETING reads GREETING, which is not set\. Set it in the host environment, or declare a default$/);
+    assert.deepEqual([error.details?.code, error.details?.route], ['missing-binding', '/hello']);
+    assert.equal(explainError(error.message).matched, 'missing-binding');
+    return true;
+  });
   const server = await app(t, root, { permissions, environment: { GREETING: 'Ahoy' } });
   assert.deepEqual(JSON.parse((await request(server, '/hello')).body), { greeting: 'Ahoy' });
+});
+
+test('an unset or empty granted secret names the binding and the variable, never a value (issue #1062)', async t => {
+  const root = await project(t, { '/hello': { function: { source: 'f.mjs' }, secrets: { KEY: { secret: 'API_KEY' } } } }, { 'f.mjs': `export default () => new Response('x');` });
+  const permissions = await approveBindings(root);
+  for (const environment of [{}, { API_KEY: '' }]) {
+    await assert.rejects(createRuntime(root, { permissions, environment }), (error: Error & { details?: { code?: string } }) => {
+      assert.match(error.message, /^Route \/hello: Secret binding KEY reads API_KEY, which is not set or is empty\. Set it in the host environment$/);
+      assert.equal(error.details?.code, 'missing-binding');
+      assert.equal(explainError(error.message).matched, 'missing-binding');
+      return true;
+    });
+  }
 });

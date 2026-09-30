@@ -90,14 +90,14 @@ test('every extension installs once, composes, serves, and removes in dependency
   const result = JSON.parse(added.stdout) as { added: string[]; projectSha256: string; examples: string[] };
   assert.deepEqual([...result.added].sort(), [...all].sort());
   assert.deepEqual([...result.examples].sort(), ['store']);
-  for (const name of ['@jimhoyd/urlcode', '@jimhoyd/urlcode-audit', '@jimhoyd/urlcode-auth']) assert.equal(await copies(dir, name), 1, `${name} must be installed exactly once`);
+  for (const name of ['@jimhoyd/urlcode', '@jimhoyd/urlcode-store', '@jimhoyd/urlcode-auth']) assert.equal(await copies(dir, name), 1, `${name} must be installed exactly once`);
   const listed = await urlcode(t, dir, ['extensions', 'list', '--strict']);
   assert.equal(listed.status, 0, listed.stdout + listed.stderr);
   // auth is installed in the same command, so the example todos are per-user (#331) and the owned collection
   // must activate behind auth's principal below.
   const todos = (await loadDocument(join(dir, 'app'))).document.extensions?.store?.config as { collections: { todos: { ownership?: string } } };
   assert.equal(todos.collections.todos.ownership, 'owner');
-  // audit is installed in the same command too, so the example collection records its writes.
+  // With auth, the example collection records its writes in the store's audit log.
   assert.equal((todos.collections.todos as { audit?: boolean }).audit, true);
   // The store example's JSON mount is signed-in only (core expands `auth: true` into policies.extensions.auth).
   const routes = (await loadDocument(join(dir, 'app'))).routes as Record<string, { policies?: { extensions?: Record<string, unknown> | false } }>;
@@ -157,14 +157,9 @@ test('every extension installs once, composes, serves, and removes in dependency
     const later = await send('/api/todos', { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ title: 'after reload' }) });
     assert.equal(later.status, 201, await later.text());
 
-    // The store's audited write drains into the audit log while the host runs; the operator lists it offline.
-    const database = join(dir, 'data', 'audit.sqlite');
-    let listed: { events: { action: string }[] } = { events: [] };
-    for (let attempt = 0; attempt < 40 && !listed.events.length; attempt++) {
-      if (attempt) await new Promise(resolve => setTimeout(resolve, 250));
-      if (await access(database).then(() => true, () => false)) listed = operatorCli(t, dir, 'urlcode-audit', ['list'], { database, query: { action: 'store.record.created' } }) as typeof listed;
-    }
-    assert.ok(listed.events.length >= 1, 'a store.record.created event is queryable through urlcode-audit list');
+    // The store's audited write is in its audit log the moment it commits; the operator reads it beside the server.
+    const listed = operatorCli(t, dir, 'urlcode-store', ['audit', '--database', join(dir, 'data', 'store.sqlite'), '--action', 'store.record.created'], {}) as { events: { action: string }[] };
+    assert.ok(listed.events.length >= 1, 'a store.record.created event is queryable through urlcode-store audit');
   } finally { await server.close(); await host.close(); }
 
   // auth cannot be removed while other routes still protect themselves with it.
@@ -264,8 +259,8 @@ test('artifacts install inert, and a tarball that does not match its pin rolls b
 
 test('the order extensions are named in never changes the site', { timeout: 600000 }, async t => {
   const one = await site(t), two = await site(t);
-  const first = await urlcode(t, one.dir, ['extensions', 'add', 'store', 'audit', 'auth', '--example']);
-  const second = await urlcode(t, two.dir, ['extensions', 'add', 'auth', 'store', 'audit', '--example']);
+  const first = await urlcode(t, one.dir, ['extensions', 'add', 'store', 'auth', '--example']);
+  const second = await urlcode(t, two.dir, ['extensions', 'add', 'auth', 'store', '--example']);
   assert.equal(first.status, 0, first.stderr); assert.equal(second.status, 0, second.stderr);
   assert.equal(await readFile(join(one.dir, 'host.mjs'), 'utf8'), await readFile(join(two.dir, 'host.mjs'), 'utf8'));
   assert.equal(await readFile(join(one.dir, 'app', 'urlcode.yaml'), 'utf8'), await readFile(join(two.dir, 'app', 'urlcode.yaml'), 'utf8'));

@@ -23,11 +23,17 @@ beside them, `dist/BUILD-MANIFEST.json` with a SHA-256 per emitted file, and
 | `@jimhoyd/urlcode/aws`, `@jimhoyd/urlcode/vercel`, `@jimhoyd/urlcode/cloudflare` | `dist/<name>.js` | `dist/types/<name>.d.ts` |
 | `@jimhoyd/urlcode/schema` | `schemas/urlcode.schema.json` | — |
 
-Each entry has three conditions: `types` (the declarations), `default` (the
-built JavaScript) and `development`, which points at the `.ts` source and
-exists only so the repository's own tests and examples can import the package
-by name without a build (`node --conditions=development`). An installed
-package never uses it; Node refuses to strip types under `node_modules`.
+Each published entry has two conditions: `types` (the declarations) and
+`default` (the built JavaScript). In this repository's checkout each entry, and
+each add-on's, also lists `development` first, naming its `.ts` source under
+`packages/core/src` (or the add-on's `src/`). The repository's tests run with
+`node --conditions=development` and every `tsconfig` sets
+`customConditions: ["development"]`, so the workspace imports and type-checks
+core and sibling add-ons by package name from source, with no build and no
+stale `dist/`. An add-on's `tsconfig.build.json` clears the condition, since its
+emit reads core's built declarations. Packing strips `development` from the
+manifest (`scripts/published-manifest.mjs`), and the package audit refuses a
+published export that names source, so an installed package never carries it.
 
 Use `"module": "NodeNext"` (or `"bundler"`) resolution so the `exports` map
 and its `types` condition apply. The declarations reference Node's types

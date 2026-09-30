@@ -181,8 +181,8 @@ The example is API only: a frontend calls the JSON mount with `fetch`, as
 When `auth` is installed the example puts `auth: true` on the API mount (a
 signed-in session, and same-origin provenance for writes) and declares the
 `todos` collection `ownership: owner`, so each signed-in user sees and changes
-only their own todos. When `audit` is installed the example collection also
-declares `audit: true`. Without `auth` the example refuses; the refusal prints the exact command, ending in
+only their own todos, and declares `audit: true`, so every write is recorded
+in the store's audit log. Without `auth` the example refuses; the refusal prints the exact command, ending in
 `--ack store:public-write`, which acknowledges a public writable endpoint (not
 rate limiting, abuse protection or multi-tenant isolation).
 
@@ -202,13 +202,11 @@ per-collection record and byte quotas; last write wins unless a caller sends
 replacement runtime (see [reload][store-reload]). A collection is shared by default; one that holds
 per-user data declares `ownership: owner`, and every request is then scoped to
 the principal a policy such as `auth: true` on its mount sets (another user's
-record is a `404`, records written before it became owned are served to nobody
-until `urlcode-store ownerless-assign` or `ownerless-delete` handles them,
-`urlcode-store reassign --from <principal> --to <principal>` moves one
+record is a `404`, records written before it became owned are served to
+nobody, `urlcode-store reassign --from <principal> --to <principal>` moves one
 principal's records to another in one transaction (on an `audit: true`
-collection every moved or deleted record is recorded, with the operator's
-optional `--actor`, and the report shows the undelivered events and warns when
-no server's audit drain has kept up in the last 60 seconds), and
+collection every moved record is recorded, with the operator's optional
+`--actor`), and
 `maxRecordsPerOwner` caps each user's records with `409 owner_quota_exceeded`; see
 [per-record ownership][store-per-record-ownership]). A collection may declare
 `sortable` and `filterable` property lists for `?sort=<property>` /
@@ -223,23 +221,36 @@ every record in scope. A
 the schema, so a required property refuses that with a `422` issue, and `PUT`
 still takes only values (see [clearing a property][store-clearing-a-property]).
 
-A collection that declares `audit: true` records every write in the audit
-log (the store `uses` the `audit` extension; activation refuses such a
-collection when audit is not installed, or when no principal-providing policy
-guards its mount). Each create, replace, update, delete and increment (never a
-short-link click) is an event (`store.record.created`, `.replaced`, `.updated`,
-`.deleted`, `.incremented`) with subject `<collection>/<id>`, the principal id
-or `anonymous` as actor, and the changed property names, never values. The event
-is inserted into the store database's outbox table in the same transaction as
-the record and drained by audit while the host runs; when 1000 events wait
-undelivered the next write answers `503 audit_backlog` and changes nothing. See [audited writes][store-audited-writes].
+A collection that declares `audit: true` records every write in the store's
+own audit log; it needs no other extension, but activation refuses it when no
+principal-providing policy guards its mount. Each create, replace, update,
+delete, increment (never a short-link click), transition and transfer is an
+event (`store.record.created`, `.replaced`, `.updated`, `.deleted`,
+`.incremented`, `.transitioned`, `.transferred`) with subject
+`<collection>/<id>`, the principal id or `anonymous` as actor, and the changed
+property names, never values. The event is a row of the store database's
+`store_audit_events` table, written in the same transaction as the change, so
+it exists exactly when the change committed. The newest `auditRetention`
+events (default 100000) are kept; each audited write prunes older ones.
+`urlcode-store audit --database <absolute store.sqlite>` prints one page of the
+log (filters `--source`, `--actor`, `--subject`, `--action`, `--action-prefix`,
+`--from`, `--to`; `--after <next>`, `--limit 1-100`, `--order asc|desc`),
+opening the database read-only, beside the serving process. To forward events
+elsewhere, an extension that requires the store reads the tap,
+`StoreExports.audit` (`peek`, then `ack`, at least once). See
+[audited writes][store-audited-writes] and
+[forwarding events to a sink][store-forwarding-events-to-a-sink].
 
 Back the database up while the server serves with
 `urlcode-store backup --database <absolute store.sqlite> --destination <absolute new file>`:
 an online copy through SQLite's backup API (Node 22.16 or newer) that refuses an
 existing destination, is written `0600` and is checked as a store database of the
-same schema version before it appears. To restore, stop the server and put the
-copy in place. See [backups][store-backups].
+same schema version before it appears. The audit log is inside the database, so
+it is in the copy. `urlcode-store restore --backup <absolute backup> --destination
+<absolute new file>` makes the same checked copy of a backup at a new path; stop
+the server and move it into place yourself. The library exports are
+`backupStore({database, destination})` and `restoreStore({backup, destination})`.
+See [backups][store-backups].
 
 Another extension that requires the store reaches declared collections through
 its typed export, `StoreExports` (`ctx.get('store')`): `create`, `get`, a
@@ -294,7 +305,7 @@ another's in one transaction, so the sum never changes; a debit below `min`
 (default 0) answers `409 insufficient_balance` and writes nothing. The amount
 property is `readOnlyProperties` with default 0, so a record is created at 0,
 and deleting one that still holds a balance is `409 balance_not_zero` on every
-path (HTTP, host transactions, `ownerless-delete`). On an owned
+path (HTTP and host transactions). On an owned
 collection the caller debits only its own record and may credit any owned
 record, and the answer shows the credited record only when the caller owns it.
 Amounts are integers (minor units for a currency): a fraction is
@@ -438,6 +449,7 @@ version it describes; the release pull request moves them and scripts/check-loca
 [store-per-record-ownership]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#per-record-ownership
 [store-clearing-a-property]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#clearing-a-property
 [store-audited-writes]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#audited-writes
+[store-forwarding-events-to-a-sink]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#forwarding-events-to-a-sink
 [store-backups]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#storage-and-concurrency-what-it-does-and-does-not-guarantee
 [store-using-a-collection-from-another-extension]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#using-a-collection-from-another-extension
 [store-conditional-transitions-and-result-aware-retries]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#conditional-transitions-and-result-aware-retries
@@ -460,7 +472,7 @@ Every key `store` accepts, rendered from this package's `urlcode.json` (the sche
 
 **Schema-valid is not activatable.** JSON Schema checks shape only. Activation also checks what a schema cannot express: the route for each declared mount exists, referenced fields and collections are declared, peers are installed and active, and the cross-field rules the descriptions state. A project that validates can still refuse to start; run `urlcode validate --local --project app --host-file host.mjs --local-review` (`npm run validate`), which activates it.
 
-**Peers.** uses `audit` when installed (optional: the features that need one refuse to activate without it).
+**Peers.** none.
 
 ### Configuration: `extensions.store.config`
 
@@ -492,7 +504,7 @@ Every key `store` accepts, rendered from this package's `urlcode.json` (the sche
 | `extensions.store.config.collections.*.filterable` | array | no | maxItems: 8; uniqueItems: true; items: string (pattern: "^[a-z][A-Za-z0-9_]{0,63}$") | Declared properties a list request may filter by equality (`<property>`=`<value>`); a value the property's schema refuses answers 400 invalid_query. limit, cursor and sort cannot be filterable. |
 | `extensions.store.config.collections.*.ownership` | string | no | enum: ["shared","owner"] | shared (default): every caller who reaches the mount sees every record. owner: each record belongs to the principal that created it, and every read and write is scoped to it; the mount must carry a principal-providing policy such as auth: true. |
 | `extensions.store.config.collections.*.maxRecordsPerOwner` | integer | no | minimum: 1; maximum: 10000 | With ownership: owner only: records one principal may hold, at most maxRecords; beyond it a create answers 409 owner_quota_exceeded. |
-| `extensions.store.config.collections.*.audit` | boolean | no | — | true: every write is recorded in the audit log (property names and the principal, never values), in the same transaction as the write. On a membership collection, adding or removing a member (from any path, the operator CLI included) records store.membership.added or store.membership.removed with the member's principal id in the subject. Needs the audit extension; writes answer 503 audit_backlog while 1000 events wait to drain. |
+| `extensions.store.config.collections.*.audit` | boolean | no | — | true: every write is recorded in the audit log (property names and the principal, never values), in the same transaction as the write. On a membership collection, adding or removing a member (from any path, the operator CLI included) records store.membership.added or store.membership.removed with the member's principal id in the subject. The event is a row of the store database, kept among the newest auditRetention events; urlcode-store audit reads them, and a sink forwards them through StoreExports.audit. |
 | `extensions.store.config.collections.*.transitions` | object | no | maxProperties: 16; keys: "^[a-z][a-z0-9_-]{0,63}$" | Declared conditional state changes by name: POST `<mount>/<id>/<name>` moves one record from the from values to the set (and stamp) values in one transaction, honouring If-Match and Idempotency-Key; a record not in the from state answers 409 transition_conflict and nothing is written. Not an expression language. |
 | `extensions.store.config.collections.*.transitions.*.from` | object | yes | minProperties: 1; maxProperties: 8; keys: "^[a-z][A-Za-z0-9_]{0,63}$"; values: string / number / boolean (one of: string (maxLength: 256); number; boolean) | Declared properties and the exact value each must currently hold; each value must satisfy its property's schema. |
 | `extensions.store.config.collections.*.transitions.*.set` | object | yes | minProperties: 1; maxProperties: 8; keys: "^[a-z][A-Za-z0-9_]{0,63}$"; values: string / number / boolean (one of: string (maxLength: 256); number; boolean) | Declared properties and the constant value the transition writes; each must satisfy its property's schema. Not the collection key. |
@@ -529,12 +541,13 @@ Every key `store` accepts, rendered from this package's `urlcode.json` (the sche
 | `extensions.store.config.shortLinks.*.collection` | string | yes | pattern: "^[a-z][a-z0-9_-]{0,63}$" | A declared shared collection with a key; the key value is the path segment after the mount. |
 | `extensions.store.config.shortLinks.*.destination` | string | yes | pattern: "^[a-z][A-Za-z0-9_]{0,63}$" | A required string property with format: uri holding the redirect target; activation refuses it otherwise, and every write to it takes only an absolute HTTP(S) URL without credentials or whitespace (422 otherwise). |
 | `extensions.store.config.shortLinks.*.clicks` | string | yes | pattern: "^[a-z][A-Za-z0-9_]{0,63}$" | A property listed in the collection's increments, raised by one on each GET (even when the collection is readOnly). |
+| `extensions.store.config.auditRetention` | integer | no | minimum: 1000; maximum: 10000000 | How many of the newest audit events (from collections that declare audit: true) the store database keeps, default 100000; each audited write prunes the oldest past it in its own transaction. Read on every activation, so removing the key returns to the default. |
 
 ### Authoring surfaces and limits
 
 Declare collections under extensions.store.config.collections and mount each on a route with `extension: store`. Bounded unique keys, numeric increments, idempotency retention, per-owner records, declared transitions, transfers between balances, membership lists, readers and short-link redirects remain store-owned; no handler code is needed.
 
-- **collections** (configuration, `urlcode.yaml`): Per-collection mount, a record `schema` (a JSON Schema 2020-12 object schema in the request body profile: flat scalar properties, `additionalProperties: false`; inline, or the name of a project schema under top-level `schemas:` shared with route bodies and MCP tools; a record that breaks it answers `422 invalid_record` with the body-schema issue list), `defaults` (values a create stores for omitted properties) and `readOnlyProperties` (changed only by a transition), bounded unique `key`, numeric `increments`, durable bounded `idempotency`, maxRecords, maxRecordBytes, pageSize, readOnly, `sortable` / `filterable` property lists, and `audit: true` (every write recorded in the audit log with property names and the principal, never values; needs the audit extension, and writes answer `503 audit_backlog` while 1000 events wait to drain). Create, list, read, replace, update and delete need no handler.
+- **collections** (configuration, `urlcode.yaml`): Per-collection mount, a record `schema` (a JSON Schema 2020-12 object schema in the request body profile: flat scalar properties, `additionalProperties: false`; inline, or the name of a project schema under top-level `schemas:` shared with route bodies and MCP tools; a record that breaks it answers `422 invalid_record` with the body-schema issue list), `defaults` (values a create stores for omitted properties) and `readOnlyProperties` (changed only by a transition), bounded unique `key`, numeric `increments`, durable bounded `idempotency`, maxRecords, maxRecordBytes, pageSize, readOnly, `sortable` / `filterable` property lists, and `audit: true` (every write recorded in the audit log with property names and the principal, never values; kept in the store database among the newest `auditRetention` events, read with `urlcode-store audit` and forwarded through `StoreExports.audit`). Create, list, read, replace, update and delete need no handler.
 - **ownership** (configuration, `urlcode.yaml`): `ownership: owner` on a collection: each signed-in principal creates, lists, reads, changes and deletes only its own records: every read and write is scoped to the principal that created the record. Not combined with a unique `key`; `unique: [handle]` keeps a string property unique across every owner (`409 value_taken`, which tells a caller the value is in use, so only for public handles). The mount must be guarded by a principal-providing policy such as `auth: true`. An optional `maxRecordsPerOwner` (at most maxRecords) answers `409 owner_quota_exceeded` at the limit.
 - **transitions** (configuration, `urlcode.yaml`): Declared `transitions` move one record from exact `from` values to constant `set` values (with `stamp: {property: actor\|now}`) in one transaction as `POST <mount>/<id>/<name>`; a record not in the `from` state answers `409 transition_conflict`. On an owned collection `by: others` serves the transition on its own `mount` to any principal except the owner (an approval or review step), and `members: <membership collection>` admits only that list's members. Not an expression language.
 - **editable** (configuration, `urlcode.yaml`): `editable: {status: [draft]}` and `deletable: {status: [draft, rejected]}` on a collection, in the shape of a transition's `from` (a value or a list per property, each property in `readOnlyProperties`): outside those states `PUT`/`PATCH`, `POST <mount>/<id>/increment/<property>` or `DELETE` answer `409 record_locked` and write nothing, on HTTP, `StoreExports` and host transactions alike, so an approved request keeps the values its reviewer saw. Creates, transitions, transfers and a short link's click count are unaffected; the record's `Allow` header and a list's `allow` name the methods each record takes now.

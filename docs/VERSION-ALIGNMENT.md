@@ -10,7 +10,7 @@ that release-please keeps open, and `node scripts/release-versions.ts check`
 | Package | Manifest | Where it is published |
 | --- | --- | --- |
 | `@jimhoyd/urlcode` (core) | `package.json` | npm, `v<version>` GitHub Release, Homebrew (stable), GHCR image |
-| Every extension (`@jimhoyd/urlcode-<name>`: `audit`, `auth`, `store`, `mcp`) | `packages/<name>/package.json` | tarball on the `v<version>` GitHub Release, pinned by core |
+| Every extension (`@jimhoyd/urlcode-<name>`: `auth`, `store`, `mcp`) | `packages/<name>/package.json` | tarball on the `v<version>` GitHub Release, pinned by core |
 | Every artifact (`@jimhoyd/urlcode-<name>`) | `artifacts/<name>/package.json` | tarball on the `v<version>` GitHub Release, pinned by core |
 
 | Version | npm dist-tag | GitHub Release | Homebrew | GHCR tags | Template PR |

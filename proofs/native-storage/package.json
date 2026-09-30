@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Proof (#1052): the owner's own storage library, called from trusted routes, with auth: true and neither the store nor the audit extension.",
+  "description": "Proof (#1052): the owner's own storage library, called from trusted routes, with auth: true and no store extension.",
   "scripts": {
     "setup": "node scripts/setup.mjs",
     "proposal": "urlcode permissions --project app",
