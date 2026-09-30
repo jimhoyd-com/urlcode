@@ -252,8 +252,8 @@ test('refuses a file that is not a store database, or a store schema older than 
   await assert.rejects(env.start(), new RegExp(`schema version 99; this release supports up to ${STORE_SCHEMA_VERSION}`));
   // A store schema older than the baseline, written by an earlier release, is refused rather than misread.
   const older = await privateDatabase();
-  older.exec(`CREATE TABLE store_audit_outbox(x); PRAGMA application_id=${STORE_APPLICATION_ID}; PRAGMA user_version=7;`); older.close();
-  await assert.rejects(env.start(), /schema version 7, older than this release's baseline \(8\), and cannot be upgraded; recreate the data directory/);
+  older.exec(`CREATE TABLE store_audit_outbox(x); PRAGMA application_id=${STORE_APPLICATION_ID}; PRAGMA user_version=8;`); older.close();
+  await assert.rejects(env.start(), /schema version 8, older than this release's baseline \(9\), and cannot be upgraded; recreate the data directory/);
 });
 
 test('short-link destination must be required at config time, and legacy data missing it 404s without counting a click (#469)', async t => {

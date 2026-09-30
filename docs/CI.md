@@ -80,6 +80,13 @@ therefore widens both legs to every extension. A core-only change adds no
 Windows extension suites; its Windows coverage comes from the high-impact core
 shards below and from release coverage.
 
+The extension names appear in three places: the `packages` filters and the
+`packages/{…}` lane globs in `.github/ci-filters.yml`, and the plan's
+fail-closed fallback list in `ci.yml`. `test/ci-lanes.test.ts` expands
+`package.json#workspaces` and fails when a workspace with a `verify` script is
+missing from any of them, so a new `packages/<name>` cannot silently skip
+`workspace-verify`.
+
 The Windows suites are entries of the existing `workspace-verify` matrix, not
 a separate job, so any failed Windows entry fails `verify-complete`. Main
 pushes are unchanged, and exact-commit runs already cover every package on
