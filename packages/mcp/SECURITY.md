@@ -61,7 +61,10 @@ under earlier revisions as a structured `-32602 Invalid params` error), using th
 validator (`@jimhoyd/urlcode/body-schema`, the exact code
 `request.body.<METHOD>.schema` itself runs) a native route body already uses. Nothing
 the caller sent is echoed back in an issue; only the schema's own declared
-path and keyword are.
+path and keyword are. Before that check, an argument holding an unpaired UTF-16
+surrogate escape is refused with `-32602` naming it (#1016), as core's JSON
+body reader refuses one, so a handler never receives a string that UTF-8 and
+SQLite cannot carry.
 
 **A handler is trusted project code, exactly like another extension's project
 hook or a native `function`/`middleware` route.** It is loaded and invoked the same

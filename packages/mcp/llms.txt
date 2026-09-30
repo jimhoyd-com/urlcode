@@ -40,6 +40,7 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   unsupported `MCP-Protocol-Version` answers 400 (missing means `2025-03-26`).
 - Supported revisions: `2025-11-25` (preferred), `2025-06-18`, `2025-03-26`, `2024-11-05`.
   Under `2025-11-25`, tool arguments failing `inputSchema` answer an `isError: true` result, not `-32602`.
+- A tool or prompt argument holding an unpaired surrogate escape (`\ud800` alone) is `-32602` naming the argument, `data.code: "invalid_unicode"`; the handler never runs.
 - The streaming transport (`Mcp-Session-Id` sessions, SSE progress for a `tools/call` with
   `_meta.progressToken`, cancellation, the GET stream with keep-alive and bounded `Last-Event-ID`
   replay) is operator opt-in only: `mcp({ streaming: true })` in `host.mjs`, plus `GET` and `DELETE`

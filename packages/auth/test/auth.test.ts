@@ -255,6 +255,30 @@ test('only allowlisted Better Auth paths answer; sign-up is off unless the opera
   assert.equal((await open.call('/api/auth/sign-up/email', { method: 'POST', body: { email: 'bob@example.test', password: 'bob-local-password', name: 'Bob' } })).status, 200);
 });
 
+test('a body holding an unpaired surrogate is refused with core\'s 400 invalid_unicode before Better Auth parses it (#1016)', async t => {
+  const at = await project(t); await withUser(at);
+  const { call, jar } = await serve(at, { signUp: true });
+  const refused = async (path: string, body: unknown) => {
+    const response = await call(path, { method: 'POST', body });
+    assert.equal(response.status, 400, path);
+    assert.deepEqual(await response.json(), { error: 'invalid_unicode' });
+  };
+  await refused('/api/auth/sign-up/email', { email: 'bob@example.test', password: 'bob-local-password', name: '\ud800Bob' });
+  await refused('/api/auth/sign-up/email', { email: 'bob@example.test', password: 'bob-local-password', name: 'Bob', ['\udc00']: 1 });
+  await refused('/api/auth/sign-in/email', { email: 'ann@example.test', password: 'ann-local-password\udbff' });
+  assert.equal(jar.size, 0, 'no session cookie was set');
+  const probe = new DatabaseSync(at.database, { readOnly: true });
+  try { assert.equal((probe.prepare('SELECT count(*) AS n FROM user WHERE email = ?').get('bob@example.test') as { n: number }).n, 0, 'no account was created'); }
+  finally { probe.close(); }
+  // The reader's other refusals apply too; a well-formed body, a surrogate pair included, still reaches Better Auth.
+  const plain = await call('/api/auth/sign-in/email', { method: 'POST', headers: { 'content-type': 'text/plain' }, body: { email: 'ann@example.test', password: 'ann-local-password' } });
+  assert.equal(plain.status, 415);
+  assert.deepEqual(await plain.json(), { error: 'unsupported_media_type' });
+  const signedUp = await call('/api/auth/sign-up/email', { method: 'POST', body: { email: 'bob@example.test', password: 'bob-local-password', name: 'Bob 😀' } });
+  assert.equal(signedUp.status, 200);
+  assert.equal(((await signedUp.json()) as { user: { name: string } }).user.name, 'Bob \u{1F600}');
+});
+
 test('sign-in is throttled per admitted client address, whatever forwarding header a client sends', async t => {
   const at = await project(t); await withUser(at);
   const { call } = await serve(at);
@@ -354,6 +378,11 @@ test('the scaffold writes the mount and a private secret; host() reads it; the C
   const created = run(['create-user'], JSON.stringify({ email: 'rita@example.test', password: 'rita-local-password', name: 'Rita' }));
   assert.equal(created.status, 0, created.stderr);
   assert.match(created.stdout, /"event":"user-created"/);
+  // An unpaired surrogate is refused, never stored as U+FFFD (#1016).
+  const surrogate = run(['create-user'], JSON.stringify({ email: 'sam@example.test', password: 'sam-local-password', name: '\ud800Sam' }));
+  assert.equal(surrogate.status, 2);
+  assert.match(surrogate.stderr, /unpaired surrogate escape/);
+  assert.equal(run(['find-user', '--email', 'sam@example.test']).status, 1);
   // find-user (#917) answers the id create-user printed, for the same email in any case, without raw SQL.
   const createdId = (JSON.parse(created.stdout) as { id: string }).id;
   const found = run(['find-user', '--email', 'RITA@example.test']);

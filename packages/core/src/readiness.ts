@@ -10,6 +10,7 @@ import { assert, ConfigError } from './errors.ts';
 import type { ErrorDetails } from './errors.ts';
 import { compileTrustedProxies } from './client-address.ts';
 import { isRecord } from './object-guards.ts';
+import { holdsIllFormedString } from './body-validation.ts';
 import { CookieJar, cookieNames, jarScope } from './cookie-jar.ts';
 import { parseTarget, matchRoute, contextFor, redirectLocation } from './router.ts';
 import { runCompliance } from './compliance.ts';
@@ -313,9 +314,14 @@ const FIXTURE_FILE = 'tests/requests.json';
 /** The one built-in reference, `{{origin}}`: the site origin the fixture's requests are sent to (see siteOrigin). */
 const ORIGIN = 'origin';
 const fixtureDetails = (pointer?: string, key?: string): ErrorDetails => ({ code: 'invalid-fixture', file: FIXTURE_FILE, pointer, key });
-/** JSON.parse with the failure's line and column, never the parser's excerpt of the file. */
+/**
+ * JSON.parse with the failure's line and column, never the parser's excerpt of the file. A string or key holding an
+ * unpaired surrogate is refused (#1016): a request sends text as UTF-8, which has no encoding for one, so the case
+ * would silently send U+FFFD instead.
+ */
 function parseFixtureJson(text: string): unknown {
-  try { return JSON.parse(text); } catch (error) {
+  let value: unknown;
+  try { value = JSON.parse(text); } catch (error) {
     const position = Number(/position (\d+)/.exec(error instanceof Error ? error.message : '')?.[1] ?? NaN);
     let where = '';
     if (Number.isInteger(position)) {
@@ -324,6 +330,8 @@ function parseFixtureJson(text: string): unknown {
     }
     throw new ConfigError(`${FIXTURE_FILE} is not valid JSON${where}; check for a trailing comma, a missing comma or quote, or a comment (JSON has none)`, { code: 'invalid-fixture', file: FIXTURE_FILE });
   }
+  if (holdsIllFormedString(value)) throw new ConfigError(`${FIXTURE_FILE} holds a string or key with an unpaired surrogate escape (\\uD800-\\uDFFF), which a request cannot send; to send the escape itself in a JSON body, double its backslash in the body text ("body": "{\\"a\\":\\"\\\\ud800\\"}")`, { code: 'invalid-fixture', file: FIXTURE_FILE });
+  return value;
 }
 // The shipped schema is the fixture contract: tooling and editors validate against the same file.
 const fixtureSchema = JSON.parse(await readFile(new URL('../../../schemas/requests.schema.json', import.meta.url), 'utf8')) as { $defs: Record<string, { properties?: Record<string, unknown> }> };

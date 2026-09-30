@@ -9,7 +9,8 @@ import { betterAuth } from 'better-auth';
 import type { BetterAuthOptions } from 'better-auth';
 import { getMigrations } from 'better-auth/db/migration';
 import { mkdir } from 'node:fs/promises';
-import { clientKey, isSameOriginRequest, joinHostLease, jsonResponse, principalIdPattern, refuseNetworkFilesystem } from '@jimhoyd/urlcode/extensions';
+import { clientKey, ExtensionHttpError, isSameOriginRequest, joinHostLease, jsonResponse, principalIdPattern, readBody, refuseNetworkFilesystem } from '@jimhoyd/urlcode/extensions';
+import { maxRequestBodyBytes } from '@jimhoyd/urlcode/body-schema';
 import type { ExtensionAuthoringContract, ExtensionInstance, ExtensionRequest, HandlerResult, HostLease, HostProbe, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 
 /** The Better Auth paths a mount serves by default: sign-in, sign-out and the session endpoints. */
@@ -245,6 +246,13 @@ export function createAuthExtension(settings: AuthSettings & { projectSha256: st
         async handle(request: ExtensionRequest): Promise<HandlerResult> {
           const path = request.path.slice(mount.length);
           if (!served.has(path)) return jsonResponse(404, { error: 'not_found' });
+          // Better Auth parses its own body and keeps an unpaired surrogate escape, which SQLite then stores as U+FFFD
+          // (#1016). A body therefore passes core's reader first and is refused exactly as core refuses one (400
+          // invalid_unicode, and the reader's other codes); Better Auth still parses the untouched bytes.
+          if (request.body.byteLength > 0) {
+            try { readBody(request, { maxBytes: maxRequestBodyBytes }); }
+            catch (error) { if (error instanceof ExtensionHttpError) return jsonResponse(error.status, { error: error.code }); throw error; }
+          }
           if (!serving()) return failed();
           const headers = new Headers(request.headers);
           headers.delete(clientAddressHeader);

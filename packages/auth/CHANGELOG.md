@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- A mount request body holding an unpaired UTF-16 surrogate escape (`"\ud800"` alone) answers core's
+  `400 {"error":"invalid_unicode"}` (#1016). Better Auth parses its own body, so sign-up stored such a name as U+FFFD.
+  Every body now passes core's `readBody` before Better Auth sees it, and answers the reader's other refusals too: a
+  repeated key or `Content-Type`, nesting past 32, invalid UTF-8 or JSON (`400`) and a media type other than
+  `application/json` (`415`), each as `{"error": <code>}`. `urlcode-auth create-user` refuses the same input (exit 2).
 - A sign-out whose session delete fails answers `503 auth_unavailable` with no `Set-Cookie`, and the session keeps working (#980).
   Better Auth answered `200 {"success":true}` and cleared the cookie while the session stayed valid. The mount now
   confirms against the database that a successful `/sign-out` removed the session. A `401` from `/list-sessions`, the

@@ -10,7 +10,7 @@ import type { BodySchema, BodySchemaIssue, BodyValidator, CompiledBodySchema } f
 // options, instead of hand-rolling or configuring a second JSON Schema engine. This module compiles with Ajv,
 // which generates code, so it runs on Node hosts only; the Cloudflare Worker imports body-validation.ts and
 // receives build-time standalone validators instead (build-cloudflare.ts).
-export { assertBodySchema, bodyIssues, bodySchemaDialect, bodySchemaEnvelope, bodySchemaJson, bodySchemaLine, bodySchemaProfile, declaredBodyNames, maxRequestBodyBytes, uuidFormat } from './body-validation.ts';
+export { assertBodySchema, bodyIssues, bodySchemaDialect, bodySchemaEnvelope, bodySchemaJson, bodySchemaLine, bodySchemaProfile, declaredBodyNames, holdsIllFormedString, illFormedMember, maxRequestBodyBytes, uuidFormat } from './body-validation.ts';
 export type { BodySchema, BodySchemaIssue, BodySchemaType, BodyValidator, CompiledBodySchema } from './body-validation.ts';
 
 let ajv: InstanceType<typeof Ajv.default> | undefined;

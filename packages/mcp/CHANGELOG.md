@@ -4,6 +4,10 @@
 
 The definition declares its deployment targets (node, aws, vercel), which `npm run build:addons` writes into `urlcode.json` as `targets` (#859); core refuses a registration whose targets differ, and the capability preflight refuses a recipe or plan that uses this extension on any other target.
 
+- A `tools/call` or `prompts/get` argument holding an unpaired UTF-16 surrogate escape (`"\ud800"` alone) is refused
+  before the schema check with `-32602` naming the argument and `data: {argument, code: "invalid_unicode"}` (#1016);
+  the handler never runs. The SDK parses the body itself, so core's JSON body reader never saw it and the handler
+  received the lone surrogate. The check is core's `illFormedMember` (`@jimhoyd/urlcode/body-schema`).
 - A tool's `inputSchema` or `outputSchema` may name one of the project's named
   schemas (core's top-level `schemas:`, #845), resolved at activation from
   `ExtensionActivation.schemas`; an unknown name refuses activation and

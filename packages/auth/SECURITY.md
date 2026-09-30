@@ -18,6 +18,11 @@
   (Better Auth's per-process `memory`, which gives each process its own
   limit), `window`, `max` and `customRules` (which replaces the default
   sign-in and sign-up rules rather than adding to them).
+- **Bodies pass core's reader first.** Every mount request body goes through
+  core's `readBody` before Better Auth parses it, so a body core would refuse
+  (an unpaired surrogate escape, `400 invalid_unicode`; a repeated key,
+  excessive nesting, invalid UTF-8 or a non-JSON media type) never reaches
+  Better Auth, which would store an unpaired surrogate as U+FFFD (#1016).
 - **Protected routes.** `auth: true` requires a session Better Auth verifies
   and refuses cross-origin unsafe methods. A database failure while verifying
   the session answers `503 auth_unavailable` with no detail, never a `401`;

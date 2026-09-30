@@ -4,6 +4,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { betterAuth } from 'better-auth';
+import { holdsIllFormedString } from '@jimhoyd/urlcode/body-schema';
 import { betterAuthOptions, defaultBasePath, migrate, refuseRemoteAuthDatabase } from './auth.ts';
 import { DATABASE, readSecret } from './extension.ts';
 
@@ -23,6 +24,8 @@ async function main(argv: string[]): Promise<number> {
   if (command === 'migrate') { process.stdout.write(JSON.stringify({ event: 'migrated', database: join(site, DATABASE) }) + '\n'); return 0; }
   const input = JSON.parse(readFileSync(0, 'utf8')) as { email?: unknown; password?: unknown; name?: unknown };
   if (typeof input.email !== 'string' || typeof input.password !== 'string') { process.stderr.write('create-user reads {"email", "password", "name"} as JSON on stdin\n'); return 2; }
+  // Refused as the HTTP sign-up refuses it (#1016): SQLite would store the unpaired surrogate as U+FFFD.
+  if (holdsIllFormedString(input)) { process.stderr.write('create-user input holds an unpaired surrogate escape (\\uD800-\\uDFFF)\n'); return 2; }
   const auth = betterAuth(options);
   const created = await auth.api.signUpEmail({ body: { email: input.email, password: input.password, name: typeof input.name === 'string' ? input.name : input.email } });
   process.stdout.write(JSON.stringify({ event: 'user-created', id: created.user.id, email: created.user.email }) + '\n');
