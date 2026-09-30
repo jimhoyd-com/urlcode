@@ -7420,30 +7420,53 @@ urlcode serve --project /srv/my-links --policy /etc/urlcode/my-links-policy.json
 `dev`, `test` and `validate --local` use the same policy rules even for `.env.local`.
 The JavaScript API accepts an equivalent operator-supplied `permissions` object.
 Every config change invalidates the grant, and so does a module change within
-what the approval digest actually hashes: for a sandboxed route, its
-middleware/function sources and their full dependency graph; for a trusted
-route, only its own entry-file source (see the next paragraph — a trusted
-route's transitive dependencies are explicitly **not** part of that digest).
+what the approval digest hashes. Sandboxed routes retain their complete bounded
+module snapshot. Trusted functions, middleware and extension hooks pin their
+entry bytes plus the non-executing inventory described below.
 Inspect/review the new revision before updating the operator file. Policies
 are read at startup, not hot-reloaded. A failed development candidate leaves
 the previous approved snapshot running. A denial caused by a stale pin says
 so: the binding or egress error names the pinned and current revisions and
 points at `urlcode permissions`.
 
-Granting a secret deliberately makes it available to every middleware and function
-in that route, trusted or sandboxed alike. A sandboxed route's middleware
-sources and their full dependency graph are included in the approval digest,
-as before; a trusted route's own entry-file source is included too, so
-changing that file's content invalidates the grant, but a change to a helper
-module it merely imports does not by itself: the trusted path hashes the
-contents of each declared function and middleware entry file, never the
-modules those files import. That is a known gap versus the sandboxed path's
-full dependency-graph hashing: a trusted route's grant scope is entry-file-only,
-not transitive. Either way, code can include any granted data
-in its HTTP response: neither the sandbox nor the trusted default promises
-secrecy from code that was explicitly authorized to read a value. Minimize
-grants, use scoped/short-lived credentials and revoke/restart when needed.
-Other routes get none of that context.
+#### Trusted dependency review
+
+`inspect` and `review` include `trustedDependencies`: project-relative file
+hashes, bare package names, sanitized lockfile version/integrity records, and
+explicit opaque reasons. `complete` means complete only within this static-import
+inspection profile, never a complete execution graph. This inventory enters
+`projectSha256`, so changing a recorded helper, package manifest or npm lockfile invalidates the operator pin.
+Inspection never imports application modules, installs packages or performs
+network resolution. It follows relative static imports, re-exports and literal
+dynamic imports inside the project, including JSON and Node-strippable TypeScript
+helpers. Cycles are visited once. Local package scopes' `package.json` files and
+root/parent-site `package.json`, `package-lock.json` and `npm-shrinkwrap.json`
+bytes are hashed; raw metadata and registry URLs are not printed.
+
+The inventory is bounded to 256 files, 2 MiB per file and 8 MiB total, with at
+most 256 opaque reasons and 256 package names. An outside-project import,
+symlink, missing file,
+computed import, CommonJS/created loader, unparsed source or exceeded budget
+is reported as opaque (`complete: false`), not forbidden in trusted code.
+Package implementation files are not traversed: npm lock bytes identify the
+reviewed dependency selection, not the bytes actually installed in
+`node_modules`. An installed-package edit without a lock change is not detected.
+Lock metadata is a root-lock identity hint, not Node's resolved export/condition
+or nested package identity. This is explicitly incomplete dependency review,
+not an execution allowlist or a complete supply-chain attestation. Opaque
+code and ambient filesystem/network reads require separate human review.
+Operator host files and registrations remain separately trusted operator code;
+this application-entry inventory does not include them. Supplying `--host-file`
+to a command can execute that host module, independently of passive inventory.
+
+The existing entry-file pin remains even if inventory limits prevent recording
+an entry in the inventory. A helper change beyond those limits is not detected.
+Changing the digest does not clear Node's transitive module cache: restart to
+load changed helpers as described under the trusted execution limitations above.
+Granting a secret makes it available to every middleware/function in its route;
+trusted code retains full Node access. Authorized code can return granted data
+in its response. Minimize grants, use scoped credentials and revoke/restart when
+needed. Other routes get none of that injected context.
 
 The same `routes[pattern].env` grant covers an `extension:` mount's `env`
 block: the compiled values reach the extension as `ExtensionRequest.env` and

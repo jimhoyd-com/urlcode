@@ -40,42 +40,37 @@ export interface Budget {
 // packs about 800 bytes larger. When a PR hits a limit and the growth is
 // intended, re-measure every package and reset all of them by this policy
 // rather than raising one by the overshoot, and say why in the PR.
-// Baseline: 1060611/4192043/544 core, 27952/90551/26 audit, 21639/68688/14
-// auth, 160256/624949/36 store, 33066/136737/12 mcp, 12733/50583/7
-// store-schema (packed/unpacked bytes/entries), each limit rounded up to a KiB.
+// Baseline (#1040): 1091445/4290711/550 core, 28239/91233/26 audit, 24813/77224/14 auth, 34016/139480/12 mcp, 12735/50583/7 store-schema, 162759/634321/36 store
+// (packed/unpacked bytes/entries), sizes rounded up to a KiB.
 export const budgets: Record<string, Budget> = {
   '@jimhoyd/urlcode': {
-    // #976/#977 on top of #1027: 1086691 packed / 4275527 unpacked bytes, 548 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
-    packed: 1066 * 1024,
-    // #976/#977 on top of #1027: 1086691 packed / 4275527 unpacked bytes, 548 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
-    // #976/#977 on top of #1031: 1087004 packed / 4276331 unpacked bytes, 548 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
-    // #1032 on top of #987: 1087622 packed / 4278186 unpacked bytes, 548 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
-    unpacked: 4181 * 1024,
-    entries: 555,
+    packed: 1090 * 1024,
+    unpacked: 4274 * 1024,
+    entries: 561,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },
   '@jimhoyd/urlcode-audit': {
     packed: 34 * 1024,
-    unpacked: 113 * 1024,
+    unpacked: 114 * 1024,
     entries: 28,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
   '@jimhoyd/urlcode-auth': {
-    packed: 28 * 1024,
-    unpacked: 92 * 1024,
+    packed: 31 * 1024,
+    unpacked: 100 * 1024,
     entries: 16,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
   '@jimhoyd/urlcode-store': {
-    packed: 173 * 1024,
-    unpacked: 672 * 1024,
+    packed: 175 * 1024,
+    unpacked: 682 * 1024,
     entries: 38,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
   '@jimhoyd/urlcode-mcp': {
-    packed: 39 * 1024,
-    unpacked: 158 * 1024,
+    packed: 40 * 1024,
+    unpacked: 161 * 1024,
     entries: 14,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },

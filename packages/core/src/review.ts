@@ -1,3 +1,4 @@
+import type {TrustedDependencyInventory} from './trusted-dependencies.ts';
 import {readFile} from 'node:fs/promises';
 import {dirname, relative, sep} from 'node:path';
 import {functionFile} from './config.ts';
@@ -26,6 +27,7 @@ export interface ReviewObservation {
 }
 export interface ProjectReview {
   format: 1; projectSha256: string; routeCount: number; moduleCount: number;
+  trustedDependencies: TrustedDependencyInventory;
   observations: ReviewObservation[]; summary: Record<ReviewCategory, number>;
 }
 
@@ -187,7 +189,7 @@ function extensionStatus(name: string, extensions: readonly Pick<RuntimeExtensio
 }
 
 export async function reviewProject(project: string, options: InspectOptions = {}): Promise<ProjectReview> {
-  const {loaded, projectSha256, routes, declaredTargets} = await prepare(project, options);
+  const {loaded, projectSha256, routes, declaredTargets, trustedDependencies} = await prepare(project, options);
   const target = options.target === undefined ? undefined : normalizeCapabilityTarget(options.target);
   // An extension that does not run on the requested target is no alternative there (#875); unknown targets stay usable.
   const refusedOn = (name: string): CapabilityTarget | undefined => {
@@ -326,5 +328,5 @@ export async function reviewProject(project: string, options: InspectOptions = {
       });
     }
   }
-  return {format: 1, projectSha256, routeCount: routes.length, moduleCount: modules.size, observations, summary};
+  return {format: 1, projectSha256, trustedDependencies, routeCount: routes.length, moduleCount: modules.size, observations, summary};
 }

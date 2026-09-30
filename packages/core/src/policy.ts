@@ -1,3 +1,5 @@
+import { collectTrustedDependencies } from './trusted-dependencies.ts';
+import type { TrustedDependencyInventory } from './trusted-dependencies.ts';
 import { egressUrl } from './egress.ts';
 import { readFile, realpath, stat } from 'node:fs/promises';
 import { relative, isAbsolute, sep } from 'node:path';
@@ -14,7 +16,7 @@ interface RouteGrant { env?:string[]; secrets?:string[]; egress?:EgressGrants }
 /** The operator's binding grants: which env and secret names each route may read, pinned to a project hash. */
 export interface OperatorPolicy { version: 1; projectSha256: string; routes: Record<string, RouteGrant> }
 /** The function snapshot plus the hash operator grants are pinned to. */
-interface FunctionSnapshot extends FunctionSources { projectSha256: string }
+interface FunctionSnapshot extends FunctionSources { projectSha256: string; trustedDependencies: TrustedDependencyInventory }
 
 export async function prepareFunctionSnapshot(loaded: LoadedDocument): Promise<FunctionSnapshot> {
   // Only `sandbox: true` routes are bundled into the QuickJS module snapshot
@@ -54,12 +56,7 @@ export async function prepareFunctionSnapshot(loaded: LoadedDocument): Promise<F
   }
   const collected = await collectFunctionSources(sandboxed,loaded.root);
   const trustedSources = await collectTrustedSources(trusted,loaded.root);
-  // The hash operator grants pin to still covers trusted routes' own source, so
-  // an env/secret grant is invalidated when the trusted code that could use it
-  // changes, even though that code never enters collectFunctionSources's
-  // sandbox-shaped snapshot (see collectTrustedSources for what this does not
-  // catch: changes to a helper module a trusted entry imports but does not
-  // itself change).
+  const trustedDependencies = await collectTrustedDependencies(trusted,loaded.root);
   const sources = Object.fromEntries(Object.entries({...collected.sources,...trustedSources}).sort(([a],[b])=>a < b ? -1 : a > b ? 1 : 0));
   // Generated site routes carry no bindings and depend on the origin, so they
   // stay out of the hash that operator grants are pinned to. Declared site and
@@ -67,7 +64,7 @@ export async function prepareFunctionSnapshot(loaded: LoadedDocument): Promise<F
   // restriction must require a fresh operator review even if routes are unchanged. Named schemas enter by content and
   // every schema file by the sha256 of its bytes, so an edited schema file needs a fresh review too (RIM-SCHEMA-001).
   const declared = Object.fromEntries(Object.entries(loaded.routes).filter(([,route])=>!route.generated));
-  const snapshot: FunctionSnapshot = { ...collected, projectSha256: createHash('sha256').update(JSON.stringify({...(loaded.document.extensions?{extensions:loaded.document.extensions}:{}),routes:declared,...(loaded.document.policies?{policies:loaded.document.policies}:{}),...(loaded.document.profiles?{profiles:loaded.document.profiles}:{}),...(loaded.document.site?{site:loaded.document.site}:{}),...(loaded.schemas?{schemas:loaded.schemas}:{}),...(loaded.schemaFiles?{schemaFiles:loaded.schemaFiles}:{}),sources})).digest('hex') };
+  const snapshot: FunctionSnapshot = { ...collected, trustedDependencies, projectSha256: createHash('sha256').update(JSON.stringify({...(loaded.document.extensions?{extensions:loaded.document.extensions}:{}),routes:declared,...(loaded.document.policies?{policies:loaded.document.policies}:{}),...(loaded.document.profiles?{profiles:loaded.document.profiles}:{}),...(loaded.document.site?{site:loaded.document.site}:{}),...(loaded.schemas?{schemas:loaded.schemas}:{}),...(loaded.schemaFiles?{schemaFiles:loaded.schemaFiles}:{}),sources,...(trusted.length?{trustedDependencies}:{})})).digest('hex') };
   return snapshot;
 }
 export function validatePolicy(value: unknown): OperatorPolicy {

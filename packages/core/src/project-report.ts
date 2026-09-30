@@ -150,6 +150,7 @@ function attentionOf(routes:RouteExplanation[],review:ProjectReview,change:Proje
       if(entry.provider?.requirementValid===false)add({level:'fix',from:'explain',route:route.path,message:`The requirement for "${name}" does not match that add-on's policy schema.`});
     if(route.state!=='active')add({level:'check',from:'explain',route:route.path,message:`Route is ${route.state}.`});
   }
+  if(!review.trustedDependencies.complete)add({level:'check',from:'review',message:'Trusted dependency inventory is incomplete. Review its opaque dependencies before approving.'});
   for(const item of review.observations)
     for(const route of item.routes)add({level:'check',from:'review',route,message:`${item.reason} (${item.source}:${item.line})`});
   if(change){
@@ -277,6 +278,19 @@ function changeSection(change:NonNullable<ProjectReport['change']>):string {
   const cut=Object.entries(change.truncated);
   return `<section><h2>Changes since ${code(change.before)}</h2>${list(lines)}${cut.length?`<p class="muted">Lists stop at ${change.limits.maxEntries} entries (${esc(cut.map(([name,count])=>`${count} more ${name}`).join(', '))}); urlcode diff prints the rest.</p>`:''}${fileNote}<p class="muted">${esc(change.grants.note)}</p></section>`;
 }
+function dependenciesSection(review:ProjectReview):string {
+  const inventory=review.trustedDependencies;
+  if(!inventory.files.length&&!inventory.opaque.length&&!inventory.packages.length)return '';
+  const files=inventory.files.map(file=>`<li>${code(file.path)} · SHA-256 ${code(file.sha256)}</li>`).join('');
+  const opaque=inventory.opaque.map(item=>`<li>${code(item.source)}: ${esc(item.reason)}</li>`).join('');
+  const declarations=inventory.packageDeclarations.map(item=>`<li>${code(item.name)}${item.version?` ${code(item.version)}`:''} in ${code(item.lockfile)}${item.integrity?` · ${code(item.integrity)}`:''}</li>`).join('');
+  return `<section id="trusted-dependencies"><h2>Trusted dependencies</h2><p><b>Static import inventory: ${inventory.complete?'complete':'incomplete'}</b> · ${plural(inventory.files.length,'hashed file')}</p>
+<p class="muted">Passive inspection of supported static imports only. This does not prove full runtime dependency coverage, inspect package implementations, or execute project code. Trusted code still has full Node access.</p>
+${opaque?`<h3>Opaque dependencies</h3><ul>${opaque}</ul>`:''}
+${inventory.packages.length?`<p>Package imports: ${inventory.packages.map(code).join(', ')}.</p>`:''}
+${declarations?`<details><summary>Package declarations in lockfiles</summary><p class="muted">Declared identities, not proof of which nested package Node resolves or of installed package contents.</p><ul>${declarations}</ul></details>`:''}
+${files?`<details><summary>Hashed files</summary><ul>${files}</ul></details>`:''}</section>`;
+}
 function findingsSection(review:ProjectReview):string {
   if(!review.observations.length)return '';
   const items=review.observations.map((item,index)=>`<article class="finding" id="finding-${index+1}"><p><span class="pill">${esc(item.category)}</span> <span class="pill">${esc(item.confidence)} confidence</span> ${code(`${item.source}:${item.line}`)} on ${item.routes.map(routeLink).join(', ')}</p>
@@ -369,6 +383,7 @@ ${report.change?changeSection(report.change):''}
 ${report.routes.map(route=>routeRow(route,marks.get(route.path),byRoute.get(route.path)??[])).join('\n')}
 ${(report.change?.routes.removed??[]).map(removedRow).join('\n')}
 </tbody></table></div></section>
+${dependenciesSection(report.review)}
 ${findingsSection(report.review)}
 <footer class="muted"><p>Read-only. Derived from the compiled configuration by <code>urlcode explain</code>, <code>review</code> and <code>diff</code>: no request was evaluated, no project code ran and no binding value was read. Grants remain operator decisions.</p></footer>`);
 }
