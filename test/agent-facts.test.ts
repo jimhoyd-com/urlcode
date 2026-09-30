@@ -134,11 +134,11 @@ test('prose cannot claim Codex reads or discovers a project .mcp.json (#103)',as
 });
 
 test('prose cannot limit documentation search to core-pinned add-ons once it reads verified independent ones (#1090)',async t=>{
- const inventory=spawnSync(process.execPath,[script,'--inventory'],{encoding:'utf8',timeout:30000});
+ const inventory=await spawnAsync(process.execPath,[script,'--inventory'],{timeout:30000});
  assert.equal(inventory.status,0,inventory.stderr);
  assert.equal(JSON.parse(inventory.stdout).docsSearch.independentAddonGuides,true);
  const dir=await mkdtemp(join(tmpdir(),'urlcode-agent-facts-'));t.after(()=>rm(dir,{recursive:true,force:true}));
- const scan=async(text:string)=>{const file=join(dir,'README.md');await writeFile(file,text);return spawnSync(process.execPath,[script,'--files',file],{encoding:'utf8',timeout:30000});};
+ const scan=async(text:string)=>{const file=join(dir,'README.md');await writeFile(file,text);return spawnAsync(process.execPath,[script,'--files',file],{timeout:30000});};
  for(const text of ['`search_docs` reads only the guides of core-pinned add-ons.\n','`urlcode docs search` skips independent packages, which are never read.\n']){
   const result=await scan(text);
   assert.equal(result.status,1,`should reject: ${text}`);
