@@ -291,6 +291,23 @@ test('a scaffold request carries the installed principal providers from their de
   assert.ok(plain.notes.includes('principal providers: []'), plain.notes.join('\n'));
 });
 
+test('extensions add and remove load the project once before and once after their YAML edit (#1105)', async t => {
+  const dir = await site(t), m = manifest();
+  // Every configuration load is a fresh worker (config.ts), and add/remove start no other kind, so the process's own
+  // `worker` event counts loads without a hook in the product.
+  let loads = 0;
+  const count = (): void => { loads++; };
+  process.on('worker', count);
+  t.after(() => { process.off('worker', count); });
+  const loadsDuring = async (step: () => Promise<unknown>): Promise<number> => { const start = loads; await step(); return loads - start; };
+
+  assert.equal(await loadsDuring(() => assert.rejects(addAddons(dir, 'extension', ['beta'], { manifest: m }), /re-run with the acknowledgement/)), 1, 'a refused add loads only the project before the change');
+  assert.equal(await loadsDuring(() => addAddons(dir, 'extension', ['beta'], { manifest: m, acknowledgements: ['beta:risky'] })), 2, 'add: once before, once after the edit');
+  assert.equal(await loadsDuring(() => assert.rejects(removeAddon(dir, 'extension', 'alpha', { manifest: m }), /beta requires alpha/)), 0, 'a refusal from the installed set loads nothing');
+  assert.equal(await loadsDuring(() => removeAddon(dir, 'extension', 'beta', { manifest: m })), 2, 'remove: once before, once after the edit');
+  assert.equal(await loadsDuring(() => addAddons(dir, 'artifact', ['notes'], { manifest: m })), 0, 'an artifact never touches the YAML');
+});
+
 test('extensions add installs the capability only; --example adds the example on top (#711)', async t => {
   const m = manifest();
   const blank = await site(t);
