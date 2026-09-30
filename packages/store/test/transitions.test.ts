@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Collection, createStore } from '../src/index.ts';
 import { direct, race } from './direct.ts';
-import { counts, records } from './rows.ts';
+import { counts, execute, records } from './rows.ts';
 
 const requests = {
   mount: '/api/requests', ownership: 'owner', idempotency: { maxKeys: 50 },
@@ -153,4 +153,46 @@ test('activation refuses a transition it cannot serve safely', async t => {
   const activation = { origin: 'https://x.example.test', target: 'node' as const, projectSha256: 'a'.repeat(64), root: '/nonexistent/app' };
   await assert.rejects(async () => store.registration.activate(config, { ...activation, mounts: ['/api/requests'], principalMounts: ['/api/requests'] }), /route \/api\/approvals\/\* with extension: store is not declared/);
   await assert.rejects(async () => store.registration.activate(config, { ...activation, mounts, principalMounts: ['/api/requests'] }), /by: others needs route \/api\/approvals\/\* guarded by a principal-providing policy/);
+});
+
+test('#1015: a principal the records export or a host transaction is given must be a principal id before anything is stamped or recorded', async t => {
+  const docs = {
+    mount: '/api/docs', schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 20 }, status: { type: 'string', enum: ['draft', 'done'] }, by: { type: 'string', maxLength: 128 } } },
+    defaults: { status: 'draft' }, readOnlyProperties: ['status', 'by'], transitions: { finish: { from: { status: 'draft' }, set: { status: 'done' }, stamp: { by: 'actor' } } },
+  };
+  const store = await direct(t, { collections: { docs } }, { mounts: ['/api/docs'] });
+  const exported = store.first.records('docs');
+  const { record } = await exported.create(null, { title: 'a' });
+  const id = record.id as string, stored = records(store.database, 'docs');
+  const principalRequired = { status: 401, code: 'principal_required' };
+  for (const bad of ['\ud800x', '\udc00', 'x'.repeat(200), 'x y', '', 'é']) {
+    await assert.rejects(exported.transition({ id: bad }, id, 'finish'), principalRequired, JSON.stringify(bad));
+    assert.throws(() => store.first.transaction(tx => tx.records('docs').transition({ id: bad }, id, 'finish')), principalRequired, JSON.stringify(bad));
+    await assert.rejects(exported.create({ id: bad }, { title: 'b' }), principalRequired);
+    await assert.rejects(exported.update({ id: bad }, id, { title: 'b' }), principalRequired);
+    assert.throws(() => exported.get({ id: bad }, id), principalRequired);
+    assert.throws(() => exported.list({ id: bad }), principalRequired);
+    assert.throws(() => store.first.transaction(tx => tx.records('docs').remove({ id: bad }, id)), principalRequired);
+  }
+  assert.deepEqual(records(store.database, 'docs'), stored, 'nothing was written');
+  // A principal id, or none, still runs: the stamp is the id, or anonymous.
+  assert.equal((await exported.transition({ id: 'rita' }, id, 'finish')).record.by, 'rita');
+  const other = (await exported.create(undefined, { title: 'c' })).record.id as string;
+  assert.equal(store.first.transaction(tx => tx.records('docs').transition(null, other, 'finish')).record.by, 'anonymous');
+  assert.equal((await store.call('GET', '/api/docs')).status, 200);
+  await store.open();
+});
+
+test('#1015: a stored record the declaration cannot serve answers a 503 that names that cause, not a reload', async t => {
+  const docs = { mount: '/api/docs', schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 20 } } } };
+  const store = await direct(t, { collections: { docs } }, { mounts: ['/api/docs'] });
+  const id = (await store.call('POST', '/api/docs', { body: { title: 'a' } })).body!.id as string;
+  execute(store.database, `UPDATE store_records SET data = json_set(data, '$.title', '${'x'.repeat(30)}') WHERE id = '${id}'`);
+  const expected = { error: { code: 'storage_unavailable', message: 'A stored record does not match this collection\'s declaration' } };
+  for (const path of ['/api/docs', `/api/docs/${id}`]) {
+    const answered = await store.call('GET', path);
+    assert.deepEqual([answered.status, answered.body], [503, expected], path);
+  }
+  const patched = await store.call('PATCH', `/api/docs/${id}`, { body: { title: 'b' } });
+  assert.deepEqual([patched.status, patched.body], [503, expected]);
 });
