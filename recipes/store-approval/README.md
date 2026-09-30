@@ -38,34 +38,32 @@ site, `urlcode extensions add auth store` installs both and registers them in
 `host.mjs`, outside the project. The database file stays outside the project,
 and one server process serves it.
 
-Who may review is data, not YAML. `urlcode test` and `audit` run on a fresh,
-throwaway database and seed the reviewer the fixtures sign in as, `rita`, from
-`tests/seed.json`. A served site adds each reviewer's principal id:
+Who may review is data, not YAML. `urlcode test` and `audit` run on fresh,
+throwaway databases and seed them from `tests/seed.json`: the accounts the
+fixtures sign in as (`alice`, `bob`, `rita`) under `auth.users`, and the
+reviewer, `rita`, under `store.members`. A served site adds each reviewer's
+user id (`npx urlcode-auth find-user --email <email>` prints it):
 
 ```sh
 npx urlcode-store members add --database /operator/data/store.sqlite --project /absolute/site/app \
   --collection reviewers --principal <user id>
 ```
 
-With the auth extension, `npx urlcode-auth find-user --email <email>` prints
-that id.
-
-**The fixtures need a stand-in principal.** They name their callers with
-`Authorization: Bearer <id>` (`alice`, `bob`, `rita`), which only the stand-in
-principal in the [store-booking recipe](../store-booking/README.md#operator-prerequisites)
-accepts. It is a protocol example, not authentication, and the real auth
-extension does not accept it. In a site created with `extensions add auth`,
-each caller signs in instead: write the caller's requests as a `steps` fixture
-that first posts to `/api/auth/sign-in/email`, and add the accounts to
-`tests/seed.json` under `auth.users`, with the ids `store.members` names
-([authenticated routes][docs/READINESS.md#authenticated-routes-auth-true]).
+**The fixtures sign in through the real auth extension**, and cover its mount
+with an asserted sign-in and `GET /api/auth/get-session`, as in the
+[store-booking recipe](../store-booking/README.md#operator-prerequisites),
+which also shows the host. `routes/auth.yaml` is the auth mount
+`urlcode extensions add auth` writes: in a site created with
+`extensions add auth store`, copy `urlcode.yaml`, `tests/requests.json` and
+`tests/seed.json` into `app/` unchanged and set `expectRoutes` in
+`app/tests/audit.json` to 5.
 
 ## The local loop
 
 ```sh
 urlcode validate --local --project . --host-file /operator/host.mjs --local-review
 urlcode test --project . --host-file /operator/host.mjs --local-review
-urlcode audit --project . --expect-routes 4 --host-file /operator/host.mjs --local-review
+urlcode audit --project . --expect-routes 5 --host-file /operator/host.mjs --local-review
 ```
 
 `--local-review` pins the host to the project's current revision for that one
@@ -74,12 +72,12 @@ checked without a new pin ([the local review loop][docs/EXTENSIONS.md#the-local-
 Serving is not: `urlcode serve` and `urlcode dev` need the revision you
 reviewed and the public `--origin`.
 
-Every `test` and `audit` run starts from an empty, seeded database, so the
+Every `test` and `audit` run starts from empty, seeded databases, so the
 fixtures leave the approved request behind without affecting the next run.
 
 ## Before exposing it
 
-Keep `auth: true` on all four routes: the transition and readers mounts check
+Keep `auth: true` on all four store routes: the transition and readers mounts check
 their members only once a principal is present. Send `If-Match` with the
 `ETag` a reviewer read on `approve`, so nobody approves a version they did
 not see. `showOwner` shows an opaque id; to show a name, keep it in a property
@@ -89,6 +87,5 @@ so run it on the self-hosted runtime with a persistent disk.
 <!-- urlcode-current-version:start -->
 [docs/STORE.md#membership-gates-and-cross-owner-reads]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#membership-gates-and-cross-owner-reads
 [docs/STORE.md#edit-and-delete-states]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#edit-and-delete-states
-[docs/READINESS.md#authenticated-routes-auth-true]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#authenticated-routes-auth-true
 [docs/EXTENSIONS.md#the-local-review-loop]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-local-review-loop
 <!-- urlcode-current-version:end -->

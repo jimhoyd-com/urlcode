@@ -1,3 +1,10 @@
 {
+  "auth": {
+    "users": [
+      {"id": "alice", "email": "alice@example.test", "password": "alice-local-demo-password"},
+      {"id": "bob", "email": "bob@example.test", "password": "bob-local-demo-password"},
+      {"id": "carol", "email": "carol@example.test", "password": "carol-local-demo-password"}
+    ]
+  },
   "store": { "members": { "staff": ["alice", "bob"] } }
 }

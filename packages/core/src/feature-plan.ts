@@ -18,7 +18,9 @@ export const featurePlanMaxGoalLength=512;
  */
 export interface FeaturePlanOptions { target?:string; extensions?:readonly RuntimeExtension[]|undefined; origin?:string|undefined; }
 export interface FeaturePlan {
- format:1; goalTerms:string[]; target:CapabilityTarget; project:{routes:number;extensions:string[]};
+ format:1; goalTerms:string[]; target:CapabilityTarget;
+ /** Null when there is no project yet (#1000): the plan then comes from this core's catalogs alone, and `withoutProject` says what was skipped. */
+ project:{routes:number;extensions:string[]}|null; withoutProject?:string;
  applicable:{capabilities:{name:CapabilityName;support:string;reason:string}[];recipes:{name:string;description:string;matched:string[]}[]};
  extensions:{required:{name:string;reason:string;declared:boolean;registered:boolean;target:string;artifact:'none'|'installed'|'unpinned'|'modified'|'invalid'}[];surfaces:PlannedSurface[];ordering:{status:'operator-resolved';names:string[];note:string}};
  outline:{kind:string;note:string}[]; applicationCode:{requirement:string;reason:string}[]; unsupported:{requirement:string;reason:string}[]; next:string[]; estimatedTokens:number;
@@ -36,10 +38,10 @@ const plannedSurfaceLimit=12;
  * Every extension's authoring contract the planner may read, by name: a registration from the loaded host wins, then the
  * descriptor installed in the site around the project, then the release catalog. Data only; nothing is imported.
  */
-async function authoringContracts(project:string,registrations:readonly RuntimeExtension[],catalog:AddonCatalog|undefined):Promise<Map<string,{source:AuthoringSource;authoring:ExtensionAuthoringContract}>> {
+async function authoringContracts(project:string|undefined,registrations:readonly RuntimeExtension[],catalog:AddonCatalog|undefined):Promise<Map<string,{source:AuthoringSource;authoring:ExtensionAuthoringContract}>> {
  const contracts=new Map<string,{source:AuthoringSource;authoring:ExtensionAuthoringContract}>();
  for(const registration of registrations)if(registration.authoring)contracts.set(registration.name,{source:'registered',authoring:registration.authoring});
- try {
+ if(project!==undefined)try {
   for(const provider of (await installedProviders(dirname(resolve(project)))).providers.values())
    if(provider.descriptor.kind==='extension'&&provider.descriptor.authoring&&!contracts.has(provider.name))contracts.set(provider.name,{source:'installed',authoring:provider.descriptor.authoring});
  } catch {/* no readable site is an ordinary absence */}
@@ -170,8 +172,11 @@ function selectedRecipes(goalTerms:string[], recipes:Recipe[], surfaceTerms:Read
  * inert artifacts, installed add-on descriptors, and registrations passed by the
  * already-opened operator session. It intentionally has no filesystem path, host-file, binding, or
  * execution argument.
+ *
+ * `project` undefined plans before a site exists (#1000): the recipes and the extensions the goal needs, which decide
+ * `urlcode init --with`, from this core's catalogs; nothing project-specific is read or reported.
  */
-export async function planFeature(project:string,goal:string,options:FeaturePlanOptions={}):Promise<FeaturePlan> {
+export async function planFeature(project:string|undefined,goal:string,options:FeaturePlanOptions={}):Promise<FeaturePlan> {
  if(typeof goal!=='string'||goal.length<1||goal.length>featurePlanMaxGoalLength)throw new Error(`Feature goal must be 1 to ${featurePlanMaxGoalLength} characters`);
  const goalTerms=terms(goal),target=normalizeCapabilityTarget(options.target??'self-hosted');
  // "signed" in a signature goal ("an HMAC-signed webhook") or "sign" in "sign-up" is not about signing a person in.
@@ -184,7 +189,7 @@ export async function planFeature(project:string,goal:string,options:FeaturePlan
  // Only a strong surface requires its extension or steers recipe selection (#932).
  const surfaceTerms=new Map<string,string[]>();
  for(const surface of candidates)if(surface.strong)surfaceTerms.set(surface.extension,[...new Set([...(surfaceTerms.get(surface.extension)??[]),...surface.matched])]);
- const context=await buildContext(project,{target,projectFlag:'.',origin:options.origin}), recipes=selectedRecipes(recipeGoalTerms,await listRecipes(),surfaceTerms);
+ const context=project===undefined?undefined:await buildContext(project,{target,projectFlag:'.',origin:options.origin}), recipes=selectedRecipes(recipeGoalTerms,await listRecipes(),surfaceTerms);
  const listQuery=recipeGoalTerms.some(term=>listQueryTerms.includes(term));
  const capabilities=[...new Set([...recipes.flatMap(recipe=>recipe.capabilities??[]),...(listQuery?['parameters']:[])].filter((name):name is CapabilityName=>typeof name==='string'))].sort();
  const catalog=getCapabilities(target), rows=new Map(catalog.capabilities.map(row=>[row.capability,row]));
@@ -203,8 +208,8 @@ export async function planFeature(project:string,goal:string,options:FeaturePlan
  const surfaces=candidates.filter(surface=>wanted.has(surface.extension)).slice(0,plannedSurfaceLimit).map(({strong:_strong,...surface})=>surface);
  const declaredTargets=addonCatalog?declaredExtensionTargets(addonCatalog):new Map<string,string[]>();
  let artifacts:Awaited<ReturnType<typeof describeInstalledArtifacts>>['artifacts']=[];
- try {artifacts=(await describeInstalledArtifacts(project)).artifacts;} catch {/* no site is an ordinary absence, never a reason to read elsewhere */}
- const declared=new Set(context.project.extensions);
+ if(project!==undefined)try {artifacts=(await describeInstalledArtifacts(project)).artifacts;} catch {/* no site is an ordinary absence, never a reason to read elsewhere */}
+ const declared=new Set(context?.project.extensions??[]);
  const required=[...wanted].sort().map(name=>{
   const registration=registrations.get(name), artifact=artifacts.find(item=>item.name===name);
   // The registration decides; without one, the release descriptor's declared targets can still refuse (never confirm) a target.
@@ -223,7 +228,8 @@ export async function planFeature(project:string,goal:string,options:FeaturePlan
  if(recipes.some(recipe=>recipe.name==='contact-form'))applicationCode.push({requirement:'Product-specific form presentation and submission rules',reason:'The contact recipe covers a minimal page, a bounded JSON endpoint and an optional signal only; email delivery, product-specific UI and business workflow stay application code.'});
  if(!recipes.length)applicationCode.push({requirement:'Feature-specific behavior',reason:'No bundled declarative recipe matched the bounded goal terms. Check capability and extension contracts before writing focused application code.'});
  const plan:Omit<FeaturePlan,'estimatedTokens'>={
-  format:1,goalTerms,target,project:{routes:context.project.routes,extensions:context.project.extensions},
+  format:1,goalTerms,target,project:context?{routes:context.project.routes,extensions:context.project.extensions}:null,
+  ...(context?{}:{withoutProject:`No project yet: planned from this core's recipe and extension catalogs only; project routes, declared extensions, installed add-ons and artifacts were not read. Create the site with \`urlcode init <directory>${wanted.size?` --with ${[...wanted].sort().join(',')}`:''}\`, then plan again inside it for the project-specific parts.`}),
   applicable:{capabilities:capabilities.map(name=>{const decision=rows.get(name)?.targets[target];return {name,support:decision?.support??'unknown',reason:decision?.reason??'Not in this revision\'s capability catalog'};}),recipes:recipes.map(recipe=>({name:recipe.name,description:recipe.description,matched:[...new Set([...matchedTerms(recipeGoalTerms,recipe),...extensionTerms(recipe,surfaceTerms)])].slice(0,8)}))},
   extensions:{required,surfaces:surfaces.map(({extension,surface,kind,source,matched})=>({extension,surface,kind,source,matched})),ordering:{status:'operator-resolved',names:[...wanted].sort(),note:'Extension package selection, prerequisites, and canonical activation order are resolved by the operator-approved init/host composition. Add one with `urlcode extensions add <name>`; this read-only plan installs nothing and never turns project YAML into an operator decision.'}},
   outline:[...(listQuery?[listQueryOutline]:[]),...surfaces.map(surface=>({kind:`${surface.extension} ${surface.surface}`,note:`${surface.description}${surface.path?` (${surface.path})`:''}`})),...recipes.map(recipe=>outline[recipe.name]??{kind:runsProjectCode(recipe)?`${recipe.name} (runs project code)`:`${recipe.name} (declarative)`,note:recipe.description})],applicationCode,unsupported,

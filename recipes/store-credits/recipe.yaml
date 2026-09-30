@@ -4,12 +4,12 @@ tags: [credits, credit, wallet, wallets, balance, balances, transfer, transfers,
 complexity: advanced
 capabilities: [enabled, extension, methods, policies.extensions]
 targets: {self-hosted: conditional, cloudflare: refused, aws: refused, vercel: refused, static: refused}
-routes: 2
+routes: 3
 services:
   - name: store extension
     description: The store (`urlcode extensions add store`) keeps the wallets and the issuers list in its SQLite database outside the project and runs every transfer in one transaction.
   - name: auth extension
-    description: "A principal-providing auth extension behind `auth: true` (`urlcode extensions add auth` in a real site); the README shows the stand-in bearer principal the bundled fixtures sign in with."
+    description: "The auth extension (`urlcode extensions add auth`, Better Auth) behind `auth: true`, mounted at /api/auth/* by routes/auth.yaml; the fixtures sign in through it as the accounts tests/seed.json declares."
 grants:
   - kind: extension
     description: The host registers the project revision it is pinned to. `--local-review` pins validate, test and audit to the current revision for one local run; serving needs the reviewed revision (--policy or PROJECT_SHA256).
@@ -18,20 +18,20 @@ grants:
 inputs:
   - name: issuers
     file: urlcode.yaml
-    description: Who may issue credits is data, not YAML. The operator adds a principal id with `urlcode-store members add` before issuing; test and audit runs seed the issuer `treasurer` from tests/seed.json into their throwaway database.
+    description: Who may issue credits is data, not YAML. The operator adds a principal id with `urlcode-store members add` before issuing; test and audit runs seed the accounts `treasurer`, `alice` and `bob` and the issuer `treasurer` from tests/seed.json into their throwaway databases.
   - name: directory
     file: urlcode.yaml
     description: The handle's pattern and what the directory mount shows (its readers `properties`); list only what every signed-in user may know.
   - name: supply
     file: urlcode.yaml
     description: The issuer floor (`min` on issue) bounds the credit outstanding; the wallet limits and the idempotency window.
-files: [urlcode.yaml, tests/requests.json, tests/seed.json, README.md]
+files: [urlcode.yaml, routes/auth.yaml, tests/requests.json, tests/seed.json, README.md]
 tests:
   fixtures: tests/requests.json
   commands:
     - urlcode validate --local --project . --host-file /operator/host.mjs --local-review
     - urlcode test --project . --host-file /operator/host.mjs --local-review
-    - urlcode audit --project . --expect-routes 2 --host-file /operator/host.mjs --local-review
+    - urlcode audit --project . --expect-routes 3 --host-file /operator/host.mjs --local-review
 behavior:
   - POST /api/wallets opens a wallet at balance 0 under a unique lower-case handle; a body that names the balance answers 422, so nobody mints by writing it, and a handle another wallet holds answers 409 value_taken
   - GET /api/directory?handle=bob answers that one wallet's id and handle to any signed-in user, never its balance or owner, so a payer finds the recipient without trusting a name anyone could claim

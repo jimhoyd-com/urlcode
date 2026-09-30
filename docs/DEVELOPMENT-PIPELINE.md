@@ -74,6 +74,14 @@ packing anything, a package whose `exports` or `bin` name a file that is not
 there, and names each missing file and the build that makes it (#960). It does
 not detect a stale build: `dist/` older than its source still packs.
 
+The core tarball it packs carries the `addons.json` it writes beside it (each
+add-on tarball pinned by sha512), never the build's development manifest with
+its `file:` links into the checkout; it packs core from a staged copy, so the
+checkout's `dist/addons.json` is left as it is, and it refuses to pack core
+with an unpinned manifest (#1002). A site created from such a core, where
+`package.json` names core by its bare version, installs the core tarball
+packed beside the add-ons instead of the registry release of the same version.
+
 ## Current-version references in documentation
 
 When reader-facing Markdown must name the current core version, wrap the

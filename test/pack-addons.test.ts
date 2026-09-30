@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { assertBuilt, missingEntryFiles } from '../scripts/pack-addons.ts';
+import { assertBuilt, missingEntryFiles, packWithManifest, shippedManifest, shippedManifestProblems } from '../scripts/pack-addons.ts';
 import { extensionEntryError } from '../packages/core/src/addon-install.ts';
 
 // An add-on packed before it was built installs, then fails to load (#960).
@@ -47,4 +48,30 @@ test('an installed add-on whose ./extension file is missing is told apart from o
   await writeFile(join(site, 'node_modules', '@jimhoyd', 'urlcode-plain', 'package.json'), JSON.stringify({ name: '@jimhoyd/urlcode-plain', version: '1.0.0', exports: { '.': './index.js' } }));
   assert.equal(extensionEntryError('@jimhoyd/urlcode-plain', resolveError('@jimhoyd/urlcode-plain/extension')).message, '@jimhoyd/urlcode-plain is installed but has no ./extension export');
   assert.equal(extensionEntryError('@jimhoyd/urlcode-absent', resolveError('@jimhoyd/urlcode-absent/extension')).message, '@jimhoyd/urlcode-absent is installed but has no ./extension export');
+});
+
+// The core tarball pack-addons makes carries the manifest written beside it, never the build's development one (#1002).
+test('a packed core carries the pinned add-on manifest, never the development one, and the checkout is left alone', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'urlcode-pack-core-test-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const directory = join(root, 'core'), out = join(root, 'out');
+  await mkdir(join(directory, 'dist'), { recursive: true });
+  await mkdir(out);
+  const development = JSON.stringify({ format: 1, version: '1.0.0', addons: { demo: { kind: 'extension', package: '@jimhoyd/urlcode-demo', description: 'demo', requires: [], url: `file:${join(root, 'packages', 'demo')}`, integrity: null } } }, null, 2) + '\n';
+  const packageJson = JSON.stringify({ name: '@jimhoyd/urlcode-core-demo', version: '1.0.0', type: 'module', files: ['dist'], scripts: { prepare: 'node scripts/build.ts' } }, null, 2) + '\n';
+  await writeFile(join(directory, 'package.json'), packageJson);
+  await writeFile(join(directory, 'dist', 'addons.json'), development);
+  await writeFile(join(directory, 'dist', 'index.js'), 'export {};\n');
+  assert.deepEqual(shippedManifestProblems(development), [`demo is not pinned: file:${join(root, 'packages', 'demo')} with integrity null is a development link`]);
+  await assert.rejects(packWithManifest(directory, out, development), /Refusing to pack core with an unpinned add-on manifest/);
+
+  const pinned = JSON.stringify({ format: 1, version: '1.0.0', addons: { demo: { kind: 'extension', package: '@jimhoyd/urlcode-demo', description: 'demo', requires: [], url: `file:${join(out, 'jimhoyd-urlcode-demo-1.0.0.tgz')}`, integrity: `sha512-${'A'.repeat(86)}==` } } }, null, 2) + '\n';
+  assert.deepEqual(shippedManifestProblems(pinned), []);
+  const tarball = await packWithManifest(directory, out, pinned);
+  assert.equal(shippedManifest(tarball), pinned);
+  assert.deepEqual(shippedManifestProblems(shippedManifest(tarball)), []);
+  assert.equal(await readFile(join(directory, 'dist', 'addons.json'), 'utf8'), development, "the checkout's development manifest is not touched");
+  assert.equal(await readFile(join(directory, 'package.json'), 'utf8'), packageJson);
+  const published = JSON.parse(execFileSync('tar', ['-xOzf', tarball, 'package/package.json'], { encoding: 'utf8' })) as { scripts?: Record<string, string> };
+  assert.equal(published.scripts?.prepare, undefined, 'the published manifest drops prepare');
 });

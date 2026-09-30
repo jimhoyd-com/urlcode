@@ -39,7 +39,7 @@ test('context, task context and feature planning compile a sitemap project with 
  assert.ok(context.routes!.some(route=>route.path==='/sitemap.xml'));
  assert.ok(context.commands!.validate!.endsWith(` --origin ${origin} --local-review`));
  assert.equal((await buildTaskContext(root,'redirects',{origin})).project?.routes,2);
- assert.equal((await planFeature(root,'redirect',{origin})).project.routes,2);
+ assert.equal((await planFeature(root,'redirect',{origin})).project?.routes,2);
  // No origin supplied: the prerequisite is named, not guessed.
  for(const attempt of [()=>buildContext(root),()=>buildTaskContext(root,'redirects'),()=>planFeature(root,'redirect')])await assert.rejects(attempt(),/--origin https:\/\/your\.host/);
 });
@@ -52,6 +52,26 @@ test('the CLI context, context --task and plan-feature forward --origin (#791)',
   const bare=spawnSync(process.execPath,['--conditions=development',cli,...args,'--project',root],{encoding:'utf8'});
   assert.notEqual(bare.status,0,args.join(' '));assert.match(bare.stderr,/--origin/);
  }
+});
+
+test('plan-feature plans before init: with no project it answers from the catalogs and says what it skipped (#1000)',async t=>{
+ const dir=await directory(t),goal='room booking with one-hour slots, only members can book, owners can cancel';
+ const plan=await planFeature(undefined,goal);
+ assert.equal(plan.project,null);
+ assert.ok(plan.applicable.recipes.some(recipe=>recipe.name==='store-booking'),JSON.stringify(plan.applicable.recipes));
+ assert.deepEqual(plan.extensions.required.map(item=>[item.name,item.declared,item.artifact]),[['auth',false,'none'],['store',false,'none']]);
+ assert.match(plan.withoutProject??'',/^No project yet: .*`urlcode init <directory> --with auth,store`/);
+ // From a directory that is not a project, the CLI plans the same way; a --project that names nothing is still an error.
+ const run=spawnSync(process.execPath,['--conditions=development',cli,'plan-feature',goal,'--json'],{cwd:dir,encoding:'utf8'});
+ assert.equal(run.status,0,run.stderr);
+ const printed=JSON.parse(run.stdout) as {project:unknown;withoutProject?:string};
+ assert.equal(printed.project,null);assert.match(printed.withoutProject??'',/--with auth,store/);
+ const named=spawnSync(process.execPath,['--conditions=development',cli,'plan-feature',goal,'--project',join(dir,'missing'),'--json'],{cwd:dir,encoding:'utf8'});
+ assert.notEqual(named.status,0);assert.match(named.stderr,/no-project/);
+ // Inside a project nothing changes: the plan reads it.
+ await projectAt(join(dir,'site'),helloYaml);
+ const inside=JSON.parse(spawnSync(process.execPath,['--conditions=development',cli,'plan-feature','redirect','--json'],{cwd:join(dir,'site'),encoding:'utf8'}).stdout) as {project:{routes:number};withoutProject?:string};
+ assert.equal(inside.project.routes,1);assert.equal(inside.withoutProject,undefined);
 });
 
 test('MCP get_context and plan_feature compile with the server origin and name it when it is missing (#791)',async t=>{

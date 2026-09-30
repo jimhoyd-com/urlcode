@@ -40,32 +40,32 @@ export interface Budget {
 // packs about 800 bytes larger. When a PR hits a limit and the growth is
 // intended, re-measure every package and reset all of them by this policy
 // rather than raising one by the overshoot, and say why in the PR.
-// Baseline: 1050708/4143195/531 core, 27418/89089/26 audit, 20313/63962/14
-// auth, 158405/619315/36 store, 33066/136737/12 mcp, 12716/50521/7
+// Baseline: 1060611/4192043/544 core, 27952/90551/26 audit, 21639/68688/14
+// auth, 160256/624949/36 store, 33066/136737/12 mcp, 12733/50583/7
 // store-schema (packed/unpacked bytes/entries), each limit rounded up to a KiB.
 export const budgets: Record<string, Budget> = {
   '@jimhoyd/urlcode': {
-    packed: 1051 * 1024,
-    unpacked: 4127 * 1024,
-    entries: 542,
+    packed: 1060 * 1024,
+    unpacked: 4176 * 1024,
+    entries: 555,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },
   '@jimhoyd/urlcode-audit': {
-    packed: 33 * 1024,
-    unpacked: 112 * 1024,
+    packed: 34 * 1024,
+    unpacked: 113 * 1024,
     entries: 28,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
   '@jimhoyd/urlcode-auth': {
-    packed: 26 * 1024,
-    unpacked: 87 * 1024,
+    packed: 28 * 1024,
+    unpacked: 92 * 1024,
     entries: 16,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
   '@jimhoyd/urlcode-store': {
-    packed: 171 * 1024,
-    unpacked: 666 * 1024,
+    packed: 173 * 1024,
+    unpacked: 672 * 1024,
     entries: 38,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
