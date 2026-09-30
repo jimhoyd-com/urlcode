@@ -1,11 +1,11 @@
 # YAML guide and recipe book
 
-<!-- urlcode-current-version:start -->
+<!-- x-release-please-start-version -->
 This guide targets URLCode 0.6.5. Start with the function example below,
 then add only the fields your route needs. The authoritative machine-readable
 shape is [JSON Schema](../schemas/urlcode.schema.json); semantic rules are in the
 [specification](SPECIFICATION.md). Unsupported fields fail validation.
-<!-- urlcode-current-version:end -->
+<!-- x-release-please-end -->
 
 ## Run all the examples
 

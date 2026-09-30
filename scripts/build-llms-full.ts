@@ -6,7 +6,7 @@ import {dirname,posix,resolve} from 'node:path';
 export const DOCUMENTS: readonly string[]=['docs/FRAMEWORK.md','docs/CONCEPTS.md','docs/AI-AUTHORING.md','docs/YAML-GUIDE.md','docs/YAML-REFERENCE.md','docs/SPECIFICATION.md','docs/ROUTING.md','docs/HTTP.md','docs/MIDDLEWARE.md','docs/ASSETS.md','docs/POLICIES.md','docs/SITE.md','docs/CONDITIONS.md','docs/EGRESS.md','docs/EXTENSIONS.md','docs/EXTENSION-REFERENCE.md','docs/FUNCTION-SECURITY.md'];
 // The repository tree at a release tag. llms-full.txt ships in the npm package, so
 // an installed copy links the docs of its own version, never main (#938); the tag
-// comes from package.json, and `npm run release:bump` regenerates this file.
+// comes from package.json, and the release pull request regenerates this file (scripts/release-versions.ts sync).
 export const githubBlob=(version: string): string=>`https://github.com/jimhoyd-com/urlcode/blob/v${version}/`;
 // Rewrites relative Markdown link targets in a document at `relPath` (repo-relative,
 // POSIX separators) to absolute URLs under `base`. Absolute URLs, mailto: and

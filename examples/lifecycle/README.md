@@ -15,6 +15,6 @@ The function keeps notes under `URLCODE_DATA_DIR`, which `urlcode test` points a
 fresh temporary directory for each run. All data is synthetic. See the
 [fixture reference][docs/READINESS.md#multi-step-fixtures].
 
-<!-- urlcode-current-version:start -->
+<!-- x-release-please-start-version -->
 [docs/READINESS.md#multi-step-fixtures]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#multi-step-fixtures
-<!-- urlcode-current-version:end -->
+<!-- x-release-please-end -->

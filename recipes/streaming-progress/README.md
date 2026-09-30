@@ -39,7 +39,7 @@ Streaming is self-hosted only: the route is a trusted function, and AWS,
 Vercel, Cloudflare and static refuse the project before serving rather than
 buffering it. `stream: true` cannot be combined with `sandbox: true`.
 
-<!-- urlcode-current-version:start -->
+<!-- x-release-please-start-version -->
 [docs/SPECIFICATION.md#streamed-responses]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SPECIFICATION.md#streamed-responses
 [docs/OPERATIONS.md#streamed-responses]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OPERATIONS.md#streamed-responses
-<!-- urlcode-current-version:end -->
+<!-- x-release-please-end -->

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/v17.6.0/schemas/config.json",
+  "include-component-in-tag": false,
+  "include-v-in-tag": true,
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": true,
+  "skip-changelog": true,
+  "packages": {
+    ".": {
+      "release-type": "node",
+      "package-name": "@jimhoyd/urlcode",
+      "extra-files": [
+        { "type": "generic", "path": "packages/core/src/release.ts" },
+        { "type": "generic", "path": "llms.txt" },
+        { "type": "generic", "path": "**/*.md", "glob": true },
+        { "type": "json", "path": "packages/audit/package.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "packages/audit/package.json", "jsonpath": "$.peerDependencies['@jimhoyd/urlcode']" },
+        { "type": "json", "path": "packages/auth/package.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "packages/auth/package.json", "jsonpath": "$.peerDependencies['@jimhoyd/urlcode']" },
+        { "type": "json", "path": "packages/mcp/package.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "packages/mcp/package.json", "jsonpath": "$.peerDependencies['@jimhoyd/urlcode']" },
+        { "type": "json", "path": "packages/store/package.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "packages/store/package.json", "jsonpath": "$.peerDependencies['@jimhoyd/urlcode']" },
+        { "type": "json", "path": "packages/store/package.json", "jsonpath": "$.peerDependencies['@jimhoyd/urlcode-audit']" },
+        { "type": "json", "path": "artifacts/store-schema/package.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "examples/cloudflare/package.json", "jsonpath": "$.dependencies['@jimhoyd/urlcode']" },
+        { "type": "json", "path": "examples/vercel/package.json", "jsonpath": "$.dependencies['@jimhoyd/urlcode']" },
+        { "type": "json", "path": "packaging/claude-plugin/.claude-plugin/plugin.json", "jsonpath": "$.version" },
+        { "type": "json", "path": ".claude-plugin/marketplace.json", "jsonpath": "$.metadata.version" }
+      ]
+    }
+  }
+}

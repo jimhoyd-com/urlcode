@@ -83,9 +83,9 @@ function grants. See
 and [readiness][docs/READINESS.md].
 URLCode is licensed under the Apache License 2.0.
 
-<!-- urlcode-current-version:start -->
+<!-- x-release-please-start-version -->
 [proofs/private-requests/client/main.js]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/private-requests/client/main.js
 [docs/EXTENSIONS.md#the-local-review-loop]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-local-review-loop
 [docs/FUNCTION-SECURITY.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/FUNCTION-SECURITY.md
 [docs/READINESS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md
-<!-- urlcode-current-version:end -->
+<!-- x-release-please-end -->

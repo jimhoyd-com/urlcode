@@ -780,7 +780,7 @@ non-HTTP(S) destinations, per-record ownership or a target other than Node
 See [capabilities and normalized route representation][docs/CAPABILITIES.md] for the target catalog,
 programmatic compatibility analysis and provider verification limits.
 
-<!-- urlcode-current-version:start -->
+<!-- x-release-please-start-version -->
 [docs/PROJECT-DIRECTION.md#design-principle-declarative-first]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/PROJECT-DIRECTION.md#design-principle-declarative-first
 [docs/EXTENSIONS.md#external-extensions-and-ai-tooling]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#external-extensions-and-ai-tooling
 [docs/SPECIFICATION.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SPECIFICATION.md
@@ -829,4 +829,4 @@ programmatic compatibility analysis and provider verification limits.
 [docs/PROVIDER-VERIFICATION.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/PROVIDER-VERIFICATION.md
 [docs/CAPABILITIES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CAPABILITIES.md
 [docs/EXTENSIONS.md#the-local-review-loop]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-local-review-loop
-<!-- urlcode-current-version:end -->
+<!-- x-release-please-end -->

@@ -84,8 +84,8 @@ not see. `showOwner` shows an opaque id; to show a name, keep it in a property
 the owner writes. Cloudflare, AWS, Vercel and static targets refuse the store,
 so run it on the self-hosted runtime with a persistent disk.
 
-<!-- urlcode-current-version:start -->
+<!-- x-release-please-start-version -->
 [docs/STORE.md#membership-gates-and-cross-owner-reads]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#membership-gates-and-cross-owner-reads
 [docs/STORE.md#edit-and-delete-states]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#edit-and-delete-states
 [docs/EXTENSIONS.md#the-local-review-loop]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-local-review-loop
-<!-- urlcode-current-version:end -->
+<!-- x-release-please-end -->

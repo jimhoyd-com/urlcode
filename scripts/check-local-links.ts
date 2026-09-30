@@ -43,7 +43,7 @@
 //                          `blob/main` or `tree/main`, which is not the version
 //                          installed (#916). Link this repository's
 //                          `blob/v<current version>/...` instead, inside a
-//                          `urlcode-current-version` block so the release bump
+//                          `x-release-please-start-version` block so the release pull request
 //                          moves it.
 //
 // A `blob/v<current version>/<path>` or `tree/v<current version>/<path>` link
@@ -200,12 +200,12 @@ export function pinnedRepositoryPath(target: string, version: string): string | 
  * cannot be followed from an installed copy; undefined when it can.
  */
 export function shippedLinkProblem(file: string, target: string): string | undefined {
-  if (/^https:\/\/github\.com\/jimhoyd-com\/urlcode\/(?:blob|tree)\/main(?:\/|$)/.test(target)) return `links \`${target}\`, this repository's main branch, from a file the package ships; an installed copy should read the docs of its own version: link \`blob/v<current version>/...\` inside a urlcode-current-version block.`;
+  if (/^https:\/\/github\.com\/jimhoyd-com\/urlcode\/(?:blob|tree)\/main(?:\/|$)/.test(target)) return `links \`${target}\`, this repository's main branch, from a file the package ships; an installed copy should read the docs of its own version: link \`blob/v<current version>/...\` inside a x-release-please-start-version block.`;
   if (/^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i.test(target)) return undefined;
   const directory = file.slice(0, file.lastIndexOf('/') + 1), packageRoot = /^packages\/[^/]+\//.exec(file)?.[0];
   if (!packageRoot) return undefined;
   const resolved = new URL(target.replace(/[#?].*$/, ''), `file:///${directory}`).pathname.slice(1);
-  return resolved.startsWith(packageRoot) ? undefined : `links \`${target}\`, outside ${packageRoot}, from a file the package ships; an installed copy has no such file: link this repository's \`blob/v<current version>/...\` inside a urlcode-current-version block.`;
+  return resolved.startsWith(packageRoot) ? undefined : `links \`${target}\`, outside ${packageRoot}, from a file the package ships; an installed copy has no such file: link this repository's \`blob/v<current version>/...\` inside a x-release-please-start-version block.`;
 }
 /** The Markdown files each package ships: README.md and every root-level .md its package.json `files` names. */
 async function shippedMarkdown(packages: readonly string[]): Promise<Set<string>> {

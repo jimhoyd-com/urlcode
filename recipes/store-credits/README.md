@@ -92,8 +92,8 @@ floor bounds the credit outstanding; raise it deliberately. Cloudflare, AWS,
 Vercel and static targets refuse the store, so run it on the self-hosted
 runtime with a persistent disk.
 
-<!-- urlcode-current-version:start -->
+<!-- x-release-please-start-version -->
 [docs/STORE.md#declared-transfers]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#declared-transfers
 [docs/STORE.md#a-directory-by-a-unique-handle]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#a-directory-by-a-unique-handle
 [docs/EXTENSIONS.md#the-local-review-loop]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-local-review-loop
-<!-- urlcode-current-version:end -->
+<!-- x-release-please-end -->

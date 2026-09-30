@@ -56,6 +56,6 @@ copies no static tree. [Prerendering][docs/PRERENDER.md] documents the
 helper, its options and guarantees, the limits and how a larger site generates
 its source project.
 
-<!-- urlcode-current-version:start -->
+<!-- x-release-please-start-version -->
 [docs/PRERENDER.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/PRERENDER.md
-<!-- urlcode-current-version:end -->
+<!-- x-release-please-end -->

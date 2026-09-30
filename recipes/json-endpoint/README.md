@@ -50,8 +50,8 @@ from a trusted function (`contact-form`). Reach
 for a `function` only for behavior YAML cannot express, such as the signature
 check in `webhook-receiver`.
 
-<!-- urlcode-current-version:start -->
+<!-- x-release-please-start-version -->
 [docs/HTTP.md#body-schema-and-input-patterns]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#body-schema-and-input-patterns
 [docs/HTTP.md#error-format]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#error-format
 [docs/EGRESS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EGRESS.md
-<!-- urlcode-current-version:end -->
+<!-- x-release-please-end -->

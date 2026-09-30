@@ -20,6 +20,6 @@ routes without `policies.security` high findings. The report's `compliance`
 section lists every finding with its rule, severity, route, message,
 remediation and the standard it cites.
 
-<!-- urlcode-current-version:start -->
+<!-- x-release-please-start-version -->
 [docs/COMPLIANCE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/COMPLIANCE.md
-<!-- urlcode-current-version:end -->
+<!-- x-release-please-end -->

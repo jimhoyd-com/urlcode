@@ -424,8 +424,8 @@ directory. See [artifacts][extensions-artifacts].
 Requires the matching `@jimhoyd/urlcode` core as a peer. Apache-2.0.
 
 <!-- The links below are pinned to this release, so an installed copy of this README reads the docs of the
-version it describes; `npm run release:bump` moves them and scripts/check-local-links.ts checks their targets. -->
-<!-- urlcode-current-version:start -->
+version it describes; the release pull request moves them and scripts/check-local-links.ts checks their targets. -->
+<!-- x-release-please-start-version -->
 [store-guide]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md
 [store-http-contract]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#http-contract
 [store-openapi]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#openapi
@@ -450,7 +450,7 @@ version it describes; `npm run release:bump` moves them and scripts/check-local-
 [store-edit-and-delete-states]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#edit-and-delete-states
 [store-a-directory-by-a-unique-handle]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#a-directory-by-a-unique-handle
 [extensions-artifacts]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#artifacts
-<!-- urlcode-current-version:end -->
+<!-- x-release-please-end -->
 
 <!-- extension-reference:start -->
 <!-- Generated from urlcode.json by scripts/generate-extension-reference.ts (npm run docs:extensions). Do not edit between these markers; change the extension's schema descriptions instead. -->

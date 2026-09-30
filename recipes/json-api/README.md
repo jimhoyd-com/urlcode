@@ -7,6 +7,6 @@ POST JSON with `Content-Type: application/json` to `/echo`. The function returns
 JSON envelope ([error format][docs/HTTP.md#error-format]). Do not submit credentials to an
 echo endpoint. This recipe grants no network or filesystem access.
 
-<!-- urlcode-current-version:start -->
+<!-- x-release-please-start-version -->
 [docs/HTTP.md#error-format]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#error-format
-<!-- urlcode-current-version:end -->
+<!-- x-release-please-end -->

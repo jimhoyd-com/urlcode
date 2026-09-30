@@ -12,6 +12,6 @@ vercel deploy
 with `createVercelHandler`. `includeFiles` must list every file the project
 reads; add to it when you add a page, download or static directory.
 
-<!-- urlcode-current-version:start -->
+<!-- x-release-please-start-version -->
 [docs/VERCEL.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/VERCEL.md
-<!-- urlcode-current-version:end -->
+<!-- x-release-please-end -->

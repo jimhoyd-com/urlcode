@@ -1501,7 +1501,7 @@ Protocol references: [MCP stdio transport](https://modelcontextprotocol.io/speci
 [MCP lifecycle](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle),
 and [MCP tools](https://modelcontextprotocol.io/specification/2025-11-25/server/tools).
 
-<!-- urlcode-current-version:start -->
+<!-- x-release-please-start-version -->
 [docs/CAPABILITIES.md#inspect-target-support]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CAPABILITIES.md#inspect-target-support
 [docs/EXTENSIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md
 [docs/ASSETS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/ASSETS.md
@@ -1526,4 +1526,4 @@ and [MCP tools](https://modelcontextprotocol.io/specification/2025-11-25/server/
 [docs/RECIPES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RECIPES.md
 [docs/RECIPES.md#adding-a-recipe-to-an-existing-project]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RECIPES.md#adding-a-recipe-to-an-existing-project
 [docs/EXTENSIONS.md#the-local-review-loop]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-local-review-loop
-<!-- urlcode-current-version:end -->
+<!-- x-release-please-end -->

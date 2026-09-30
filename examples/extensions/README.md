@@ -6,6 +6,6 @@ Runtime activation requires an external operator registry with a reviewed, stati
 
 The demo provider in the test is a protocol fixture, not authentication suitable for deployment. Its `role: member` requirement belongs to that synthetic registry: the first-party `auth` extension ([packages/auth][packages/auth/README.md], a Better Auth adapter) takes no policy keys, only `auth: true`.
 
-<!-- urlcode-current-version:start -->
+<!-- x-release-please-start-version -->
 [packages/auth/README.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth/README.md
-<!-- urlcode-current-version:end -->
+<!-- x-release-please-end -->

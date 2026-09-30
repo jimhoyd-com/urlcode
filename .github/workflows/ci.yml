@@ -29,54 +29,130 @@ permissions:
 # because the release packer and its determinism check start from the tree an
 # ordinary install leaves.
 jobs:
+  # Which jobs and legs this run needs (docs/CI.md). A pull request or a push is
+  # classified from its changed paths by dorny/paths-filter; everything else
+  # (the release run publish.yml asks for, a dispatch, the merge queue and the
+  # nightly sweep) is exact-commit coverage and is never classified. The
+  # classification fails closed: a skipped or failed filter step (history git
+  # cannot read, a bad SHA) and an empty diff leave every output at its full
+  # value, and every consuming `if:` skips only on an explicit `docs` or `false`,
+  # so a missing output runs the job rather than skipping it.
   plan:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      lane: ${{ steps.plan.outputs.lane }}
-      matrix: ${{ steps.plan.outputs.matrix }}
-      shards: ${{ steps.plan.outputs.shards }}
-      checks: ${{ steps.plan.outputs.checks }}
-      workspacePackages: ${{ steps.plan.outputs.workspacePackages }}
-      workspaceIntegration: ${{ steps.plan.outputs.workspaceIntegration }}
-      workspaceIntegrationMatrix: ${{ steps.plan.outputs.workspaceIntegrationMatrix }}
-      action: ${{ steps.plan.outputs.action }}
-      buildFidelity: ${{ steps.plan.outputs.buildFidelity }}
-      container: ${{ steps.plan.outputs.container }}
-      coreChecks: ${{ steps.plan.outputs.coreChecks }}
-      packageFloorSmoke: ${{ steps.plan.outputs.packageFloorSmoke }}
-      # Diagnostics for #744's high-impact selection. Jobs consume it through
-      # `shards`, `workspacePackages` and `workspaceIntegration*` above.
-      highImpact: ${{ steps.plan.outputs.highImpact }}
-      platformLegs: ${{ steps.plan.outputs.platformLegs }}
-      # Diagnostics for #824: the extensions a pull request's Windows Node 24
-      # `workspace-verify` entries run. Jobs consume it through `workspacePackages`.
-      windowsWorkspacePackages: ${{ steps.plan.outputs.windowsWorkspacePackages }}
+      exact: ${{ inputs.release == true || (github.event_name != 'pull_request' && github.event_name != 'push') }}
+      lane: ${{ steps.lanes.outcome == 'success' && steps.lanes.outputs.any == 'true' && steps.lanes.outputs.code == 'false' && 'docs' || 'full' }}
+      core: ${{ !(steps.lanes.outcome == 'success' && steps.lanes.outputs.any == 'true' && steps.lanes.outputs.core == 'false') }}
+      highImpact: ${{ !(steps.lanes.outcome == 'success' && steps.lanes.outputs.any == 'true' && steps.lanes.outputs.highImpact == 'false') }}
+      extensionCode: ${{ !(steps.lanes.outcome == 'success' && steps.lanes.outputs.any == 'true' && steps.lanes.outputs.extensionCode == 'false') }}
+      packages: ${{ steps.lanes.outcome == 'success' && steps.lanes.outputs.any == 'true' && steps.packages.outcome == 'success' && steps.packages.outputs.changes || '["audit","auth","store","mcp"]' }}
+      os: ${{ (inputs.release == true || (github.event_name != 'pull_request' && github.event_name != 'push')) && '["ubuntu-latest","macos-latest","windows-latest"]' || '["ubuntu-latest"]' }}
+      node: ${{ (inputs.release == true || (github.event_name != 'pull_request' && github.event_name != 'push')) && '["22","24","26"]' || '["24"]' }}
+      # A high-impact pull request (#744) adds Windows Node 24 core shards.
+      testOs: ${{ (inputs.release == true || (github.event_name != 'pull_request' && github.event_name != 'push')) && '["ubuntu-latest","macos-latest","windows-latest"]' || github.event_name == 'pull_request' && !(steps.lanes.outcome == 'success' && steps.lanes.outputs.any == 'true' && steps.lanes.outputs.highImpact == 'false') && '["ubuntu-latest","windows-latest"]' || '["ubuntu-latest"]' }}
+      # A pull request that changes extension code runs its extension suites on Windows Node 24 too (#824).
+      packageOs: ${{ (inputs.release == true || (github.event_name != 'pull_request' && github.event_name != 'push')) && '["ubuntu-latest","macos-latest","windows-latest"]' || github.event_name == 'pull_request' && !(steps.lanes.outcome == 'success' && steps.lanes.outputs.any == 'true' && steps.lanes.outputs.extensionCode == 'false') && '["ubuntu-latest","windows-latest"]' || '["ubuntu-latest"]' }}
+      # The packed add-on integration: every OS before a release or on dispatch, Linux on a high-impact pull request.
+      integration: ${{ inputs.release == true || github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' && !(steps.lanes.outcome == 'success' && steps.lanes.outputs.any == 'true' && steps.lanes.outputs.highImpact == 'false') }}
+      integrationOs: ${{ (inputs.release == true || github.event_name == 'workflow_dispatch') && '["ubuntu-latest","macos-latest","windows-latest"]' || '["ubuntu-latest"]' }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: inputs.release != true && (github.event_name == 'pull_request' || github.event_name == 'push')
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      # `token: ''` makes the filter read `git diff` of this checkout (the pull
+      # request's merge commit against its base, or a push's before..after)
+      # instead of the API, so it needs no pull-requests permission, which a
+      # caller of this workflow does not grant. `some-with-excludes`: a path
+      # matches a filter when one pattern includes it and no `!` pattern excludes it.
+      - id: lanes
+        if: inputs.release != true && (github.event_name == 'pull_request' || github.event_name == 'push')
+        continue-on-error: true
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         with:
-          node-version: '26'
-      # A pull request carries base/head; a push carries before/after. Both are
-      # empty for schedule and workflow_dispatch, and the classifier keeps
-      # those full regardless, so release coverage cannot become a docs run.
-      - id: plan
-        env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-          HEAD: ${{ github.event.pull_request.head.sha || github.event.after }}
-          CI_RELEASE: ${{ inputs.release }}
-        run: node scripts/ci-plan.ts "$BASE" "$HEAD"
+          token: ''
+          predicate-quantifier: some-with-excludes
+          filters: |
+            any:
+              - '**'
+            # Anything but reviewed contributor prose. Skills, starters, recipes,
+            # examples, schemas, manifests, workflows, shipped or agent-facing
+            # package documents and unknown paths are code. Everything prose is
+            # still checked by the always-run `docs` job.
+            code:
+              - '**'
+              - '!docs/**/*.md'
+              - '!{README,CONTRIBUTING,SECURITY,GOVERNANCE,CODE_OF_CONDUCT,AGENTS,ROADMAP}.md'
+              - '!llms.txt'
+              - '!llms-full.txt'
+              - '!packages/*/{CONTRIBUTING,CODE_OF_CONDUCT,GOVERNANCE}.md'
+            # Anything outside the extension packages can change the core archive,
+            # its tests, the Action, the image or the reproducible build.
+            core:
+              - '**'
+              - '!packages/{audit,auth,store,mcp}/**'
+            extensionCode:
+              - 'packages/{audit,auth,store,mcp}/**'
+              - '!packages/*/{CONTRIBUTING,CODE_OF_CONDUCT,GOVERNANCE}.md'
+            # Paths that once passed the Linux lane and failed on Windows or at
+            # the packed add-on boundary during release coverage (#668, #669, #673, #744).
+            highImpact:
+              # Installer, upgrade and scaffolding.
+              - 'packages/core/src/{addon-install,extensions-cli,init-with,scaffold,recipes}.ts'
+              - 'packages/core/src/upgrade*'
+              - 'scripts/create-extension*'
+              - 'starters/**'
+              # Package manifests and dependency wiring.
+              - '**/package.json'
+              - '**/package-lock.json'
+              - 'packages/*/urlcode.json'
+              - 'scripts/{workspaces,build-addon-manifest,check-workspace-links}.ts'
+              # Release tooling.
+              - 'scripts/{release-*,pack-addons,package-*,npm-command}.ts'
+              # Integration, proofs and per-package fixture cleanup.
+              - 'test/{addons,private-requests,authjs-provider,ecosystem}.integration.ts'
+              - 'proofs/**'
+              - 'scripts/test-addons*'
+              - 'packages/*/test/cleanup.ts'
+              # Shared inputs fail closed: repository automation and any root file but prose.
+              - '.github/**'
+              - '*'
+              - '!{README,CONTRIBUTING,SECURITY,GOVERNANCE,CODE_OF_CONDUCT,AGENTS,ROADMAP}.md'
+              - '!llms.txt'
+              - '!llms-full.txt'
+      # The extension suites to run: a changed extension and every extension
+      # that builds against it (`store` uses `audit`), or all of them when a
+      # path outside the extensions changed. Its `changes` output is that list.
+      - id: packages
+        if: inputs.release != true && (github.event_name == 'pull_request' || github.event_name == 'push')
+        continue-on-error: true
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        with:
+          token: ''
+          predicate-quantifier: some-with-excludes
+          filters: |
+            audit:
+              - '**'
+              - '!packages/{auth,store,mcp}/**'
+            auth:
+              - '**'
+              - '!packages/{audit,store,mcp}/**'
+            store:
+              - '**'
+              - '!packages/{auth,mcp}/**'
+            mcp:
+              - '**'
+              - '!packages/{audit,auth,store}/**'
   docs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '26'
           cache: npm
@@ -85,14 +161,14 @@ jobs:
       - run: npm run check:docs
   static:
     needs: plan
-    if: needs.plan.outputs.lane == 'full'
+    if: needs.plan.outputs.lane != 'docs'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '26'
           cache: npm
@@ -108,28 +184,25 @@ jobs:
       # Phase one of JS type-checking (allowJs/checkJs): build/release tooling
       # only (tsconfig.checkjs.json), not the 61 recipe/example .mjs files.
       - run: npm run typecheck:tooling
-      # `npm run check` stays complete for local use, but in CI the seven
+      # `npm run check` stays complete for local use, but in CI the
       # documentation checks it contains already ran in the always-run `docs`
-      # job on this same commit, so this lane runs only the remainder. The
-      # sampled documentation checking is about two seconds; the point is not
-      # to repeat work, not a meaningful wall-time saving.
+      # job on this same commit, so this lane runs only the remainder.
       - run: npm run check:code
   # `npm test` alone, split into three `--test-shard` jobs per leg so it is off
   # the critical path of the ~6 minute serial Windows run. Each shard builds for
   # itself rather than sharing a dist/ artifact: the build is part of what the
   # per-Node/per-OS legs verify, and an artifact hop costs about what it saves.
-  # Legs are per (os, node, shard); every one must pass for `verify-complete`.
   verify:
     needs: plan
-    if: needs.plan.outputs.lane == 'full' && needs.plan.outputs.coreChecks == 'true'
+    if: needs.plan.outputs.lane != 'docs' && needs.plan.outputs.core != 'false'
     strategy:
       fail-fast: false
-      # Routine PR/main feedback is Linux Node 24; a pull request touching a
-      # high-impact path (installer, manifests, release tooling, integration
-      # cleanup, shared config; scripts/ci-plan.ts) adds Windows Node 24 shards.
-      # Scheduled, merge-queue and manually dispatched exact-commit runs retain
-      # the full OS x Node matrix.
-      matrix: ${{ fromJSON(needs.plan.outputs.shards) }}
+      # Routine PR/main feedback is Linux Node 24; a high-impact pull request
+      # adds Windows Node 24 shards. Exact-commit runs use every OS and Node.
+      matrix:
+        os: ${{ fromJSON(needs.plan.outputs.testOs) }}
+        node: ${{ fromJSON(needs.plan.outputs.node) }}
+        shard: [1, 2, 3]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
@@ -145,15 +218,16 @@ jobs:
       # Same command and flags as `npm test`, plus the shard.
       # Through npm so npm_execpath is set, as it is for `npm test`; some tests read it.
       - run: npm run test:shard -- --test-shard=${{ matrix.shard }}/3 test/*.test.ts
-  # Everything that is not the sharded suite. Package smoke runs only when a
-  # changed path can affect the core archive. On Ubuntu Node 24 (every leg on
-  # exact coverage), run starter/example tests, route audit and drills.
+  # Everything that is not the sharded suite: starter/example tests, the
+  # packed-archive smoke and the operational drills, on every leg of the plan.
   checks:
     needs: plan
-    if: needs.plan.outputs.lane == 'full' && needs.plan.outputs.coreChecks == 'true'
+    if: needs.plan.outputs.lane != 'docs' && needs.plan.outputs.core != 'false'
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.plan.outputs.checks) }}
+      matrix:
+        os: ${{ fromJSON(needs.plan.outputs.os) }}
+        node: ${{ fromJSON(needs.plan.outputs.node) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
@@ -166,12 +240,9 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run build
-      - if: matrix.full
-        run: npm run test:examples:built
-      - if: matrix.packageSmoke
-        run: npm run test:package:built
-      - if: matrix.full
-        run: node dist/scripts/operational-drills.js
+      - run: npm run test:examples:built
+      - run: npm run test:package:built
+      - run: node dist/scripts/operational-drills.js
   # Every other leg's `setup-node` installs whatever the newest patch of its
   # major is, so nothing actually exercises the documented package floor
   # (`engines`: `>=22.13.0` on core and every first-party extension,
@@ -183,7 +254,7 @@ jobs:
   # contributor builds are proven at the floor, not just asserted in prose.
   package-floor-smoke:
     needs: plan
-    if: needs.plan.outputs.lane == 'full' && needs.plan.outputs.packageFloorSmoke == 'true'
+    if: needs.plan.outputs.lane != 'docs' && needs.plan.outputs.core != 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # Node's TypeScript type-stripping (what every `scripts/*.ts` entry point
@@ -232,67 +303,53 @@ jobs:
   # serial windows-latest run; this puts it beside the others instead of after
   # them. Each job needs its own install and the root build, because a package
   # imports `@jimhoyd/urlcode`, the workspace-linked root package, through its
-  # built `dist/`.
-  # Routine runs use the Linux Node 24 leg. A pull request that changes
-  # extension code also gets Windows Node 24 entries for those extensions and
-  # their reverse dependencies (#824), so a Windows-only package test failure
-  # is caught before merge instead of at release (#819/#820). They are entries
-  # of this same matrix, so `verify-complete`'s requirement that
-  # `workspace-verify` succeed covers them; there is no separate job to skip.
-  # Exact-commit runs keep every package on the full OS x Node matrix.
+  # built `dist/`. A pull request that changes extension code also runs the
+  # selected packages on Windows Node 24 (#824), as entries of this same
+  # matrix, so `verify-complete` covers them without a separate job.
   workspace-verify:
     needs: plan
-    if: needs.plan.outputs.lane == 'full'
+    if: needs.plan.outputs.lane != 'docs'
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.plan.outputs.workspacePackages) }}
+      matrix:
+        os: ${{ fromJSON(needs.plan.outputs.packageOs) }}
+        node: ${{ fromJSON(needs.plan.outputs.node) }}
+        package: ${{ fromJSON(needs.plan.outputs.packages) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run build
-      # `store` imports `audit`. The matrix carries each package's
-      # transitive dependencies in build order (empty for `audit`, `auth`
-      # and `mcp`, which have none) so this job's own
-      # typecheck/build can resolve them, the way the removed serial script
-      # did by ordering.
-      - if: matrix.deps != ''
-        shell: bash
-        run: |
-          set -euo pipefail
-          for dep in ${{ matrix.deps }}; do npm run build --workspace @jimhoyd/urlcode-$dep; done
+      # Every add-on in dependency order (`store` imports `audit`'s built
+      # declarations), so this package's typecheck and build can resolve them.
+      - run: node scripts/workspaces.ts run build
       - run: npm run verify --workspace @jimhoyd/urlcode-${{ matrix.package }}
   # Cross-package checks that need every workspace package already built:
   # the publish audit and the integration suite (init --with <ext>, which
-  # symlinks the compiled companion packages). Kept out of `workspace-verify`
-  # so that matrix stays one package per job; rebuilding four small packages
-  # here is a few seconds, not the minutes their own test suites cost.
+  # symlinks the compiled companion packages).
   workspace-integration:
     needs: [plan, workspace-verify]
-    if: needs.plan.outputs.lane == 'full' && needs.plan.outputs.workspaceIntegration == 'true'
+    if: needs.plan.outputs.lane != 'docs' && needs.plan.outputs.integration != 'false'
     strategy:
       fail-fast: false
-      # A release run (publish.yml calling this workflow with `release: true`)
-      # and an explicit dispatch cover every supported OS on the default Node
-      # runtime; a pull request touching a high-impact path runs the Linux
-      # Node 24 leg (#744). Other routine runs skip it, and `verify-complete`
-      # accepts that skip only when the plan did not select it.
-      matrix: ${{ fromJSON(needs.plan.outputs.workspaceIntegrationMatrix) }}
+      matrix:
+        os: ${{ fromJSON(needs.plan.outputs.integrationOs) }}
+        node: ['24']
     runs-on: ${{ matrix.os }}
     # Real npm installs of the packed runtime and every add-on, several sites per run; Windows is the slowest leg.
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ matrix.node }}
           cache: npm
@@ -319,14 +376,14 @@ jobs:
   # of test time; it bounds its own load rather than soaking.
   multiprocess:
     needs: plan
-    if: needs.plan.outputs.lane == 'full'
+    if: needs.plan.outputs.lane != 'docs'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24'
           cache: npm
@@ -344,7 +401,7 @@ jobs:
           URLCODE_DISK_FULL_DIR: /mnt/urlcode-disk-full
   audit:
     needs: plan
-    if: needs.plan.outputs.lane == 'full' && needs.plan.outputs.coreChecks == 'true'
+    if: needs.plan.outputs.lane != 'docs' && needs.plan.outputs.core != 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -363,7 +420,7 @@ jobs:
 
   action:
     needs: plan
-    if: needs.plan.outputs.lane == 'full' && needs.plan.outputs.action == 'true'
+    if: needs.plan.outputs.lane != 'docs' && needs.plan.outputs.core != 'false'
     # The site action cannot run against this repository from a site's pull
     # request; exercise it on a site built from the packed runtime and add-ons
     # so a broken action.yml fails here first.
@@ -407,7 +464,7 @@ jobs:
 
   build-fidelity:
     needs: plan
-    if: needs.plan.outputs.lane == 'full' && needs.plan.outputs.buildFidelity == 'true'
+    if: needs.plan.outputs.lane != 'docs' && needs.plan.outputs.core != 'false'
     # dist/ is never committed: prove the build is deterministic, so a release
     # can be reproduced from its tagged commit and compared file by file.
     runs-on: ubuntu-latest
@@ -424,39 +481,27 @@ jobs:
       - run: npm ci
       - run: npm run ci:build-fidelity
 
+  # Required check. A job skipped by its own `if:` reports success, and each one
+  # skips only on an explicit `docs` lane or `false` from a successful plan, so a
+  # failed plan, a failed or cancelled job, or a job skipped because a job it
+  # needs failed, fails this gate.
   verify-complete:
-    # A skip is accepted only when the successful classifier required it.
     if: always()
     needs: [plan, docs, static, verify, checks, workspace-verify, workspace-integration, multiprocess, audit, action, build-fidelity, container, package-floor-smoke]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: '26'
       - name: Every planned check succeeded
-        env:
-          CI_PLAN: ${{ needs.plan.outputs.lane }}
-          CI_WORKSPACE_INTEGRATION: ${{ needs.plan.outputs.workspaceIntegration }}
-          CI_CORE_CHECKS: ${{ needs.plan.outputs.coreChecks }}
-          CI_ACTION: ${{ needs.plan.outputs.action }}
-          CI_BUILD_FIDELITY: ${{ needs.plan.outputs.buildFidelity }}
-          CI_CONTAINER: ${{ needs.plan.outputs.container }}
-          CI_PACKAGE_FLOOR_SMOKE: ${{ needs.plan.outputs.packageFloorSmoke }}
-          CI_RESULTS: ${{ toJSON(needs) }}
-        run: node scripts/ci-plan.ts gate
+        if: needs.plan.result != 'success' || needs.docs.result != 'success' || contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
+      - run: echo 'All planned checks passed'
 
-  # Required check. The docs lane skips it: every prose path the classifier
-  # admits is outside the image's build context (.dockerignore) and none of
-  # the smoke tests read one. A job skipped by its own `if` reports success to
-  # the required-check rule, and `verify-complete` accepts that skip only when
-  # the successful plan selected the docs lane.
+  # Required check. The docs lane skips it: every prose path the plan admits is
+  # outside the image's build context (.dockerignore) and none of the smoke
+  # tests read one.
   container:
     needs: plan
-    if: needs.plan.outputs.lane == 'full' && needs.plan.outputs.container == 'true'
+    if: needs.plan.outputs.lane != 'docs' && needs.plan.outputs.core != 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

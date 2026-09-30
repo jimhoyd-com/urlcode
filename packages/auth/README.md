@@ -256,9 +256,9 @@ Accounts and sessions served by Better Auth on one extension mount. Protect a ro
 Fast checks: `urlcode validate --project app`, `urlcode validate --local --project app --host-file host.mjs --local-review`.
 <!-- extension-reference:end -->
 
-<!-- urlcode-current-version:start -->
+<!-- x-release-please-start-version -->
 [extensions-request-helpers]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#request-helpers
 [readiness-authenticated-routes]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#authenticated-routes-auth-true
 [readiness-seeds]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#test-data-and-seeds
 [store-several-processes]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#several-serving-processes-on-one-host
-<!-- urlcode-current-version:end -->
+<!-- x-release-please-end -->

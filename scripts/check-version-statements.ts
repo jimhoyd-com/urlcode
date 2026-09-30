@@ -24,7 +24,7 @@
 // Not read: release notes, changelogs and archived plans,
 // plus the HISTORICAL pages below, which record what was true at a past version
 // on purpose. Add a page there only when it is genuinely a dated record; a live
-// page names no version outside `urlcode-current-version` markers.
+// page names no version outside `x-release-please-start-version` markers.
 import { execFileSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';

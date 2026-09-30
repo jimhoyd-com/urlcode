@@ -2,9 +2,9 @@
 
 Core and every add-on share one version. The package manifests and the root
 lockfile are the version authority; this page names no version outside the
-marked block below. `npm run release:bump -- <version>` is the only way the
-version changes, and `node scripts/release-bump.ts --check` (part of
-`npm run check`) fails when any declaration disagrees. The procedure is in
+marked block below. The version changes only through the release pull request
+that release-please keeps open, and `node scripts/release-versions.ts check`
+(part of `npm run check`) fails when any declaration disagrees. The procedure is in
 [release operations](RELEASE-OPERATIONS.md#release-a-version).
 
 | Package | Manifest | Where it is published |
@@ -31,8 +31,8 @@ extension package.
 Example projects under `examples/` that carry a `package.json` depending on
 `@jimhoyd/urlcode` pin it exactly at the current version, the same way an
 add-on pins its core peer. They are not workspaces, so the lockfile does not
-record them; the release bump rewrites each pin and
-`node scripts/release-bump.ts --check` fails when one drifts.
+record them; the release pull request rewrites each pin and
+`node scripts/release-versions.ts check` fails when one drifts.
 
 Beside it, `dist/addon-catalog.json` is the same release's agent discovery
 catalog: every add-on's name, package, version, description, `requires`,
@@ -41,14 +41,14 @@ in a development build and the release. Every entry carries core's version.
 It pins nothing and installs nothing; see
 [the release-wide agent catalog](EXTENSIONS.md#the-release-wide-agent-catalog).
 
-<!-- urlcode-current-version:start -->
+<!-- x-release-please-start-version -->
 Core `0.6.5` is published to npm, GitHub Releases and Homebrew. For a new
 composed site:
 
 ```sh
 npx @jimhoyd/urlcode@0.6.5 init site --with auth,store --example
 ```
-<!-- urlcode-current-version:end -->
+<!-- x-release-please-end -->
 
 Bare package names resolve npm's current `latest`; exact application pins and a
 committed lockfile keep an existing application from changing on a new release.

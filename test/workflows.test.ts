@@ -6,7 +6,7 @@ import { parse } from 'yaml';
 import { spawnSync } from 'node:child_process';
 import { comparisonVerdict, skipVerdict } from '../scripts/workerd-parity-verdict.ts';
 
-// The shape of the workflows a release depends on: Release (release.yml) prepares the bump branch, Publish
+// The shape of the workflows a release depends on: release.yml keeps the release pull request open, Publish
 // (publish.yml) ships what reaches main. ci-workflow.test.ts covers ci.yml's jobs and plan.
 interface Step { name?: string; uses?: string; run?: string; with?: Record<string, unknown>; env?: Record<string, string> }
 interface Job { needs?: string | string[]; if?: string; uses?: string; with?: Record<string, unknown>; environment?: string; permissions?: Record<string, string>; steps?: Step[] }
@@ -78,23 +78,23 @@ test('v8-jit-repro.yml is manually dispatched only, read-only and never masks a 
   assert.doesNotMatch(text, /continue-on-error|\|\| *true|retry/i);
 });
 
-test('release.yml only bumps versions on a release/v<version> branch; it never writes main or publishes', async () => {
+test('release.yml keeps the release pull request open with release-please; it never tags, publishes or writes main', async () => {
   const release = await load('release.yml');
-  assert.deepEqual(Object.keys(release.on), ['workflow_dispatch']);
-  const inputs = (release.on.workflow_dispatch as { inputs: Record<string, { required: boolean; type: string }> }).inputs;
-  assert.deepEqual(Object.keys(inputs), ['version']);
-  assert.equal(inputs.version!.required, true);
+  assert.deepEqual(Object.keys(release.on).sort(), ['workflow_dispatch', 'workflow_run']);
+  assert.deepEqual(release.on.workflow_run, { workflows: ['Publish release'], types: ['completed'], branches: ['main'] });
   assert.deepEqual(release.permissions, { contents: 'read' });
-  assert.deepEqual(Object.keys(release.jobs), ['bump']);
-  const bump = job(release, 'bump');
-  assert.equal(bump.if, "github.ref == 'refs/heads/main'");
-  assert.deepEqual(bump.permissions, { contents: 'write' }, 'only contents, to push the branch');
-  assert.equal(bump.environment, undefined, 'the bump never runs in the publishing environment');
-  const runs = (bump.steps ?? []).map(step => step.run ?? '').join('\n');
-  assert.match(runs, /release-bump\.ts "\$VERSION"/);
-  assert.match(runs, /release-bump\.ts --check/);
-  assert.match(runs, /git push origin "release\/v\$VERSION"/);
-  assert.doesNotMatch(runs, /push origin (?:HEAD:)?main|npm publish|release-publish|gh release create|gh pr create/);
+  assert.deepEqual(Object.keys(release.jobs), ['release-pr']);
+  const pr = job(release, 'release-pr');
+  assert.deepEqual(pr.permissions, { contents: 'write', 'pull-requests': 'write' });
+  assert.equal(pr.environment, undefined, 'the release pull request never runs in the publishing environment');
+  const please = (pr.steps ?? []).find(step => step.uses?.startsWith('googleapis/release-please-action@'));
+  assert(please, 'runs release-please');
+  assert.deepEqual(please.with, { token: '${{ env.GH_TOKEN }}', 'config-file': 'release-please-config.json', 'manifest-file': '.release-please-manifest.json', 'skip-github-release': true });
+  const runs = (pr.steps ?? []).map(step => step.run ?? '').join('\n');
+  assert.match(runs, /npm install --package-lock-only --ignore-scripts/);
+  assert.match(runs, /release-versions\.ts sync\n\s*node scripts\/release-versions\.ts check/);
+  assert.match(runs, /git push origin "HEAD:\$BRANCH"/);
+  assert.doesNotMatch(runs, /npm ci|push origin (?:HEAD:)?main|npm publish|release-publish|gh release create/);
 });
 
 test('ci.yml is callable with a release input and is not triggered by pushes itself', async () => {
@@ -170,14 +170,18 @@ test('each publish.yml job holds only the permissions it needs', async () => {
   assert((build.steps ?? []).some(step => step.uses?.startsWith('actions/attest@') && step.with?.['subject-path'] === 'release/*'));
 });
 
-test('every third-party action is pinned to a full commit SHA', async () => {
+// docs/CI.md#third-party-actions: a tag can be moved to other code, a commit cannot; the comment names the release
+// the SHA was taken from, so a reviewer and Dependabot can see which version it is.
+test('every third-party action is pinned to a full commit SHA with its release in a comment', async () => {
+  let pinned = 0;
   for (const name of await readdir(directory)) {
-    const workflow = await load(name);
-    for (const [jobName, definition] of Object.entries(workflow.jobs)) {
-      for (const step of definition.steps ?? []) {
-        if (!step.uses || step.uses.startsWith('./')) continue;
-        assert.match(step.uses, /^[\w.-]+\/[\w./-]+@[0-9a-f]{40}$/, `${name} ${jobName}: ${step.uses}`);
-      }
+    for (const line of (await readFile(join(directory, name), 'utf8')).split('\n')) {
+      const uses = /^\s*(?:- )?uses: (\S+)(.*)$/.exec(line);
+      if (!uses || uses[1]!.startsWith('./')) continue;
+      assert.match(uses[1]!, /^[\w.-]+\/[\w./-]+@[0-9a-f]{40}$/, `${name}: ${line}`);
+      assert.match(uses[2]!, /^ # v\d+\.\d+\.\d+$/, `${name}: ${line}`);
+      pinned++;
     }
   }
+  assert(pinned > 0);
 });

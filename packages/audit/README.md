@@ -180,9 +180,9 @@ How the lease judges a peer, and its timing, are in
 [several serving processes][store-several-processes]. Producers keep their events
 meanwhile and deliver them once it holds the lease again.
 
-<!-- urlcode-current-version:start -->
+<!-- x-release-please-start-version -->
 [store-several-processes]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#several-serving-processes-on-one-host
-<!-- urlcode-current-version:end -->
+<!-- x-release-please-end -->
 
 Requires the matching `@jimhoyd/urlcode` core as a peer. Apache-2.0.
 

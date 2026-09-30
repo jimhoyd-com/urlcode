@@ -20,6 +20,6 @@ JavaScript, in QuickJS/WASM for a `sandbox: true` route and in-process for a
 trusted one. The build does not type-check or read tsconfig.json. See
 [TypeScript authoring][docs/TYPESCRIPT-AUTHORING.md].
 
-<!-- urlcode-current-version:start -->
+<!-- x-release-please-start-version -->
 [docs/TYPESCRIPT-AUTHORING.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TYPESCRIPT-AUTHORING.md
-<!-- urlcode-current-version:end -->
+<!-- x-release-please-end -->

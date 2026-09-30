@@ -12,6 +12,6 @@ sam deploy --guided
 package must contain the project files the routes read: the entry YAML, any
 includes, and every page, download and static directory.
 
-<!-- urlcode-current-version:start -->
+<!-- x-release-please-start-version -->
 [docs/AWS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/AWS.md
-<!-- urlcode-current-version:end -->
+<!-- x-release-please-end -->
