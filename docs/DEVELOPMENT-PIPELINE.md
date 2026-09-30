@@ -73,6 +73,12 @@ packing anything, a package whose `exports` or `bin` name a file that is not
 there, and names each missing file and the build that makes it (#960). It does
 not detect a stale build: `dist/` older than its source still packs.
 
+The packer stages each package without checkout metadata or `node_modules`,
+then removes the development-only `prepare` hook before invoking npm. This
+also prevents npm 10's file-listing dry run from running that hook despite
+`--ignore-scripts`. npm applies the package's ordinary file-selection rules
+to the staged copy; the source checkout is never rewritten.
+
 The core tarball it packs carries the `addons.json` it writes beside it (each
 add-on tarball pinned by sha512), never the build's development manifest with
 its `file:` links into the checkout; it packs core from a staged copy, so the

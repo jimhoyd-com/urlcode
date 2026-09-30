@@ -62,6 +62,9 @@ test('a packed core carries the pinned add-on manifest, never the development on
   await writeFile(join(directory, 'package.json'), packageJson);
   await writeFile(join(directory, 'dist', 'addons.json'), development);
   await writeFile(join(directory, 'dist', 'index.js'), 'export {};\n');
+  await writeFile(join(directory, 'dist', '.npmignore'), 'excluded.js\n');
+  await writeFile(join(directory, 'dist', 'excluded.js'), 'must not ship\n');
+  await writeFile(join(directory, 'unpublished.txt'), 'outside the files allowlist\n');
   assert.deepEqual(shippedManifestProblems(development), [`demo is not pinned: file:${join(root, 'packages', 'demo')} with integrity null is a development link`]);
   await assert.rejects(packWithManifest(directory, out, development), /Refusing to pack core with an unpinned add-on manifest/);
 
@@ -72,6 +75,9 @@ test('a packed core carries the pinned add-on manifest, never the development on
   assert.deepEqual(shippedManifestProblems(shippedManifest(tarball)), []);
   assert.equal(await readFile(join(directory, 'dist', 'addons.json'), 'utf8'), development, "the checkout's development manifest is not touched");
   assert.equal(await readFile(join(directory, 'package.json'), 'utf8'), packageJson);
+  const contents = execFileSync('tar', ['-tzf', tarball], { encoding: 'utf8' });
+  assert.match(contents, /package\/dist\/index\.js/);
+  assert.doesNotMatch(contents, /excluded\.js|unpublished\.txt|\.npmignore/);
   const published = JSON.parse(execFileSync('tar', ['-xOzf', tarball, 'package/package.json'], { encoding: 'utf8' })) as { scripts?: Record<string, string> };
   assert.equal(published.scripts?.prepare, undefined, 'the published manifest drops prepare');
 });

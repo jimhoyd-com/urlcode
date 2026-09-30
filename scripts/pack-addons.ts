@@ -14,9 +14,9 @@
 // (no `development` export conditions, #1056), so the checkout is not touched.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { access, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { addons, repositoryRoot } from './workspaces.ts';
 import { npmCommand } from './npm-command.ts';
@@ -65,15 +65,19 @@ export function shippedManifestProblems(text: string): string[] {
 }
 
 /**
- * Packs the package in `directory` into `out` from a staged copy of exactly the files npm would pack, with its
+ * Packs the package in `directory` into `out` from a staged copy, using npm's file selection with its
  * published package.json (scripts/published-manifest.mjs) and each of `replace` (a packed path to its contents), so
  * `directory` is never written. Returns the tarball path.
  */
 export async function packPublished(directory: string, out: string, replace: Record<string, string> = {}): Promise<string> {
-  const [listed] = parsePackJson<{ files: { path: string }[] }>(npm(['pack', '--dry-run', '--ignore-scripts', '--json'], directory));
   const stage = await mkdtemp(join(tmpdir(), 'urlcode-pack-stage-'));
   try {
-    for (const { path } of listed!.files) { await mkdir(dirname(join(stage, path)), { recursive: true }); await copyFile(join(directory, path), join(stage, path)); }
+    // npm 10 runs prepare even for `pack --dry-run --ignore-scripts`. Sanitize the
+    // staged manifest before invoking npm at all, keeping the checkout untouched.
+    await cp(directory, stage, { recursive: true, filter: source => {
+      const parts = relative(directory, source).split(sep);
+      return !parts.includes('node_modules') && !parts.includes('.git') && resolve(source) !== resolve(out) && resolve(source) !== resolve(stage);
+    } });
     await writeFile(join(stage, 'package.json'), publishedManifest(await readFile(join(directory, 'package.json'), 'utf8')));
     for (const [path, text] of Object.entries(replace)) { await mkdir(dirname(join(stage, path)), { recursive: true }); await writeFile(join(stage, path), text); }
     const [packed] = parsePackJson<{ filename: string }>(npm(['pack', '--ignore-scripts', '--json', '--pack-destination', out], stage));
