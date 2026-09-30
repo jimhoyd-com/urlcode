@@ -172,7 +172,10 @@ in `auth.sqlite` and is refused while a live peer runs on another host;
 processes and containers on one host are accepted. A process that finds another
 host serving the database logs it and answers `503 auth_unavailable` to every
 auth request until that host is gone. The lease is checked once per request,
-before Better Auth runs. How the lease judges a peer, and its timing, are in
+before Better Auth runs, and again inside every Better Auth write under its
+write lock (a temporary trigger on each of its tables), so a request that
+stalls after the first check writes nothing once another host took over. How
+the lease judges a peer, and its timing, are in
 [several serving processes][store-several-processes].
 
 A storage failure answers `503 auth_unavailable`, never a false success or a
