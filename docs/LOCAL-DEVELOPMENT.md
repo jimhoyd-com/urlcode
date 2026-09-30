@@ -4,7 +4,11 @@ Use Node.js 22.18+ and npm (CI targets Node 22, 24 and 26). The runtime is
 written in TypeScript and runs from source with no build step: `npm run dev`
 is `node packages/core/src/cli.ts`, which Node runs through its own type stripping (that is
 why a contributor needs 22.18, while an installed package still runs on 22.13).
-`npm run typecheck` is the type gate and part of `npm run verify`.
+`npm run typecheck` is the type gate and part of `npm run verify`. The add-ons
+under `packages/` and the tests import `@jimhoyd/urlcode` by name, and resolve
+it to source through its `development` export condition
+([TypeScript](TYPESCRIPT.md#what-ships)), so a core change reaches their
+typecheck and tests without a rebuild.
 `npm run build` emits the JavaScript in `dist/` that the package and container
 ship, together with the declarations; `dist` is never committed. Make is an optional
 shortcut layer; npm and the CLI work on Windows, macOS and Linux. No global

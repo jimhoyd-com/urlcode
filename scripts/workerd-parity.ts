@@ -8,11 +8,12 @@
 // A run that compared no request never passes (scripts/workerd-parity-verdict.ts).
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import { connect, createServer } from 'node:net';
 import { comparisonVerdict, skipVerdict } from './workerd-parity-verdict.ts';
+import { packPublished } from './pack-addons.ts';
 
 const repo = resolve(import.meta.dirname, '..');
 const npm = process.env.npm_execpath ?? '';
@@ -165,7 +166,8 @@ try {
   await cp(join(repo, 'examples/body-validation/schemas'), join(project, 'schemas'), { recursive: true });
   await writeFile(join(project, 'urlcode.yaml'), base + extra);
   run(process.execPath, [join(repo, 'dist/cli.js'), 'validate', '--project', project], repo);
-  const tarball = (JSON.parse(run(process.execPath, [npm, 'pack', '--ignore-scripts', '--json', '--pack-destination', scratch], repo)) as { filename: string }[])[0]!.filename;
+  // Packed as a release packs it: the published manifest, with no `development` conditions naming source (#1056).
+  const tarball = basename(await packPublished(repo, scratch));
   await writeFile(join(work, 'package.json'), '{"private":true,"type":"module"}');
   run(process.execPath, [npm, 'install', '--no-audit', '--no-fund', wranglerSpec, join(scratch, tarball)], work);
   run(process.execPath, [join(repo, 'dist/cli.js'), 'build', '--target', 'cloudflare', '--project', project, '--out', work], repo);
