@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **`urlcode-auth create-user` no longer fails with "database is locked" beside a busy server.** SQLite's busy
+  handler sleeps up to 100 ms between attempts and is not a queue: beside a serving process that holds the write lock
+  for most of each commit (a slow flush, as on Windows runners) with only a request's gap between commits, its attempts
+  over 2 seconds could all find the lock held. The operator commands now wait up to 10 seconds and try for the write
+  lock every millisecond (reproduced: 4 of 5 `create-user` calls failed beside a writer holding the lock 20 ms per
+  commit; 10 of 10 pass). Serving keeps its 2-second bound and `503 auth_unavailable`.
 - **Seeds run the owner's `validateUserInfo` and database hooks (#1058).** `tests/seed.json` accounts are created
   inside a hermetic seed context: the endpoint context Better Auth passes its hooks, with no request (`request` and
   `path` undefined) and empty `headers`. Before, a configured `betterAuth.user.validateUserInfo` refused every seed
