@@ -1,29 +1,10 @@
----
-name: urlcode
-description: Work on a URLCode project, recognized by a urlcode.yaml file with version "1" and served by the @jimhoyd/urlcode runtime. Use this skill whenever a task touches urlcode.yaml, its included route files, functions or middleware under a URLCode project, or asks to add, change, test or deploy URL behavior (redirects, responses, pages, files, functions, policies) in such a project. It teaches the authoring loop and how to retrieve the minimum reference from the installed runtime instead of guessing fields.
----
-<!-- Each shared:NAME region is generated from scripts/skill-shared-sections.md: edit it there, then run npm run docs:agents. -->
+<!-- The one authored copy of the sections skills/urlcode/SKILL.md and
+.claude/skills/urlcode-authoring/SKILL.md share (#1095), rendered between each
+skill's "shared:NAME" markers by npm run docs:agents and checked by its --check.
+Each section must read naturally in both skills: no "this skill", "above" or
+"below". Client- and mode-specific sections stay hand-written in each skill. -->
 
-# URLCode authoring loop
-
-A URLCode project declares URL behavior in YAML; the installed runtime serves it. Change the declaration and minimal application code it names, then prove it with the runtime's own checks. Never reimplement what the runtime provides or invent fields.
-
-<!-- shared:declarative-first -->
-## Declarative-first default
-
-> Use URLCode's highest-level declarative features whenever possible. Generate custom code only when the framework cannot express the requirement.
-
-Check the installed version's primitives, YAML configuration, policies, supported
-extensions and recipes/templates before writing a custom function or middleware.
-Keep necessary custom code focused and report the capability gap; never invent
-fields or bypass target limits or operator grants. In a source checkout, see
-`docs/PROJECT-DIRECTION.md`; in an npm installation, search the matching heading
-in `llms-full.txt`.
-<!-- /shared:declarative-first -->
-
-## Recognize the project
-
-<!-- shared:install -->
+<!-- section:install -->
 The npm package is `@jimhoyd/urlcode` — always scoped. There is no unscoped
 `urlcode` package on the registry; `npm view urlcode` 404s. Install with
 `npm install @jimhoyd/urlcode`, then scaffold with
@@ -34,23 +15,20 @@ project in `app/`, the operator host `host.mjs` beside it, and a `package.json`
 with an exact runtime pin and npm scripts. Run from the site, commands default
 `--project` to `app`. With a project-local install, prefix every `urlcode`
 command the same way or use the npm scripts init adds.
-<!-- /shared:install -->
 
-- The route project has `urlcode.yaml` with `version: "1"`. Included route files
-  are listed under `includes`; functions, middleware and assets are
-  project-relative.
-- Read the project's `AGENTS.md` first if present; it lists the handlers,
-  policies and commands this runtime version supports.
-- Find the runtime: `urlcode` on the PATH, or
-  `node node_modules/@jimhoyd/urlcode/dist/cli.js`, or
-  `node /path/to/urlcode/packages/core/src/cli.ts` for a source checkout. Use one form for
-  every command below.
+<!-- section:declarative-first -->
+## Declarative-first default
 
-## Retrieve the minimum, do not read everything
+> Use URLCode's highest-level declarative features whenever possible. Generate custom code only when the framework cannot express the requirement.
 
-**Before the first edit:** MCP `get_context` with `bootstrap: true`, or `urlcode bootstrap [DIR] --capabilities NAME,... --json`, returns the site root, entry file, runtime match, commands to run from the site root, the site/project path mapping and the named capabilities' schema fragments; it creates a site only with `--create` and an explicit DIR. **Then one bounded query.**
+Check the installed version's primitives, YAML configuration, policies, supported
+extensions and recipes/templates before writing a custom function or middleware.
+Keep necessary custom code focused and report the capability gap; never invent
+fields or bypass target limits or operator grants. In a source checkout, see
+`docs/PROJECT-DIRECTION.md`; in an npm installation, search the matching heading
+in `llms-full.txt`.
 
-<!-- shared:retrieval -->
+<!-- section:retrieval -->
 Documentation, schema and runtime must come from the **same revision**. Read from
 the project's installed runtime (`node_modules/@jimhoyd/urlcode/`) or the
 checkout you are working in — never from memory of another version.
@@ -117,48 +95,8 @@ extensions and AI tooling" workflow (also in llms-full.txt); `urlcode
 extensions add` also takes an independent package's npm spec or local tarball,
 pinned by its lock integrity, and `urlcode upgrade` does not move it. Add or
 remove extensions within the user's requested scope.
-<!-- /shared:retrieval -->
 
-If the project carries `.mcp.json` (written by `urlcode init`) and your client has the `urlcode` server, prefer its tools: `get_context` (project summary, constraints, exact commands), `get_capability` and `get_schema` (one capability or YAML fragment), `search_recipes`, `search_examples`, `explain` (a route's effective behavior), `get_manifest` and `get_openapi` (an OpenAPI 3.1 description for API clients). For framework discovery, use `list_skills` before `get_skill`, `search_docs` as the bounded documentation fallback, and `get_example` for one runnable example (its listed commands run from the copy `urlcode examples add NAME --out NAME` makes). Use `validate_yaml` for pasted YAML syntax/schema feedback only; use `validate` for the actual project, then run its `tests/requests.json` fixtures with `urlcode test` (MCP `run_tests` executes the project's code, so it exists only when the operator added `--allow-authoring`). `suggest_fixtures` drafts those fixtures for routes the project's YAML (includes too) alone determines (write the ones it lists under `gaps` yourself), and `summarize_yaml_change` names the routes, code seams and operator grants a change adds. The server is read-only and never executes project code; `--allow-authoring` is an operator opt-in you never add yourself. No `.mcp.json` because this turn runs `urlcode init` itself, in a client that loads it only at session start? Use the CLI commands this turn (`urlcode mcp print-config > .mcp.json` beforehand, in an empty directory, avoids the gap next time — TOOLING.md#registering-before-init-runs-pre-session-bootstrap-542).
-
-Without the server, run the CLI equivalents and read only the output:
-
-```sh
-urlcode context --project DIR        # get_context: summary, constraints, commands
-urlcode capabilities                 # complete catalog (fallback, not step one)
-urlcode capabilities --target NAME   # before promising a provider deployment
-urlcode capabilities NAME            # get_capability: one capability's contract
-urlcode schema PATH                  # get_schema: one YAML fragment
-urlcode recipes search TEXT          # search_recipes
-urlcode explain PATH --project DIR   # explain: a route's effective behavior
-urlcode manifest --project DIR       # get_manifest
-urlcode openapi --project DIR        # get_openapi: OpenAPI 3.1 for the declared operations
-urlcode recipes list                 # bundled starting points
-urlcode recipes show NAME            # one recipe's files, inline
-urlcode routes --project DIR         # the routes the project already has
-```
-
-## Choose the highest-level supported abstraction
-
-1. If a native handler expresses the behavior (`redirect`, `respond`, `page`,
-   `static`, `download`, `proxy`, `conditional`), write YAML only.
-2. Check supported extensions and their configuration before custom code. If a
-   recipe from `recipes list` is close, `urlcode recipes add NAME --project app`
-   merges it into the site's project (every clash is refused and named, nothing
-   written); `--out DIR` instead copies it into a new standalone project.
-3. Only then write a function or middleware, trusted by default and sandboxed
-   only where that route's own code warrants it.
-4. Declare routing, validation, middleware chains, policies, static serving,
-   caching, throttling and authentication wherever the runtime or a supported
-   extension provides them. Use custom code only for the unmet requirement.
-   Where a short form exists, it is the highest-level form: `auth: true` on a
-   route whose project declares one extension that provides the request principal (such as `auth`), and `cache: { … }` for `policies.cache`. Each expands to the long
-   form; declaring both is refused.
-
-Keep every route you were not asked to change. Match the file organization the
-project already uses.
-
-<!-- shared:trust -->
+<!-- section:trust -->
 ## Functions run trusted; `sandbox: true` is opt-in
 
 `function` and `middleware` routes run trusted and unsandboxed by default: full
@@ -176,9 +114,8 @@ reported gap. Trusted modules can import Node built-ins and npm packages; only
 `sandbox: true` modules are restricted to the relative snapshotted graph.
 Extension hooks run trusted in-process and reject `sandbox: true` in hook
 contract v1.
-<!-- /shared:trust -->
 
-<!-- shared:application -->
+<!-- section:application -->
 ## Build one application
 
 Treat core routes, installed extensions and the frontend as one application with
@@ -200,9 +137,8 @@ the installed contracts cannot express.
 Run the extension's published `fastChecks` while iterating, then the full
 project checks before handoff. Full workspace/package checks may take several
 minutes; give them enough time to finish instead of repeatedly rebuilding.
-<!-- /shared:application -->
 
-<!-- shared:verify -->
+<!-- section:verify -->
 ## Verify before reporting success
 
 Run the checks with the installed version and fix errors before claiming the
@@ -239,9 +175,8 @@ Errors are one JSON line with `code`, `file`, `line`, `route` and `pointer`
 where known; fix what `code` names at that location rather than working around
 it. The commands' results are the evidence to report. They are not a
 deployment, a soak test or a security review.
-<!-- /shared:verify -->
 
-<!-- shared:grants -->
+<!-- section:grants -->
 ## Secrets, grants and capability gaps
 
 - A function that needs a secret or environment value declares a named `env`
@@ -257,9 +192,8 @@ deployment, a soak test or a security review.
   persistence), say so with the route and capability named and propose the
   closest supported shape. Do not invent fields, degrade silently or claim a
   workaround is equivalent.
-<!-- /shared:grants -->
 
-<!-- shared:feedback -->
+<!-- section:feedback -->
 ## Feedback after a real attempt
 
 After a task, give feedback only when a real attempt exposed one of these:
@@ -279,4 +213,3 @@ customer URLs, raw source, or one-off product logic. Search existing URLCode
 issues first and name a likely duplicate when found. You may propose a new
 issue or comment, but never create or update a GitHub issue without the user's
 explicit approval.
-<!-- /shared:feedback -->
