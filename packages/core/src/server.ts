@@ -316,7 +316,7 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
   const displayPath = (source: string): string => { const rel = relativePath(current.root, source); return rel && !rel.startsWith('..') ? rel.split(pathSep).join('/') : source; };
   // Counters live with the server, so a reload does not reset them; the slot
   // gauges belong to whichever runtime is serving now.
-  const snapshot = (): MetricsSnapshot => { const { healthy, slots } = current.workers; const out = counters.snapshot(); out.functionWorkers.healthySlots = healthy; out.functionWorkers.slots = slots; return out; };
+  const snapshot = (): MetricsSnapshot => { const { healthy, slots } = current.workers; const out = counters.snapshot({ extensions: current.extensionMetrics() }); out.functionWorkers.healthySlots = healthy; out.functionWorkers.slots = slots; return out; };
   let metricsTimer: NodeJS.Timeout | undefined;
   if (metricsIntervalMs) { metricsTimer = setInterval(() => sink.publish(snapshot()), metricsIntervalMs); metricsTimer.unref(); }
   server.setTimeout(requestTimeoutMs, socket => socket.destroy());

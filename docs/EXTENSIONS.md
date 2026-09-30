@@ -898,14 +898,49 @@ names no extension and interprets no message.
   are dropped. A reload or restart activates again and may warn again.
 - It is activation-only. A call after `activate()` has returned or thrown (from
   a request, a timer or a later promise) is ignored, so a request cannot flood
-  the log. Report request-time problems through your own responses and logs.
+  the log. Report request-time problems through your own responses and logs,
+  or, for a condition the operator must act on, through `runtimeWarn` below.
 - Write counts and configuration names only. A warning must not carry user
   ids, email addresses, credential ids, secrets or request data: it lands in a
   startup log that CI and hosting consoles keep.
 
-`warn` is optional in the `ExtensionActivation` type only so an activation
-built by hand in a test can leave it out; the runtime always sets it, so call
-it as `context.warn?.(message)` if you also support such tests.
+`context.runtimeWarn(message)` is the serving-time counterpart, for a condition
+that arises after activation, such as data the extension had to discard (the
+store uses it when [an audit sink falls behind](STORE.md#when-a-sink-falls-behind)).
+It writes the same `extension_warning` record with the same one-line bound and
+its own cap of 20 per activation (then one
+`further runtime warnings suppressed after 20 in this activation` line), and is
+ignored once the runtime holding the activation has closed. Core does not
+decide when a condition deserves a record: the extension warns on a change of
+state (a count first becoming nonzero, a threshold crossed), never per request.
+The same rule on content applies.
+
+`warn` and `runtimeWarn` are optional in the `ExtensionActivation` type only so
+an activation built by hand in a test can leave them out; the runtime always
+sets them, so call them as `context.warn?.(message)` if you also support such
+tests.
+
+### Extension metrics
+
+An instance may implement `metrics()`, returning its own numbers for the
+operator's [metrics snapshot](OBSERVABILITY.md#metrics-snapshot)
+(`RIM-EXT-METRICS-001`):
+
+```ts
+interface ExtensionInstance {
+  metrics?(): Readonly<Record<string, number>>;
+}
+```
+
+Core calls it synchronously each time a snapshot is taken (`runtime.metrics()`,
+`app.metrics()`, `onMetrics`, `GET /_urlcode/metrics`), so keep it cheap. Keys
+are lowercase snake case (`extensionMetricName`); a name ending in `_total` is a
+counter and anything else a gauge. Values are finite numbers of at least 0, at
+most 16 of them (`maxExtensionMetrics`). An invalid entry is dropped and a
+throwing call reports nothing, so an extension can never fail a snapshot. The
+snapshot carries them under `extensions.<name>`, and Prometheus as
+`urlcode_extension_<name>_<metric>`. Numbers only: never a user id or any
+other label.
 
 ### Reload hand-off
 
@@ -1840,11 +1875,14 @@ every `urlcode-store backup`. See [audited writes](STORE.md#audited-writes).
 
 The event contract is core's: `@jimhoyd/urlcode/extensions` exports the event
 types, `validateAuditEvent`, `validateAuditQuery`, `AuditError`, `auditLimits`
-and the `AuditTap`, `AuditLog`, `AuditEvent`, `AuditStoredEvent`, `AuditQuery`
-and `AuditPage` types. `StoreExports.audit` is an `AuditLog`: an extension that
+and the `AuditTap`, `AuditTapStatus`, `AuditLog`, `AuditEvent`, `AuditStoredEvent`,
+`AuditQuery` and `AuditPage` types. `StoreExports.audit` is an `AuditLog`: an extension that
 `requires: [store]` forwards events anywhere by calling `peek(limit)`, writing
 the batch, then `ack(ids)`, at least once and deduplicated on the event id
-([forwarding events to a sink](STORE.md#forwarding-events-to-a-sink)). There
+([forwarding events to a sink](STORE.md#forwarding-events-to-a-sink)).
+`status()` reports how many events retention pruned before the sink
+acknowledged them, which the store also exposes as a metric and a warning
+([when a sink falls behind](STORE.md#when-a-sink-falls-behind)). There
 is no first-party audit extension: a first-party sink would add a second
 database, a drain and a delivery guarantee to maintain, while the tap lets an
 owner forward to the destination they want in a few lines.

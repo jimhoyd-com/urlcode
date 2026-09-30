@@ -268,9 +268,12 @@ process through core's `refuseNetworkFilesystem` and `holdServerLock`
 lock on a file beside its own database, so store and auth enforce one
 rule: one serving process per database ([request helpers](EXTENSIONS.md#request-helpers)).
 An extension reports a startup condition the operator should act on through
-the activation's generic `warn()`, which reaches the operator's startup log as
-an `extension_warning` event and never a response
-([activation warnings](EXTENSIONS.md#activation-warnings)).
+the activation's generic `warn()`, and one that arises while it serves through
+`runtimeWarn()`; both reach the operator's log as an `extension_warning` event
+and never a response ([activation warnings](EXTENSIONS.md#activation-warnings)).
+Its own numbers reach the metrics snapshot and Prometheus through an optional
+`metrics()` on its instance ([extension metrics](EXTENSIONS.md#extension-metrics)),
+which is how the store reports audit events a sink missed.
 Who a request is for travels the same generic way: an extension that declares
 `providesPrincipal` (auth) sets an opaque, bounded `ExtensionRequest.principal`
 from its `authorize()`, and another extension on the route (an owned store

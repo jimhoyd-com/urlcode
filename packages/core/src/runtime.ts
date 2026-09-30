@@ -1,4 +1,4 @@
-import { prepareExtensions, effectiveExtensionPolicies, hasExtensionPolicy, isSensitiveExtensionPolicy, extensionResponse, stripReservedContextHeaders, installPrincipalSlot } from './extensions.ts';
+import { prepareExtensions, effectiveExtensionPolicies, hasExtensionPolicy, isSensitiveExtensionPolicy, extensionResponse, stripReservedContextHeaders, installPrincipalSlot, extensionMetrics } from './extensions.ts';
 import type { RuntimeExtension, ExtensionRegistry, ExtensionRequest, InvocationContext } from './extensions.ts';
 import { EgressClient, EgressError } from './egress.ts';
 import type { EgressDependencies } from './egress.ts';
@@ -116,6 +116,8 @@ export interface Runtime {
   readonly plugins: { name: string; version: string }[];
   readonly workers: { healthy: number; slots: number };
   metrics(): MetricsSnapshot;
+  /** What this runtime's active extensions report through `ExtensionInstance.metrics()` now (RIM-EXT-METRICS-001). */
+  extensionMetrics(): Record<string, Record<string, number>>;
   errorHeaders(error: unknown, origin: string): HeaderPair[];
   /** How the host writes an error answer (docs/HTTP.md#error-format): the format handle() resolved when it threw the
    * error, otherwise the one the request target resolves to (an error the host raised before or around handle()). */
@@ -286,7 +288,8 @@ export async function createRuntime(project: string, rawOptions: RuntimeOptions 
     testPlan,
     get plugins() { return plugins.map(plugin => ({ name: plugin.name, version: plugin.version })); },
     get workers() { return workers(); },
-    metrics() { const { healthy, slots } = workers(); const snapshot = sink.metrics.snapshot(); snapshot.functionWorkers.healthySlots = healthy; snapshot.functionWorkers.slots = slots; return snapshot; },
+    metrics() { const { healthy, slots } = workers(); const snapshot = sink.metrics.snapshot({ extensions: extensionMetrics(extensionRegistry) }); snapshot.functionWorkers.healthySlots = healthy; snapshot.functionWorkers.slots = slots; return snapshot; },
+    extensionMetrics: () => extensionMetrics(extensionRegistry),
     // Security headers for an error answer: the matched route's when handle()
     // threw after matching, the project's otherwise (no match, or a host-side
     // error such as an oversized body or shed admission).

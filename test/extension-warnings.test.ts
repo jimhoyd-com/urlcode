@@ -9,7 +9,7 @@ import {project,request} from './helpers.ts';
 import {createRuntime} from '../packages/core/src/runtime.ts';
 import {startServer} from '../packages/core/src/server.ts';
 import {createLambdaHandler} from '../packages/core/src/aws.ts';
-import {activationWarnings,inspectExtensionRevision,maxExtensionWarnings} from '../packages/core/src/extensions.ts';
+import {activationWarnings,inspectExtensionRevision,maxExtensionWarnings,runtimeWarnings} from '../packages/core/src/extensions.ts';
 import type {ExtensionActivation,RuntimeExtension} from '../packages/core/src/extensions.ts';
 
 // RIM-EXT-WARN-001: an extension's activation-time warn() reaches the operator log only.
@@ -59,6 +59,29 @@ test('the warn channel is closed when activation throws, and a throwing log neve
   const seen:unknown[]=[];const closed=activationWarnings('demo',event=>{seen.push(event);});closed.close();closed.warn('after close');
   assert.deepEqual(seen,[]);
   const unset=activationWarnings('demo',undefined);unset.warn('no log');
+});
+
+test('runtimeWarn() reaches the same log while the runtime serves, bounded per activation, and stops when the runtime closes',async t=>{
+  const root=await project(t,routes,{},{extensions:declarations});
+  const events:Record<string,unknown>[]=[];
+  let later:ExtensionActivation['runtimeWarn'];
+  const demo=await registration(root,(_config,context)=>{
+    later=context.runtimeWarn;
+    return {handle(){for(let i=0;i<30;i++)later!(`request-time ${i}`);return {status:200,headers:[['content-type','text/plain']],body:'ok'};}};
+  });
+  const runtime=await createRuntime(root,{origin,extensions:[demo],log:event=>{events.push(event);}});
+  assert.equal(typeof later,'function');
+  assert.deepEqual(warnings(events),[],'nothing at activation');
+  const answer=await runtime.handle({target:'/demo/x',method:'GET'});
+  assert.equal(answer.status,200);assert.ok(!JSON.stringify(answer.headers).includes('request-time'));
+  const logged=warnings(events);
+  assert.equal(logged.length,maxExtensionWarnings+1);
+  assert.deepEqual(logged[0],{event:'extension_warning',extension:'demo',message:'request-time 0'});
+  assert.deepEqual(logged.at(-1),{event:'extension_warning',extension:'demo',message:`further runtime warnings suppressed after ${maxExtensionWarnings} in this activation`});
+  await runtime.close();
+  const channel=runtimeWarnings('demo',event=>{events.push(event);});channel.close();channel.warn('after close');
+  assert.equal(warnings(events).length,maxExtensionWarnings+1,'nothing after the runtime or the channel closed');
+  assert.doesNotThrow(()=>runtimeWarnings('demo',()=>{throw new Error('log sink failed');}).warn('ignored failure'));
 });
 
 test('startServer logs activation warnings to its log; HTTP responses never carry them',async t=>{

@@ -47,7 +47,7 @@ in the situations named.
 | `cache` | `route`, `outcome` `hit`/`stale`/`miss`/`store`, or `vary-bypass`/`stream-bypass` when a response was not stored because of an undeclared `Vary` or because it streamed | A cache lookup or store. |
 | `listening` | `address`, `port`, `mode`, `origin`; `mode` `studio` with `url` and `opened` instead | Printed once by the CLI at startup, not emitted by the server. |
 | `site` | `key` string; then `path` string and `status` `generated`/`shadowed`, or `severity` `info`/`warning` and `message` string, with `list` string and `skipped` integer when list entries were left out | Activating a snapshot with [site conventions](SITE.md): one record per convention generated or shadowed by a declared route at its path, plus a note when `robots.txt` omits its `Sitemap:` line (no known origin) or entries of a bundled list, or `security.txt` expires more than a year away. At startup or a reload, never per request. |
-| `extension_warning` | `extension` string, `message` string | An operator extension called `warn()` while it activated ([activation warnings](EXTENSIONS.md#activation-warnings)): at startup or a reload, never per request. `message` is one line of at most 500 characters; at most 21 records per extension per activation. |
+| `extension_warning` | `extension` string, `message` string | An operator extension called `warn()` while it activated, or `runtimeWarn()` while it served ([activation warnings](EXTENSIONS.md#activation-warnings)): at startup or a reload, or on a change of state the extension reports once (the store's [audit tap gap](STORE.md#when-a-sink-falls-behind)), never per request. `message` is one line of at most 500 characters; at most 21 records per extension per activation for each of the two channels. |
 
 Every event carries `event` (its name). Numbers are JSON numbers, never
 strings.
@@ -73,7 +73,7 @@ exception text. `route` is always a configured pattern
 from reviewed YAML. `site.message` and `local_review.note` are fixed runtime
 text that names only configuration. The one free-text field,
 `extension_warning.message`, is
-what the operator's own installed extension chose to write at activation; the
+what the operator's own installed extension chose to write; the
 extension contract requires it to carry counts and configuration names only,
 never user data or secrets. The `function_error` and `reload_rejected` diagnostics that
 `urlcode dev` and `serve --debug-errors` write to stderr are not events: they
@@ -167,6 +167,7 @@ and capped at 10 000 keys.
 | `signals.{accepted,delivered,failed,dropped,captured}` | counter | Best-effort webhook outcomes; exposed as `signals_total` with outcome labels. |
 | `logsDropped` | counter | Records the JSON logger shed. |
 | `observers.errors` | counter | Observer hooks that threw or rejected. |
+| `extensions[name][metric]` | counter or gauge | What the serving runtime's extensions report through `metrics()` ([extension metrics](EXTENSIONS.md#extension-metrics)), read afresh at each snapshot: a name ending in `_total` is a counter. For example `extensions.store.audit_pruned_unacked_total`, the store's [audit events pruned before a sink acknowledged them](STORE.md#when-a-sink-falls-behind). Present only for extensions that implement `metrics()`. |
 
 Policy counters are derived from the `throttle`, `agents` and `cache` events
 as they pass through the sink, so the policies themselves have no metrics
@@ -184,7 +185,11 @@ cache. A site with the store or auth extension has one serving process
 line, serves `GET /_urlcode/metrics` as `text/plain; version=0.0.4`, rendered from the same snapshot by
 `renderPrometheus(snapshot)`, a pure function you can also call yourself.
 Every metric is prefixed `urlcode_`; counters end in `_total`; the only labels
-are `status_class`, `route` and `outcome`.
+are `status_class`, `route` and `outcome`. An extension's number is its own
+unlabelled metric, `urlcode_extension_<extension>_<metric>` (a `-` in the
+extension name becomes `_`), typed `counter` when its name ends in `_total` and
+`gauge` otherwise, such as
+`urlcode_extension_store_audit_pruned_unacked_total`.
 
 ```
 # HELP urlcode_requests_total Application requests answered since start, by status class.
@@ -200,6 +205,7 @@ urlcode_throttle_total{outcome="exceeded"} 14
 urlcode_cache_total{outcome="hit"} 511
 urlcode_logs_dropped_total 0
 urlcode_observer_errors_total 0
+urlcode_extension_store_audit_pruned_unacked_total 0
 urlcode_uptime_seconds 86400
 urlcode_process_rss_bytes 71303168
 ```
