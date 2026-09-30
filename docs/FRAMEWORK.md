@@ -270,7 +270,11 @@ Who a request is for travels the same generic way: an extension that declares
 `providesPrincipal` (auth) sets an opaque, bounded `ExtensionRequest.principal`
 from its `authorize()`, and another extension on the route (an owned store
 collection) reads it, without either knowing the other
-([request principal](EXTENSIONS.md#request-principal)). The route's own code
+([request principal](EXTENSIONS.md#request-principal)). Such an extension
+may also declare, as data, how a client presents the credential it verifies
+(`openapiSecurity`), which the OpenAPI export publishes as a standard security
+scheme instead of assuming a cookie
+([security scheme](EXTENSIONS.md#declaring-the-credentials-openapi-security-scheme)). The route's own code
 receives what an extension declares as a request-bound capability, such as
 auth's `context.capabilities.auth.identity.userId`
 ([request-bound capabilities](EXTENSIONS.md#request-bound-capabilities)). A long-lived answer

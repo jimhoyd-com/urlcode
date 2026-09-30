@@ -126,6 +126,22 @@ test('providesPrincipal round-trips from the definition through urlcode.json and
   assert.throws(() => parseDescriptor({ kind: 'artifact', name: 'notes', description: 'n', contract: 2, requires: [], providesPrincipal: true }, 'artifact'), /provides no principal/);
 });
 
+test('openapiSecurity round-trips from the definition through urlcode.json and the catalog, only for a principal provider (#1047)', async t => {
+  const root = await checkout(t);
+  const openapiSecurity = { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' };
+  await writeFile(join(root, 'packages/alpha/dist/extension.js'), `export default { definition: ${JSON.stringify({ name: 'alpha', description: 'Alpha extension', contract: 2, targets: ['node'], providesPrincipal: true, openapiSecurity, schema: { type: 'object' } })} };\n`);
+  await syncExpectedFiles(root);
+  const descriptor = JSON.parse(await readFile(join(root, 'packages/alpha/urlcode.json'), 'utf8')) as Record<string, unknown>;
+  assert.deepEqual(descriptor.openapiSecurity, openapiSecurity);
+  const catalog = parseAddonCatalog(JSON.parse(await readFile(join(root, 'dist', 'addon-catalog.json'), 'utf8')), 'catalog');
+  assert.deepEqual(catalog.addons.find(entry => entry.name === 'alpha')!.openapiSecurity, openapiSecurity);
+  assert.equal(catalog.addons.find(entry => entry.name === 'notes')!.openapiSecurity, undefined);
+  const { providesPrincipal: _provides, ...plain } = descriptor;
+  assert.throws(() => parseDescriptor(plain, 'plain'), /openapiSecurity is declared only by an extension that provides the request principal/);
+  assert.throws(() => parseDescriptor({ ...descriptor, openapiSecurity: { ...openapiSecurity, token: 'x' } }, 'extra'), /holds only type, scheme, bearerFormat, description; token is not one/);
+  assert.throws(() => parseDescriptor({ kind: 'artifact', name: 'notes', description: 'n', contract: 2, requires: [], openapiSecurity }, 'artifact'), /provides no principal/);
+});
+
 test('readAddonCatalog reads the catalog file without importing, installing or activating any add-on', async t => {
   const root = await checkout(t);
   await syncExpectedFiles(root);

@@ -12,7 +12,7 @@ import { mkdir } from 'node:fs/promises';
 import { clientKey, ExtensionHttpError, isSameOriginRequest, jsonResponse, principalIdPattern, readBody } from '@jimhoyd/urlcode/extensions';
 import { holdServerLock, refuseNetworkFilesystem } from '@jimhoyd/urlcode/sqlite';
 import { maxRequestBodyBytes } from '@jimhoyd/urlcode/body-schema';
-import type { ExtensionAuthoringContract, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
+import type { ExtensionAuthoringContract, ExtensionInstance, ExtensionOpenApiSecurity, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 import type { HostProbe, ServerLock } from '@jimhoyd/urlcode/sqlite';
 
 /** The Better Auth paths a mount serves by default: sign-in, sign-out and the session endpoints. */
@@ -38,6 +38,12 @@ const pathPattern = /^\/[a-z0-9/-]+$/;
 
 export const authConfigSchema = { type: 'object', additionalProperties: false, properties: {} } as const;
 export const authPolicySchema = { type: 'object', additionalProperties: false, properties: {} } as const;
+/**
+ * How a client presents the credential `authorize()` verifies, for `urlcode openapi` (#1047): Better Auth's session
+ * cookie. Its name is Better Auth's operator configuration (a cookie prefix, per-cookie names, the secure prefix an
+ * https origin adds), so it is left out and the export states the cookie without publishing or inventing a name.
+ */
+export const authOpenApiSecurity: ExtensionOpenApiSecurity = Object.freeze({ type: 'apiKey', in: 'cookie', description: 'The Better Auth session cookie that signing in under the auth mount sets; a browser sends it with each same-site request. Its name is the operator\'s Better Auth configuration and is not published.' });
 /**
  * The test seed a hermetic run accepts (`tests/seed.json` under `auth`, RIM-EXT-HERMETIC-001): accounts created with
  * the id a store membership or fixture can name, and a password a fixture signs in with. Never accepted on `serve`.
@@ -230,6 +236,7 @@ export function createAuthExtension(settings: AuthSettings & { projectSha256: st
     name: 'auth', version: '1', projectSha256: settings.projectSha256, targets: ['node'],
     schema: authConfigSchema, policySchema: authPolicySchema, authoring: authAuthoring,
     providesPrincipal: true,
+    openapiSecurity: authOpenApiSecurity,
     capabilities: ['identity'],
     ...(settings.hermetic === true ? { seedSchema: authSeedSchema } : {}),
     async activate(_config, activation): Promise<ExtensionInstance> {

@@ -7,7 +7,9 @@ import {effectiveExtensionPolicies,extensionOpenApiLimits} from './extensions.ts
 import type {RuntimeExtension} from './extensions.ts';
 import {ConfigError,extensionError} from './errors.ts';
 import {isRecord} from './object-guards.ts';
-import {principalProvidersOf} from './addon-manifest.ts';
+import {principalSecurityOf} from './addon-manifest.ts';
+import {openApiSecurityProblem} from './openapi-security.ts';
+import type {ExtensionOpenApiSecurity} from './openapi-security.ts';
 import {bodyPolicy,bodylessMethods} from './http-policy.ts';
 import type {RequestBodyPolicy} from './http-policy.ts';
 import {bodySchemaDialect} from './body-validation.ts';
@@ -78,8 +80,24 @@ const components={
     properties:{pointer:{type:'string',description:'RFC 6901 pointer into the body; array positions are /[] and undeclared keys /*.'},keyword:{type:'string'},message:{type:'string'},expected:{description:'The type, bound, format or declared values the schema states, when it states one.'},property:{type:'string'}},
   },
 } as const;
-/** The security scheme for routes a principal-providing extension gates, one per provider: `urlcodeSession.<name>`. */
-const sessionScheme=(provider:string):string=>`urlcodeSession.${provider}`;
+/**
+ * The security scheme of a principal provider that declares one OpenAPI can state whole (`openapiSecurity`, #1047):
+ * `urlcodePrincipal.<name>`. A cookie the operator's configuration names has no scheme, since OpenAPI requires the
+ * name and operator configuration is never published; nor does a provider that declares none. Each is stated under
+ * the operation's `x-urlcode.authentication` instead, never as an invented credential a generated client would send.
+ */
+const principalScheme=(provider:string):string=>`urlcodePrincipal.${provider}`;
+type DeclaredSecurity=ReadonlyMap<string,ExtensionOpenApiSecurity|undefined>;
+const stated=(scheme:ExtensionOpenApiSecurity|undefined):scheme is ExtensionOpenApiSecurity=>scheme!==undefined&&!(scheme.type==='apiKey'&&scheme.name===undefined);
+/** A gated operation's `security` requirement (the providers with a stated scheme) and its `x-urlcode.authentication` (the rest). */
+function signInSecurity(signIn:readonly string[],declared:DeclaredSecurity):{security?:Json[];authentication?:Json[]} {
+  const known=signIn.filter(name=>stated(declared.get(name)));
+  const unstated=signIn.filter(name=>!known.includes(name)).map(name=>{
+    const scheme=declared.get(name);
+    return scheme?{extension:name,credential:'cookie',cookieName:'operator-defined',...(scheme.description?{description:scheme.description}:{})}:{extension:name,credential:'unknown'};
+  });
+  return {...(known.length?{security:[Object.fromEntries(known.map(name=>[principalScheme(name),[]]))]}:{}),...(unstated.length?{authentication:unstated}:{})};
+}
 const extensionList=(names:readonly string[]):string=>names.length===1?`the ${names[0]} extension`:`the ${names.slice(0,-1).join(', ')} and ${names.at(-1)} extensions`;
 /** The methods the auth extension refuses from another origin (packages/auth: unsafe methods); every method may get its 401. */
 const unsafeMethods=['POST','PUT','PATCH','DELETE'];
@@ -260,8 +278,8 @@ function responses(route:CompiledRoute,method:string,format:RouteErrorFormat,cha
 function gateResponses(method:string,chain:PolicyChain|undefined,signIn:string[]):Record<string,Json> {
   const out:Record<string,Json>={};
   if(signIn.length){
-    out['401']={description:`No verified session: refused by ${extensionList(signIn)} before the handler runs. The body is extension-defined.`};
-    out['503']={description:`May be answered by ${extensionList(signIn)} before the handler runs when it cannot verify the session (for example, its own storage is unavailable), so that a storage failure is not reported as a 401. Whether it does is extension-defined, as is the body; retry later.`,headers:{'Retry-After':{schema:{type:'integer'}}}};
+    out['401']={description:`No verified credential: refused by ${extensionList(signIn)} before the handler runs. The body is extension-defined.`};
+    out['503']={description:`May be answered by ${extensionList(signIn)} before the handler runs when it cannot verify the credential (for example, its own storage is unavailable), so that a storage failure is not reported as a 401. Whether it does is extension-defined, as is the body; retry later.`,headers:{'Retry-After':{schema:{type:'integer'}}}};
     if(unsafeMethods.includes(method))out['403']={description:`A request from another origin, refused by ${extensionList(signIn)} before the handler runs. The body is extension-defined.`};
   }
   const throttle=chain?.describe.throttle,agents=chain?.describe.agents;
@@ -282,7 +300,7 @@ const templatedPath=new RegExp(`^(?:/${segment})+$`);
  * always-set headers and `Cache-Control: no-store`) and what a gate or policy on the route answers first; an
  * extension's own answer for the same status wins. `undefined` when the extension leaves the mount opaque.
  */
-function describedMount(route:CompiledRoute,registration:RuntimeExtension,config:Record<string,unknown>,context:{signIn:string[];gates:string[];chain:PolicyChain|undefined;taken:Set<string>;paths:Record<string,Json>;schemas:Record<string,unknown>;named:Readonly<Record<string,BodySchema>>}):Record<string,Json>|undefined {
+function describedMount(route:CompiledRoute,registration:RuntimeExtension,config:Record<string,unknown>,context:{signIn:string[];declared:DeclaredSecurity;gates:string[];chain:PolicyChain|undefined;taken:Set<string>;paths:Record<string,Json>;schemas:Record<string,unknown>;named:Readonly<Record<string,BodySchema>>}):Record<string,Json>|undefined {
   const name=registration.name,mount=route.pattern.endsWith('/*')?route.pattern.slice(0,-2):route.pattern;
   const fail=(problem:string):never=>{throw new ConfigError(`Extension ${JSON.stringify(name)} described mount ${mount} outside the OpenAPI contribution contract: ${problem}`,{extension:name,code:'extension-registration'});};
   let raw:unknown;
@@ -345,8 +363,9 @@ function describedMount(route:CompiledRoute,registration:RuntimeExtension,config
         const {content,headers,...other}=response;
         answers[status]={...other,headers:{...(headers as Json|undefined),...alwaysHeaders,...errorHeaders},...(content&&key!=='head'?{content}:{})};
       }
+      const {security,authentication}=signInSecurity(context.signIn,context.declared),facts=isRecord(rest['x-urlcode'])?rest['x-urlcode']:{};
       pathItem[key]={operationId:operationName(method,path,context.taken),...rest,responses:Object.fromEntries(Object.entries(answers).sort(([a],[b])=>compare(a,b))),
-        ...(context.signIn.length?{security:[Object.fromEntries(context.signIn.map(provider=>[sessionScheme(provider),[]]))]}:{})};
+        ...(security?{security}:{}),...(authentication?{'x-urlcode':{...facts,authentication}}:{})};
     }
     if(!Object.keys(pathItem).some(key=>operationKeys.includes(key)))continue;
     pathItem['x-urlcode']={handler:'extension',extension:name,route:route.pattern,...(context.gates.length?{extensions:context.gates}:{})};
@@ -365,17 +384,22 @@ export async function buildOpenApi(project:string,options:InspectOptions={}):Pro
     note:'Generated from the compiled configuration. Handler-defined responses have no schema; paths below opaque mounts are served by their provider and not enumerated, and paths below described mounts are what the loaded extension describes. Binding names and values, egress targets, module paths and operator policy are never included.'};
   // Sign-in gates follow the contract, not a name: the declared registrations that provide a principal when a host
   // file is loaded, else the installed descriptors (RIM-EXT-PRINCIPAL-001).
-  const providers=await principalProvidersOf(dirname(loaded.root),Object.keys(loaded.document.extensions??{}),options.extensions),secured=new Set<string>();
+  const declared=await principalSecurityOf(dirname(loaded.root),Object.keys(loaded.document.extensions??{}),options.extensions),providers=[...declared.keys()],secured=new Set<string>();
+  // A descriptor's scheme was checked when it was read; a host file's registration is checked here, before any use.
+  for(const [name,scheme] of declared){
+    const problem=scheme===undefined?undefined:openApiSecurityProblem(scheme);
+    if(problem)throw new ConfigError(`Extension ${JSON.stringify(name)} declares an OpenAPI security scheme outside the contract: ${problem}`,{extension:name,code:'extension-registration'});
+  }
   for(const route of [...routes].sort((a,b)=>compare(a.pattern,b.pattern))){
     if(route.enabled===false){facts.omitted.push({path:route.pattern,reason:'disabled'});continue;}
     if(route.prefix!==undefined){
       const registration=route.extension?options.extensions?.find(entry=>entry.name===route.extension):undefined;
       if(registration?.describe){
         const gates=Object.keys(effectiveExtensionPolicies(loaded.document,route)).sort(compare),signIn=gates.filter(name=>providers.includes(name));
-        const described=describedMount(route,registration,(loaded.document.extensions?.[registration.name]?.config??{}) as Record<string,unknown>,{signIn,gates,chain:chains.get(route.pattern),taken,paths,schemas,named:loaded.schemas??{}});
+        const described=describedMount(route,registration,(loaded.document.extensions?.[registration.name]?.config??{}) as Record<string,unknown>,{signIn,declared,gates,chain:chains.get(route.pattern),taken,paths,schemas,named:loaded.schemas??{}});
         if(described){
           Object.assign(paths,described);
-          if(Object.keys(described).length)for(const name of signIn)secured.add(name);
+          if(Object.keys(described).length)for(const name of signIn)if(stated(declared.get(name)))secured.add(name);
           facts.describedMounts.push({path:route.pattern,extension:registration.name});
           continue;
         }
@@ -398,7 +422,9 @@ export async function buildOpenApi(project:string,options:InspectOptions={}):Pro
       if(body)operation.requestBody=body;
       else if(policy?.maxBytes!==undefined)operation['x-urlcode']={body:{maxBytes:policy.maxBytes}};
       operation.responses=responses(route,method,format,chain,gates,signIn,policy);
-      if(signIn.length){operation.security=[Object.fromEntries(signIn.map(name=>[sessionScheme(name),[]]))];for(const name of signIn)secured.add(name);}
+      const {security,authentication}=signInSecurity(signIn,declared);
+      if(security){operation.security=security;for(const name of signIn)if(stated(declared.get(name)))secured.add(name);}
+      if(authentication)operation['x-urlcode']={...(operation['x-urlcode'] as Json|undefined),authentication};
       item[method.toLowerCase()]=operation;
     }
     const code=Boolean(route.function)||route.middleware.length>0,policies=explanation.policies.names.filter(name=>!name.startsWith('extensions.'));
@@ -429,9 +455,9 @@ export async function buildOpenApi(project:string,options:InspectOptions={}):Pro
       schemas:{...structuredClone(components) as Record<string,unknown>,...Object.fromEntries(Object.entries(schemas).sort(([a],[b])=>compare(a,b)))},
       ...(Object.keys(refusals).length?{responses:Object.fromEntries(Object.entries(refusals).sort(([a],[b])=>compare(a,b)))}:{}),
       headers:structuredClone(headerComponents) as Record<string,Json>,
-      ...(secured.size?{securitySchemes:Object.fromEntries([...secured].sort(compare).map(name=>[sessionScheme(name),{type:'apiKey',in:'cookie',name:'session',
-        description:`A session credential the ${name} extension issues at sign-in and verifies before the handler runs; it provides the request principal. Its real cookie name is the operator's ${name} configuration and is not published here: \`session\` is a placeholder.`,
-        'x-urlcode':{extension:name,cookieName:'operator-defined'}}]))}:{}),
+      ...(secured.size?{securitySchemes:Object.fromEntries([...secured].sort(compare).map(name=>[principalScheme(name),{...structuredClone(declared.get(name)),
+        description:declared.get(name)?.description??`The credential the ${name} extension verifies before the handler runs; it provides the request principal. As the extension declares it.`,
+        'x-urlcode':{extension:name}}]))}:{}),
     },
     'x-urlcode':facts,
   };
