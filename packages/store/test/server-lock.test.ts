@@ -90,7 +90,7 @@ test('a second serving process is refused before it writes, and a restart after 
   // Another server on the same database, even with another declaration, is refused and records nothing.
   const before = counts(database);
   const second = await child(t, database, activation, v2);
-  assert.match(String(second.ready.error), /^Another process is already serving this store database \(.+store\.sqlite\): URLCode serves each database from one process/);
+  assert.match(String(second.ready.error), /^Another process is already serving this store database \(.+store\.sqlite\): the bundled store serves its database from one process/);
   await assert.rejects(serve(t, database, activation, v1), /^Error: Another process is already serving this store database/);
   assert.deepEqual(counts(database), before);
   assert.equal((await first.call('POST', '/api/todos', { title: 'two' })).status, 201, 'the first server kept serving');
