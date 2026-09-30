@@ -214,6 +214,9 @@ export function resolveErrorFormat(declared: ErrorFormat | undefined, scope: (pa
   return declared ?? (scope(path) ? 'json' : 'text');
 }
 const encoder = new TextEncoder();
+function sanitizeErrorText(value: string): string {
+  return value.replace(/[<>&"']/g, '');
+}
 /** The runtime's own 405 in the chosen format, always with `Allow`. The text form is the historical bytes, with no content type. */
 export function methodNotAllowed(methods: readonly string[], format: ErrorFormat): HandlerResult {
   const allow: HeaderPair = ['allow', methods.join(', ')];
@@ -233,10 +236,10 @@ export function errorResponse(error: unknown, { requestId, method, headers = [],
   // Runtime error messages are fixed words; markup characters are still
   // stripped so the body can never be read as HTML by a client that ignores
   // both the content type and nosniff.
-  const message = error instanceof HttpError ? String(error.message).replace(/[<>&"']/g, '') : 'Internal server error';
+  const message = error instanceof HttpError ? sanitizeErrorText(String(error.message)) : 'Internal server error';
   const [contentType, text] = format === 'json'
     ? [jsonErrorType, answer?.envelope ?? errorEnvelope(status, message.split('\n')[0]!)]
-    : [answer ? answer.contentType : 'text/plain; charset=utf-8', answer ? answer.text + '\n' : `${message}\n`];
+    : ['text/plain; charset=utf-8', answer ? `${sanitizeErrorText(answer.text)}\n` : `${message}\n`];
   const fixed: HeaderPair[] = [['content-type', contentType],['cache-control','no-store'],['x-request-id',requestId],['x-content-type-options','nosniff']];
   const taken = new Set(fixed.map(([key]) => key));
   const extra = headers.filter(([key]) => !taken.has(key.toLowerCase()) && !forbiddenHeaders.has(key.toLowerCase()));
