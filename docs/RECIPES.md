@@ -170,6 +170,10 @@ that exists and differs is a clash: a route pattern, a configuration entry
 fixture sending the same request with different expectations (fixtures carry
 no id, so the request is what identifies one). Any clash refuses the whole
 merge with code `recipe-clash`, every clash named, and nothing written.
+Every message names files relative to the project root (`urlcode.yaml`,
+`public/index.html`), never the path the project was given, so the same text
+comes from the CLI and from MCP `merge_recipe` and never reveals where the
+project lives (#1029).
 
 A recipe that needs an extension the project does not declare is refused with
 code `recipe-needs-extension`, naming the command that adds it (`urlcode

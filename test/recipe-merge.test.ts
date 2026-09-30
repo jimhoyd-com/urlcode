@@ -82,9 +82,9 @@ test('recipes add --project refuses the whole merge on clashing recipes, naming 
   const files=await contents(app);
   const refused=run(root,'recipes','add','contact-form','--project','app');
   assert.notEqual(refused.status,0);
-  assert.match(refused.stderr,/Refusing to add contact-form to app: \d+ entries clash/);
-  assert.match(refused.stderr,/route \/ in app\/urlcode\.yaml differs/);
-  assert.match(refused.stderr,/file app\/public\/index\.html differs from the recipe's/);
+  assert.match(refused.stderr,/Refusing to add contact-form to the project: \d+ entries clash/);
+  assert.match(refused.stderr,/- route \/ in urlcode\.yaml differs/);
+  assert.match(refused.stderr,/- file public\/index\.html differs from the recipe's/);
   assert.match(refused.stderr,/"code":"recipe-clash"/);
   assert.deepEqual(await contents(app),files);
   // A dry run reports the same refusal.
@@ -113,7 +113,7 @@ routes:
   const files=await contents(app);
   const error=await mergeRecipe('store-booking',app).then(()=>undefined,(caught: unknown)=>caught as Error);
   assert.ok(error);
-  for(const clash of ['extensions.store.config.collections.bookings in','route /api/bookings/* in','include '+app+'/routes/auth.yaml differs','seed auth.users[id=alice] in tests/seed.json differs','fixture GET /api/bookings in'])assert.ok(error.message.includes(clash),`${clash}\n${error.message}`);
+  for(const clash of ['extensions.store.config.collections.bookings in','route /api/bookings/* in','include routes/auth.yaml differs','seed auth.users[id=alice] in tests/seed.json differs','fixture GET /api/bookings in'])assert.ok(error.message.includes(clash),`${clash}\n${error.message}`);
   assert.deepEqual(await contents(app),files);
 });
 
@@ -123,7 +123,8 @@ test('recipes add --project refuses a recipe whose extensions the project has no
   const refused=run(root,'recipes','add','store-booking','--project','app');
   assert.notEqual(refused.status,0);
   assert.match(refused.stderr,/store-booking needs the auth and store extensions/);
-  assert.match(refused.stderr,/urlcode extensions add auth store/);
+  assert.match(refused.stderr,/urlcode extensions add auth store`, then add the recipe again/);
+  assert.match(refused.stderr,/which urlcode\.yaml does not declare/);
   assert.match(refused.stderr,/"code":"recipe-needs-extension"/);
   assert.deepEqual(await contents(app),files);
 });
