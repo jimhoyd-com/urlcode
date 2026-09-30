@@ -70,6 +70,8 @@ test('a blank scaffold creates the new extension shape, and the generated packag
   assert.deepEqual(manifest.peerDependencies, { '@jimhoyd/urlcode': coreVersion }, 'an exact core peer and no sibling peers');
   assert.match(manifest.scripts.build!, /rmSync\('dist'.*&& tsc -p tsconfig\.build\.json$/);
   assert.equal(manifest.scripts.verify, 'npm run typecheck && npm run build && npm test');
+  assert.equal(manifest.scripts.test, 'node --conditions=development --import ../../test/scratch-tmpdir.ts --test test/*.test.ts', 'its suite preloads the shared scratch temporary directory (#1030)');
+  assert.ok((await stat(join(dir, '..', '..', 'test', 'scratch-tmpdir.ts'))).isFile(), 'the preload path resolves from the generated package');
 
   // The descriptor is the one build:addons would write from the generated definition, and the add-on catalog the
   // root install's prepare step builds accepts it before the package is ever built.

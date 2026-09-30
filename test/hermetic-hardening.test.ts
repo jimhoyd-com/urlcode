@@ -6,9 +6,9 @@ import './scratch-tmpdir.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { access, mkdir, mkdtemp, readdir, rm, symlink, utimes, writeFile, chmod } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readdir, readFile, rm, symlink, utimes, writeFile, chmod } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { TestContext } from 'node:test';
 import { project } from './helpers.ts';
@@ -167,6 +167,36 @@ test('a stale run directory is swept only when it is ours, old, unlinked and its
 test('the sweep and run directories of this suite stay inside its scratch temporary directory (#977)', () => {
   const scratch = process.env.URLCODE_TEST_TMPDIR;
   assert.ok(scratch !== undefined && tmpdir() === scratch, 'test/scratch-tmpdir.ts redirected the OS temporary directory');
+});
+
+test('every test script of the root and workspace packages preloads test/scratch-tmpdir.ts (#1030)', async () => {
+  const root = join(import.meta.dirname, '..');
+  const preload = join(root, 'test', 'scratch-tmpdir.ts');
+  const manifests = [root, ...(await readdir(join(root, 'packages'), { withFileTypes: true }))
+    .filter(entry => entry.isDirectory()).map(entry => join(root, 'packages', entry.name))];
+  let checked = 0;
+  for (const dir of manifests) {
+    const manifest = await readFile(join(dir, 'package.json'), 'utf8').catch(() => null);
+    if (manifest === null) continue;
+    const scripts = (JSON.parse(manifest) as { scripts?: Record<string, string> }).scripts ?? {};
+    for (const [name, script] of Object.entries(scripts)) {
+      if (name !== 'test' && !name.startsWith('test:')) continue;
+      for (const step of script.split('&&').map(part => part.trim())) {
+        const where = `${join(dir, 'package.json')} ${name}: ${step}`;
+        const npmRun = /^npm run ([\w:-]+)$/.exec(step);
+        if (npmRun) {
+          // Another test script (checked in its own right) or the build, which runs no test.
+          assert.ok(npmRun[1] === 'build' || npmRun[1]!.startsWith('test:'), where);
+          continue;
+        }
+        assert.match(step, /^node /, `${where}: every test step is a node process that can preload the scratch directory`);
+        const flag = /(?:^|\s)--import (\S+)/.exec(step);
+        assert.ok(flag && resolve(dir, flag[1]!) === preload, `${where}: add --import <path to test/scratch-tmpdir.ts> so it never writes the real temporary directory`);
+        checked++;
+      }
+    }
+  }
+  assert.ok(checked >= 10, `checked ${checked} test steps`);
 });
 
 test('createRunDirectory names the directory for this process and removeRunDirectory deletes it (#977)', async () => {

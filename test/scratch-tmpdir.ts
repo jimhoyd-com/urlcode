@@ -1,4 +1,6 @@
-// Loaded with --import by `npm test` and `npm run test:shard` (#977): points the OS temporary directory of the test
+// Loaded with --import by every `test` and `test:*` script of the root and of each workspace package (#977, #1030;
+// test/hermetic-hardening.test.ts enforces it); the one shared copy, which packages reach as ../../test/. Points the
+// OS temporary directory of the test
 // run at a scratch directory of its own, removed when the run ends. The runner sets TMPDIR (POSIX) and TEMP and TMP
 // (Windows) before it starts any test file, so every test process and every CLI a test spawns inherits it; a run's
 // directories and the stale-directory sweep a first run directory triggers then stay inside the scratch directory,

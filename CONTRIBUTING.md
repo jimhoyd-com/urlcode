@@ -20,11 +20,17 @@ see a route respond, point it at a populated project instead, for example
 `make dev PROJECT=examples/cookbook`.
 
 To run a single test file instead of the whole suite, call Node's test runner
-directly with the same type-stripping flag `npm test` uses:
+directly with the same flags `npm test` uses:
 
 ```sh
-node --conditions=development --test test/cli.test.ts
+node --conditions=development --import ./test/scratch-tmpdir.ts --test test/cli.test.ts
 ```
+
+`--import ./test/scratch-tmpdir.ts` points the run's temporary directory at a
+scratch directory removed when it exits, so a test never writes or sweeps your
+real one. Every `test` and `test:*` script, in the root and in each package
+under `packages/` (as `../../test/scratch-tmpdir.ts`), preloads it, and
+`test/hermetic-hardening.test.ts` fails a new one that does not.
 
 Without Make, use `npm ci`, `npm run dev`, `npm run verify` and
 `npm run test:package`. See [local development](docs/LOCAL-DEVELOPMENT.md) for
