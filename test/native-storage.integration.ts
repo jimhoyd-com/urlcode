@@ -149,7 +149,7 @@ test('native storage: the owner\'s own database library behind auth: true, with 
     // Serving without the granted data directory refuses before any request, rather than guessing a location.
     const unset = urlcode(['validate', '--local', ...documented], operatorEnv);
     assert.notEqual(unset.status, 0);
-    assert.match(unset.stdout + unset.stderr, /Route \/api\/notes: Missing required environment binding/);
+    assert.match(unset.stdout + unset.stderr, /Route \/api\/notes: Environment binding DATA_DIR reads URLCODE_DATA_DIR, which is not set/);
   });
 
   await t.test('test runs twice and audit is ready, each on a fresh database outside the project', () => {
