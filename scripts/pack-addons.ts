@@ -8,14 +8,19 @@
 // It packs with --ignore-scripts, like every pack in this repository, so it never builds: it packs the dist/ already
 // there. Build core (`npm run build`) and the add-ons (`node scripts/workspaces.ts run build`) first; a package whose
 // exports or bin name a file that is not there is refused before anything is packed (#960).
+//
+// The core tarball always carries the addons.json written beside it, never the build's development manifest with its
+// `file:` links into this checkout (#1002). Core is packed from a staged copy, so the checkout's dist/ is not touched.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { join, relative, resolve } from 'node:path';
+import { access, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { addons, repositoryRoot } from './workspaces.ts';
 import { npmCommand } from './npm-command.ts';
-import { withPublishedManifest } from './published-manifest.mjs';
+import { publishedManifest } from './published-manifest.mjs';
+import { parsePackJson } from './pack-json.ts';
 
 export interface PackedAddons { core: string; tarballs: Record<string, string>; manifest: string }
 const npm = (args: string[], cwd: string, env: NodeJS.ProcessEnv = process.env): string => { const command = npmCommand(args); return execFileSync(command.command, command.args, { cwd, env, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }); };
@@ -45,12 +50,46 @@ export async function assertBuilt(packages: { packageName: string; directory: st
   if (problems.length) throw new Error(`Refusing to pack unbuilt packages; they would install but fail to load:\n- ${problems.join('\n- ')}\nBuild them, then pack again.`);
 }
 
+/** The `dist/addons.json` a packed core tarball carries, as text. */
+export const shippedManifest = (tarball: string): string => execFileSync('tar', ['-xOzf', tarball, 'package/dist/addons.json'], { encoding: 'utf8' });
+
+/**
+ * What is wrong with an add-on manifest a core tarball carries: a development manifest (a `file:` source directory,
+ * no integrity) names paths on the machine that built it and pins nothing, so it must never ship (#1002).
+ */
+export function shippedManifestProblems(text: string): string[] {
+  const manifest = JSON.parse(text) as { addons?: Record<string, { url?: unknown; integrity?: unknown }> };
+  return Object.entries(manifest.addons ?? {}).flatMap(([name, pin]) => typeof pin.integrity === 'string' && /^sha512-/.test(pin.integrity) && typeof pin.url === 'string' && (/^https:\/\//.test(pin.url) || /^file:.*\.tgz$/.test(pin.url))
+    ? [] : [`${name} is not pinned: ${String(pin.url)} with integrity ${String(pin.integrity)} is a development link`]);
+}
+
+/**
+ * Packs the package in `directory` into `out` with `manifest` as its dist/addons.json and its published package.json,
+ * from a staged copy of exactly the files npm would pack, so `directory` is never written. Returns the tarball path.
+ */
+export async function packWithManifest(directory: string, out: string, manifest: string): Promise<string> {
+  const problems = shippedManifestProblems(manifest);
+  if (problems.length) throw new Error(`Refusing to pack core with an unpinned add-on manifest:\n- ${problems.join('\n- ')}`);
+  const [listed] = parsePackJson<{ files: { path: string }[] }>(npm(['pack', '--dry-run', '--ignore-scripts', '--json'], directory));
+  const stage = await mkdtemp(join(tmpdir(), 'urlcode-pack-core-'));
+  try {
+    for (const { path } of listed!.files) { await mkdir(dirname(join(stage, path)), { recursive: true }); await copyFile(join(directory, path), join(stage, path)); }
+    await writeFile(join(stage, 'package.json'), publishedManifest(await readFile(join(directory, 'package.json'), 'utf8')));
+    await mkdir(join(stage, 'dist'), { recursive: true });
+    await writeFile(join(stage, 'dist', 'addons.json'), manifest);
+    const [packed] = parsePackJson<{ filename: string }>(npm(['pack', '--ignore-scripts', '--json', '--pack-destination', out], stage));
+    const file = join(out, packed!.filename);
+    if (shippedManifest(file) !== manifest) throw new Error(`${file} does not carry the add-on manifest it was packed with`);
+    return file;
+  } finally { await rm(stage, { recursive: true, force: true }); }
+}
+
 /**
  * `urlBase` (for example https://github.com/jimhoyd-com/urlcode/releases/download/v1.2.3) replaces the local `file:`
- * URLs. `pinCore` writes the manifest into core's dist/addons.json before core is packed, as a release does: the
- * packed core then carries the pins of exactly these add-on bytes.
+ * tarball URLs. Either way the packed core carries this manifest, the pins of exactly these add-on bytes, as a release
+ * does; the checkout's own development dist/addons.json is left as it is.
  */
-export async function packAddons(out: string, { urlBase, pinCore = false }: { urlBase?: string; pinCore?: boolean } = {}): Promise<PackedAddons> {
+export async function packAddons(out: string, { urlBase }: { urlBase?: string } = {}): Promise<PackedAddons> {
   const all = await addons();
   await assertBuilt([{ packageName: '@jimhoyd/urlcode', directory: repositoryRoot, build: 'npm run build' }, ...all.map(addon => ({ packageName: addon.packageName, directory: addon.directory, build: 'node scripts/workspaces.ts run build' }))]);
   await mkdir(out, { recursive: true });
@@ -66,16 +105,15 @@ export async function packAddons(out: string, { urlBase, pinCore = false }: { ur
   const manifest = join(out, 'addons.json');
   const text = JSON.stringify({ format: 1, version, addons: entries }, null, 2) + '\n';
   await writeFile(manifest, text);
-  if (pinCore) await writeFile(join(repositoryRoot, 'dist', 'addons.json'), text);
   // Core's published manifest drops its development-only `prepare` build hook.
-  return { core: await withPublishedManifest(repositoryRoot, () => pack(repositoryRoot)), tarballs, manifest };
+  return { core: await packWithManifest(repositoryRoot, out, text), tarballs, manifest };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const args = process.argv.slice(2), option = (name: string): string | undefined => { const index = args.indexOf(name); return index < 0 ? undefined : args[index + 1]; };
   const out = resolve(args[0] ?? 'packed'), site = option('--site');
-  // A site gets a core that pins these tarballs, exactly as a released core pins its release's add-ons.
-  const packed = await packAddons(out, { pinCore: site !== undefined });
+  // The packed core pins these tarballs, exactly as a released core pins its release's add-ons.
+  const packed = await packAddons(out);
   process.stdout.write(JSON.stringify(packed, null, 2) + '\n');
   if (site) {
     const cli = join(repositoryRoot, 'dist', 'cli.js'), env = { ...process.env, URLCODE_ADDONS: packed.manifest };

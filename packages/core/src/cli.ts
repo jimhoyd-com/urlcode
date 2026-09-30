@@ -247,7 +247,7 @@ const helpEntries: HelpEntry[] = [
 ` },
   { name:'plan-feature', group:'Agent tooling', text:
 `  urlcode plan-feature <goal> [--project directory] [--target self-hosted|cloudflare|aws|vercel|static] [--host-file ...] [--origin https://links.example] [--policy /absolute/policy.json] [--json]
-    # bounded read-only feature plan from compiled facts, local catalogs, locked inert artifacts, extension authoring surfaces and registrations already loaded from the operator host; --host-file needs no revision pin here
+    # bounded read-only feature plan from compiled facts, local catalogs, locked inert artifacts, extension authoring surfaces and registrations already loaded from the operator host; --host-file needs no revision pin here. Outside a project and without --project it plans before init: recipes and the extensions for init --with, from the catalogs only (project: null, withoutProject says what was skipped)
 ` },
   { name:'fixtures', group:'Agent tooling', text:
 `  urlcode fixtures suggest [--project directory] [--json]
@@ -483,7 +483,10 @@ try {
       print(values.yaml ? stringifyYaml(fragment.schema) : JSON.stringify(fragment.schema,null,2)+'\n');
     }else if(command==='plan-feature'){
       if(arg===undefined)throw new ConfigError('Use urlcode plan-feature <goal>');
-      const plan=await planFeature(values.project,arg,{...(values.target===undefined?{}:{target:values.target}),...(values.origin===undefined?{}:{origin:values.origin}),...(values['host-file']===undefined?{}:{extensions:operatorHost.extensions??[]})});
+      // Planning comes before init (#1000): with no --project, no --host-file and no project where the command runs, it
+      // plans from the catalogs alone. A named --project that is missing is still an error.
+      const projectless=parsed.project===undefined&&values['host-file']===undefined&&!(await access(join(values.project,'urlcode.yaml')).then(()=>true,()=>false));
+      const plan=await planFeature(projectless?undefined:values.project,arg,{...(values.target===undefined?{}:{target:values.target}),...(values.origin===undefined?{}:{origin:values.origin}),...(values['host-file']===undefined?{}:{extensions:operatorHost.extensions??[]})});
       print(values.json?plan:stringifyYaml(plan,{lineWidth:0,aliasDuplicateObjects:false}));
     }else if(command==='fixtures'||command==='diff'){
       // Both read YAML only: a project directory through the configuration loader (urlcode.yaml and its

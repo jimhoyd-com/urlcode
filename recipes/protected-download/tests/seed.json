@@ -1,0 +1,7 @@
+{
+  "auth": {
+    "users": [
+      {"id": "ada", "email": "ada@example.test", "password": "ada-local-demo-password", "name": "Ada"}
+    ]
+  }
+}

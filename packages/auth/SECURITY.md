@@ -41,7 +41,10 @@
 - **One host serves the auth database.** A process that finds another host
   holding the auth database's host lease answers `503 auth_unavailable` to
   every auth request until that host is gone. The check runs once per request,
-  before Better Auth, not inside Better Auth's own transactions. The lease rows
+  before Better Auth, and again inside every Better Auth insert, update and
+  delete (a temporary trigger on each of its tables, on auth's connection
+  only), under that statement's write lock, so a request that stalls after
+  the first check writes nothing once another host took over (#1010). The lease rows
   are ordinary rows in `auth.sqlite`: they detect a misconfiguration, not an
   adversary who can write the file.
 - **Route code never sees the cookie.** The route's own code never receives
