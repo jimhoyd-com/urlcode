@@ -157,3 +157,41 @@ test('with an owner database the urlcode-auth commands refuse; going back to the
   await host({});
   assert.equal(run(['migrate']).status, 0);
 });
+
+test('seeding runs the owner\'s validateUserInfo and database hooks in a hermetic seed context (#1058)', async t => {
+  const at = await project(t);
+  const validated: unknown[] = [], hooked: unknown[] = [];
+  const seen = (ctx: unknown) => {
+    const context = ctx as { request?: unknown; headers?: Headers; path?: unknown } | null | undefined;
+    return context ? { request: context.request ?? null, headers: context.headers ? [...context.headers] : null, path: context.path ?? null } : context;
+  };
+  const owner = {
+    logger: { disabled: true },
+    user: {
+      validateUserInfo: (info: { user: { email?: string }; source: unknown }, ctx: unknown) => {
+        validated.push({ email: info.user.email, source: info.source, ctx: seen(ctx) });
+        return info.user.email?.endsWith('@example.test') ? undefined : { error: 'outside_domain' };
+      },
+    },
+    databaseHooks: {
+      user: { create: {
+        before: async (user: { id: string }, ctx: unknown) => { hooked.push(['user.before', user.id, seen(ctx)]); },
+        after: async (user: { id: string }, ctx: unknown) => { hooked.push(['user.after', user.id, seen(ctx)]); },
+      } },
+      account: { create: { after: async (account: { userId: string }, ctx: unknown) => { hooked.push(['account.after', account.userId, seen(ctx)]); } } },
+    },
+  };
+  const hermeticWith = (betterAuth: object) => createAuthExtension({ projectSha256: at.projectSha256, database: memoryDatabase().adapter, testDatabase: memoryDatabase().adapter, secret, hermetic: true, betterAuth: betterAuth as never });
+  const seed = { auth: { users: [{ id: 'ann', email: 'ann@example.test', password: 'ann-local-password' }] } };
+  const { call } = await serve(t, at, hermeticWith(owner), seed);
+  const hermetic = { request: null, headers: [], path: null };
+  assert.deepEqual(validated, [{ email: 'ann@example.test', source: { method: 'email-password', action: 'create-user' }, ctx: hermetic }]);
+  assert.deepEqual(hooked, [['user.before', 'ann', hermetic], ['user.after', 'ann', hermetic], ['account.after', 'ann', hermetic]]);
+  assert.equal((await call('/api/auth/sign-in/email', { method: 'POST', body: { email: 'ann@example.test', password: 'ann-local-password' } })).status, 200);
+  // A validator that rejects a seeded user refuses the run, naming the hook, the user and the validator's error.
+  const outside = { auth: { users: [{ id: 'bob', email: 'bob@elsewhere.test', password: 'bob-local-password' }] } };
+  await assert.rejects(startServer({ project: at.app, origin, port: 0, log: () => {}, extensions: [hermeticWith(owner)], seed: outside }), /seeded user bob.*validateUserInfo.*outside_domain/);
+  // A create.before hook that cancels the user refuses the run, naming the hook.
+  const cancelling = { logger: { disabled: true }, databaseHooks: { user: { create: { before: async () => false } } } };
+  await assert.rejects(startServer({ project: at.app, origin, port: 0, log: () => {}, extensions: [hermeticWith(cancelling)], seed: outside }), /seeded user bob.*databaseHooks\.user\.create\.before/);
+});

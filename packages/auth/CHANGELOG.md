@@ -2,7 +2,12 @@
 
 ## Unreleased
 
-<<<<<<< HEAD
+- **Seeds run the owner's `validateUserInfo` and database hooks (#1058).** `tests/seed.json` accounts are created
+  inside a hermetic seed context: the endpoint context Better Auth passes its hooks, with no request (`request` and
+  `path` undefined) and empty `headers`. Before, a configured `betterAuth.user.validateUserInfo` refused every seed
+  with `User validation requires an endpoint context`, and `databaseHooks` got no context at all. A validator sees
+  `{method: 'email-password', action: 'create-user'}`; one that rejects a seeded user, or a `create.before` hook that
+  returns `false`, refuses the run with a message naming the user and the hook.
 - **The owner's Better Auth choices are honoured (#1052).** `auth({database})` also takes the owner's own Better Auth
   database (an adapter, a Kysely dialect, a Postgres or MySQL pool), passed to Better Auth unchanged; before, the
   bundled SQLite file always replaced it. With one, the one-server lock, the WAL and file checks, the table check and
@@ -13,13 +18,10 @@
   live database. Seed accounts are created through Better Auth's internal adapter rather than a raw model insert, so
   they work on any adapter. Email and password is now a default, not forced: `betterAuth.emailAndPassword.enabled:
   false` turns it off, and its endpoints then answer `404`. `betterAuth.database` is refused in favour of `database`.
-=======
 - The extension declares its credential for `urlcode openapi` as `openapiSecurity` (#1047): Better Auth's session
   cookie, without a name, since the name is the operator's Better Auth configuration. The export no longer gives an
   `auth: true` route a `urlcodeSession.auth` scheme with the placeholder cookie `session`, which a generated client
   would have sent; the operation states the cookie under `x-urlcode.authentication` instead.
-
->>>>>>> origin/main
 - **Breaking: one serving process per database.** Each activation takes an exclusive OS-held lock on
   `auth.sqlite.server-lock` (core's `holdServerLock`) before it opens the database, and a second serving process is
   refused with `Another process is already serving this auth database`; the operating system releases the lock when

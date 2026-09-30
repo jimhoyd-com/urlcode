@@ -106,6 +106,18 @@ Each user needs an `id` (a principal id), an `email` and a password of 8 to
 is needed for tests, and a rerun starts from the same accounts. See
 [test data and seeds][readiness-seeds].
 
+Seed accounts are created as Better Auth's email sign-up creates them, so the
+owner's `betterAuth.user.validateUserInfo` and `databaseHooks` run for each
+one, in a hermetic seed context: the endpoint context Better Auth passes its
+hooks, with no request (`ctx.request` and `ctx.path` are `undefined`) and
+empty `ctx.headers`, so there is no client address or cookie to read.
+`validateUserInfo` receives `{method: 'email-password', action: 'create-user'}`
+as its source; `user.create.before` and `after`, then `account.create.before`
+and `after`, run in that order. A validator that rejects a seeded user (or
+throws), or a `create.before` hook that returns `false`, refuses the run with
+a message naming the user and the hook. A validator that needs a request must
+accept one without it, or the seed accounts must satisfy it.
+
 Identity is not permission. Roles, ownership and approvals are application
 data keyed by that id. A `sandbox: true` route cannot name `auth`: the
 capability is a live object that cannot cross into the sandbox, so the runtime
@@ -212,7 +224,9 @@ and no `testDatabase`, it is refused, naming the option; a `testDatabase` that
 returns the live database itself is refused too. The factory is trusted operator code, so
 one that returns another handle on live data cannot be detected: keep it
 isolated. Test seed accounts are created through Better Auth's own API, so they
-work on any adapter. The mount's contract holds unchanged: `503
+work on any adapter, and the owner's `validateUserInfo` and database hooks run
+for them in the hermetic seed context described under
+[protect a route](#protect-a-route). The mount's contract holds unchanged: `503
 auth_unavailable` when the database fails (on the gate, the mount, and an
 unconfirmed sign-out), the path allowlist, and the body and header bounds.
 
