@@ -243,7 +243,13 @@ log (filters `--source`, `--actor`, `--subject`, `--action`, `--action-prefix`,
 `--from`, `--to`; `--after <next>`, `--limit 1-100`, `--order asc|desc`),
 opening the database read-only, beside the serving process. To forward events
 elsewhere, an extension that requires the store reads the tap,
-`StoreExports.audit` (`peek`, then `ack`, at least once). See
+`StoreExports.audit` (`peek`, then `ack`, at least once). Pruning never waits
+for a sink and never refuses a write; events pruned before the sink
+acknowledged them are counted instead: `StoreExports.audit.status()` resolves
+with `{lost}`, the metrics snapshot carries it as `audit_pruned_unacked_total`
+(Prometheus `urlcode_extension_store_audit_pruned_unacked_total`), and the
+serving process logs one `extension_warning` when it first becomes nonzero and
+again only per further `auditRetention` lost. See
 [audited writes][store-audited-writes] and
 [forwarding events to a sink][store-forwarding-events-to-a-sink].
 

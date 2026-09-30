@@ -55,11 +55,22 @@ export interface AuditPage {
  * acknowledged, in record order, at most `limit` (1..100); `ack` marks those ids forwarded (unknown or already
  * forwarded ids are ignored) and resolves with how many it marked. Delivery is at least once: a sink that stops
  * between forwarding and `ack` sees the same events again, so it deduplicates on `id`. Events are pruned by the log's
- * retention whether or not they were forwarded, so a sink must keep up within it.
+ * retention whether or not they were forwarded, so a sink must keep up within it; `status` reports how many it did not.
  */
 export interface AuditTap {
   peek(limit: number): Promise<readonly AuditStoredEvent[]>;
   ack(ids: readonly string[]): Promise<number>;
+  /** The tap's gap: what the log pruned before it was acknowledged. A read; it never registers a consumer. */
+  status(): Promise<AuditTapStatus>;
+}
+/** What `AuditTap.status` reports. */
+export interface AuditTapStatus {
+  /**
+   * How many events the log pruned while still unacknowledged since the tap first had a consumer (its first `peek` or
+   * `ack`): a counter that only grows. A sink compares it with the value it last saw; any increase is events it never
+   * received. Always 0 for a log whose tap nobody has consumed, since then pruning is only retention.
+   */
+  readonly lost: number;
 }
 /** An audit log: its tap and its query. What the store exports as `StoreExports.audit`. */
 export interface AuditLog extends AuditTap {
