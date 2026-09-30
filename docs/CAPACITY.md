@@ -379,12 +379,15 @@ tables are dropped on a snapshot reload. Sharing state across instances is a
 
 ### One serving process per database
 
-A site whose extensions keep SQLite files (store, auth) is served by
+A site whose bundled extensions keep SQLite files (store, and auth on its bundled file) is served by
 **one** `urlcode serve` process. A second serving process on the same
 database is refused before it writes anything, by an OS-held lock that a
 crashed or killed process releases at once
 ([store](STORE.md#one-serving-process-per-database)). Several servers need a
-real database server, which URLCode does not provide. Scale such a site up,
+database server, which the bundled SQLite store does not use; keep such data
+in the owner's own database instead
+([owner choice](EXTENSIONS.md#native-independent-integration-or-bundled-default)).
+Otherwise scale such a site up,
 not out: size store writes from
 [the SQLite store measurement](#measured-the-sqlite-store), since SQLite admits
 one writer at a time and each commit's fsync blocks the process's event loop.

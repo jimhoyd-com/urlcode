@@ -10,6 +10,12 @@ Why it is an extension: core has no persistence handler. Trusted by default
 ([direction](PROJECT-DIRECTION.md)) lets core stay small while data-owning
 features ship as extensions the operator reviews and pins.
 
+It is the bundled default, not a requirement. Everything on this page (one
+SQLite file, its lock, backup commands, declared guarantees) describes this
+package. An application may keep its data in any database it chooses, from a
+trusted function route or an independent extension instead
+([native, independent integration, or bundled default](EXTENSIONS.md#native-independent-integration-or-bundled-default)).
+
 Tools that need the store configuration shape without loading operator code can
 add the inert `store-schema` artifact (`urlcode artifacts add store-schema`;
 see [artifacts](EXTENSIONS.md#artifacts)). Its schema is generated from this
@@ -2143,7 +2149,9 @@ Errors never contain record values, SQL or filesystem paths.
 ### One serving process per database
 
 **One `urlcode serve` process serves a store database.** Several servers need
-a real database server, which URLCode does not provide. More processes would
+a database server, which the bundled store does not use; an application that
+needs one keeps that data with its own client
+([owner choice](EXTENSIONS.md#native-independent-integration-or-bundled-default)). More processes would
 not add write throughput anyway: SQLite takes one writer at a time, and each
 commit's fsync blocks the process
 ([capacity](CAPACITY.md#measured-the-sqlite-store)). `node:cluster` workers,
@@ -2169,7 +2177,7 @@ A pinned `urlcode validate` or `urlcode routes` activates the site's own data,
 so it is refused the same way while the site is served. The lock file stays
 beside the database after the server stops, empty; do not delete it while a
 server runs, and a backup can leave it out. The auth extension takes the same
-lock on `auth.sqlite` ([below](#every-sqlite-extension-takes-the-lock)).
+lock on its bundled `auth.sqlite` ([below](#every-sqlite-extension-takes-the-lock)).
 
 The `urlcode-store` operator commands (`members`, `reassign`, `audit`,
 `backup`, `restore`) never take the lock: they run beside the server through
@@ -2218,8 +2226,10 @@ exposes no filesystem type the check can trust, so it is skipped there.
 The lock and the network filesystem check are one implementation in core
 (`@jimhoyd/urlcode/sqlite`: `holdServerLock`, `serverLockHeld`,
 `refuseNetworkFilesystem`). Each extension locks its own database: the store
-when it opens its connection, and auth on each activation (`auth.sqlite`). So
-a site that runs auth without the store is refused a second server too. Holders in one process share the lock, so a dev reload's two
+when it opens its connection, and auth on each activation while it uses its
+bundled `auth.sqlite` (an owner-supplied Better Auth database takes no lock;
+see [your own database](../packages/auth/README.md#your-own-database)). So
+a site that runs bundled auth without the store is refused a second server too. Holders in one process share the lock, so a dev reload's two
 activations never refuse each other. An activation that fails releases its
 share ([#979](https://github.com/jimhoyd-com/urlcode/issues/979)). The
 `urlcode-auth` commands (`migrate`, `create-user`, `find-user`) do not take
@@ -2243,7 +2253,7 @@ it. The audit log is part of `store.sqlite`, so it has no lock of its own.
   never meet a served site's.
 
 **Per process.** Throttle counters, origin caches and metrics live in the one
-serving process. Better Auth's sign-in limit counts in `auth.sqlite`, so it
+serving process. Better Auth's sign-in limit counts in the auth database, so it
 also survives a restart, unless the operator chose per-process storage
 ([auth](../packages/auth/README.md#operator-options)).
 

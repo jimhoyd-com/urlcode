@@ -455,8 +455,8 @@ application commit, dependency locks and image digest in your deployment system.
 5. If checks or observed behavior fail, route traffic back to the retained previous
    instance/image and its compatible secret bindings.
 
-**With the store or auth extension, one process serves the site's
-data.** Each SQLite database is served by one process: a candidate started on
+**With the bundled store, or bundled auth on its own SQLite file, one process
+serves the site's data.** Each SQLite database is served by one process: a candidate started on
 the same `data/` directory while the previous instance serves it is refused
 at startup ("Another process is already serving this store database"), before
 it writes anything ([store](STORE.md#one-serving-process-per-database)). For
@@ -468,8 +468,9 @@ the lock is released the moment the previous process exits, however it
 exits, so there is nothing to wait for. Rolling back is the same swap in
 reverse. A candidate whose release migrated the store schema can only be
 rolled back by restoring a backup taken before it started. Several servers on
-one database need a real database server, which URLCode does not provide. The
-database must be on local disk: a network filesystem is refused on Linux.
+one database need a database server, which the bundled SQLite store does not
+use ([owner choice](EXTENSIONS.md#native-independent-integration-or-bundled-default)). The
+SQLite file must be on local disk: a network filesystem is refused on Linux.
 
 This is an operator procedure, not an implemented deployment control plane.
 Rollback cannot undo a function's external side effects or migrate an app's
