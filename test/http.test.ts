@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { connect } from 'node:net';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { stringify } from 'yaml';
 import { startServer } from '../packages/core/src/server.ts';
 import { project, redirect, param, request, approveBindings } from './helpers.ts';
@@ -128,6 +129,63 @@ test('a client that writes its whole oversized body before reading still reads t
     const started = performance.now(); open = false; await app.close(); await closed;
     assert.ok(performance.now() - started < 2000, 'close waited for a lingering connection');
   } finally { if (open) await app.close(); }
+});
+test('a chunked client that writes its whole oversized body before reading reads the 413, not a reset (#1081)', async t => {
+  const root = await project(t,{ '/':{ methods:['POST'],function:{ source:'f.mjs' } } },{ 'f.mjs':'export default () => new Response("ok")' });
+  const app = await serve(t,root,{ maxBodyBytes:1024 });
+  const port = app.address.port, size = 4 * 1024 * 1024;
+  for (let i = 0; i < 5; i++) {
+    const answer = await new Promise<string>(resolve => {
+      const socket = connect(port,'127.0.0.1'); let data = '';
+      socket.on('data', chunk => { data += chunk; });
+      socket.on('error', error => resolve(`${(error as NodeJS.ErrnoException).code}: ${data}`));
+      socket.on('close', () => resolve(data));
+      socket.write(`POST / HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nTransfer-Encoding: chunked\r\n\r\n${size.toString(16)}\r\n`);
+      socket.write('x'.repeat(size));
+      socket.end('\r\n0\r\n\r\n');
+    });
+    assert.match(answer, /^HTTP\/1\.1 413 [^]*connection: close/i, `attempt ${i}`);
+  }
+});
+test('shutdown does not wait for a connection lingering after a streamed body was refused (#1081)', async t => {
+  const root = await project(t,{ '/':{ methods:['POST'],function:{ source:'f.mjs' } } },{ 'f.mjs':'export default () => new Response("ok")' });
+  const app = await startServer({ project:root,port:0,log:()=>{},maxBodyBytes:1024 });
+  let open = true;
+  t.after(() => open ? app.close() : undefined);
+  const port = app.address.port;
+  // The body streams past the limit, more of it than the paused request buffers, then the client neither finishes
+  // it nor closes.
+  const socket = connect(port,'127.0.0.1'); socket.on('error', () => {});
+  const closed = new Promise(resolve => socket.once('close', resolve));
+  await new Promise<void>(resolve => {
+    socket.once('data', chunk => { assert.match(String(chunk), /^HTTP\/1\.1 413 /); resolve(); });
+    socket.write(`POST / HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nTransfer-Encoding: chunked\r\n\r\n${(1 << 20).toString(16)}\r\n`);
+    socket.write('x'.repeat(1 << 20));
+  });
+  const started = performance.now(); open = false; await app.close(); await closed;
+  assert.ok(performance.now() - started < 2000, 'close waited for a lingering connection');
+});
+test('a request pipelined behind a refused one is not dispatched while the connection lingers (#1082)', async t => {
+  const hits = join(await mkdtemp(join(tmpdir(),'urlcode-hits-')),'hits.log');
+  await writeFile(hits,'');
+  t.after(() => rm(dirname(hits),{ recursive:true,force:true }));
+  const root = await project(t,{ '/':{ methods:['GET','POST'],function:{ source:'f.mjs' } } },
+    { 'f.mjs':`import { appendFileSync } from 'node:fs'; export default request => { appendFileSync(${JSON.stringify(hits)}, request.method + '\\n'); return new Response('ok'); };` });
+  const app = await serve(t,root,{ maxBodyBytes:1024 });
+  const port = app.address.port, size = 2048;
+  const socket = connect({ port,host:'127.0.0.1',allowHalfOpen:true }); socket.on('error', () => {});
+  let data = '';
+  socket.on('data', chunk => { data += chunk; });
+  const ended = new Promise(resolve => socket.once('end', resolve));
+  // The head and part of the body: the 413 arrives before the rest is sent.
+  await new Promise<void>(resolve => { socket.once('data', () => resolve()); socket.write(`POST / HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nContent-Length: ${size}\r\n\r\n` + 'x'.repeat(100)); });
+  socket.write('x'.repeat(size - 100) + `GET / HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\n\r\n`);
+  await new Promise(resolve => setTimeout(resolve, 500));
+  socket.end(); await ended;
+  assert.match(data, /^HTTP\/1\.1 413 /);
+  assert.equal(data.match(/HTTP\/1\.1/g)?.length, 1);
+  assert.equal(await readFile(hits,'utf8'), '', 'the pipelined GET reached its handler');
+  socket.destroy();
 });
 test('chunked oversized body returns 413 and server remains usable', async t => {
   const root = await project(t,{ '/':redirect() });
