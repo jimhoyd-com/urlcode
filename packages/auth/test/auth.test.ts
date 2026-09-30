@@ -6,11 +6,11 @@ import { chmod, mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/pr
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { startServer } from '@jimhoyd/urlcode';
+import { buildOpenApi, renderOpenApi, startServer } from '@jimhoyd/urlcode';
 import { inspectExtensionRevision } from '@jimhoyd/urlcode/extensions';
 import { betterAuth } from 'better-auth';
 import { createAuthEndpoint } from 'better-auth/api';
-import { betterAuthOptions, createAuthExtension, migrate } from '../src/index.ts';
+import { authOpenApiSecurity, betterAuthOptions, createAuthExtension, migrate } from '../src/index.ts';
 import extension from '../src/extension.ts';
 
 const origin = 'http://localhost:8123';
@@ -210,6 +210,32 @@ test('a protected route sees the verified user id, never the session cookie, and
   assert.equal((await call('/api/auth/sign-out', { method: 'POST', body: {}, headers: { origin: 'https://attacker.example' } })).status, 403);
   assert.equal((await call('/api/auth/sign-out', { method: 'POST', body: {} })).status, 200);
   assert.equal((await call('/me')).status, 401);
+});
+
+test('OpenAPI states the session cookie without publishing or inventing the name the operator configures (#1047)', async t => {
+  const at = await project(t); await withUser(at);
+  const prefix = 'operator-chosen-prefix', settings = { betterAuth: { advanced: { cookiePrefix: prefix } } };
+  const registration = createAuthExtension({ projectSha256: at.projectSha256, database: at.database, secret, ...settings });
+  // One declaration: the definition (so urlcode.json and the release catalog) and the registration host() returns.
+  const descriptor = JSON.parse(await readFile(fileURLToPath(new URL('../urlcode.json', import.meta.url)), 'utf8')) as { openapiSecurity?: unknown };
+  assert.deepEqual(registration.openapiSecurity, authOpenApiSecurity);
+  assert.deepEqual(extension.definition.openapiSecurity, authOpenApiSecurity);
+  assert.deepEqual(descriptor.openapiSecurity, authOpenApiSecurity);
+  assert.deepEqual({ type: authOpenApiSecurity.type, in: 'in' in authOpenApiSecurity ? authOpenApiSecurity.in : undefined, name: 'name' in authOpenApiSecurity ? authOpenApiSecurity.name : undefined }, { type: 'apiKey', in: 'cookie', name: undefined });
+  for (const extensions of [undefined, [registration]]) {
+    const document = await buildOpenApi(at.app, { origin, ...(extensions ? { extensions } : {}) });
+    const me = document.paths['/me']!.get as { security?: unknown; responses: Record<string, unknown>; 'x-urlcode'?: { authentication?: unknown } };
+    assert.equal(me.security, undefined, 'no security requirement names a cookie a client would have to invent');
+    assert.deepEqual(me['x-urlcode']?.authentication, [{ extension: 'auth', credential: 'cookie', cookieName: 'operator-defined', description: authOpenApiSecurity.description }]);
+    assert.ok(me.responses['401']);
+    assert.equal(document.components.securitySchemes, undefined);
+    const text = renderOpenApi(document);
+    for (const leaked of [prefix, 'better-auth', 'session_token', secret]) assert.ok(!text.includes(leaked), leaked);
+  }
+  // The name really is the operator's: the served sign-in sets the prefixed cookie the document leaves out.
+  const { call, jar } = await serve(at, settings);
+  assert.equal((await call('/api/auth/sign-in/email', { method: 'POST', body: { email: 'ann@example.test', password: 'ann-local-password' } })).status, 200);
+  assert.ok([...jar.keys()].some(name => name.startsWith(`${prefix}.`)), [...jar.keys()].join(', '));
 });
 
 test('a sign-out whose session delete fails answers 503 and keeps the cookie, and the session still works (#980)', async t => {

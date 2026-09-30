@@ -88,6 +88,17 @@ test('an extension registers providesPrincipal exactly when its definition decla
   assert.throws(() => defineExtension({ name: 'gate', description: 'Synthetic gate', contract: 2, targets: ['node'], providesPrincipal: 'yes' as never, schema, host: ctx => registration(ctx) }), /providesPrincipal must be a boolean/);
 });
 
+test('an extension registers the openapiSecurity its definition declares, only as a principal provider (#1047)', async t => {
+  const cookie = { type: 'apiKey' as const, in: 'cookie' as const, name: 'gate_session' };
+  const registration = (ctx: { projectSha256: string }, openapiSecurity?: typeof cookie) => ({ registration: { name: 'gate', version: '1' as const, projectSha256: ctx.projectSha256, targets: ['node' as const], schema, providesPrincipal: true, ...(openapiSecurity ? { openapiSecurity } : {}), activate: () => ({ handle: () => ({ status: 404, headers: [] }) }) } });
+  const base = { name: 'gate', description: 'Synthetic gate', contract: 2, targets: ['node' as const], providesPrincipal: true, schema };
+  await assert.rejects(composed(t, [defineExtension({ ...base, openapiSecurity: cookie, host: ctx => registration(ctx) })()]), /gate registers an openapiSecurity that differs from its definition's/);
+  await assert.rejects(composed(t, [defineExtension({ ...base, host: ctx => registration(ctx, cookie) })()]), /gate registers an openapiSecurity that differs from its definition's/);
+  assert.deepEqual((await composed(t, [defineExtension({ ...base, openapiSecurity: cookie, host: ctx => registration(ctx, cookie) })()])).extensions![0]!.openapiSecurity, cookie);
+  assert.throws(() => defineExtension({ ...base, providesPrincipal: false, openapiSecurity: cookie, host: ctx => registration(ctx) }), /declares openapiSecurity but does not provide the request principal/);
+  assert.throws(() => defineExtension({ ...base, openapiSecurity: { type: 'apiKey', in: 'header' } as never, host: ctx => registration(ctx) }), /openapiSecurity needs the header name/);
+});
+
 test('get returns the producer exports when present and undefined when absent', async t => {
   let saw: unknown = 'unset';
   const consumer = synthetic('consumer', { uses: ['producer'] }, ctx => { saw = ctx.get('producer'); return saw; });

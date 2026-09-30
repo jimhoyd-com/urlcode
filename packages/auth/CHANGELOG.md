@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The extension declares its credential for `urlcode openapi` as `openapiSecurity` (#1047): Better Auth's session
+  cookie, without a name, since the name is the operator's Better Auth configuration. The export no longer gives an
+  `auth: true` route a `urlcodeSession.auth` scheme with the placeholder cookie `session`, which a generated client
+  would have sent; the operation states the cookie under `x-urlcode.authentication` instead.
+
 - A site whose fixtures sign in more than ten times passes `urlcode test` and `audit` (#1019). Better Auth's limit of
   10 sign-ins a minute per client address applied to hermetic runs too, where every fixture comes from one address, so
   the eleventh sign-in answered `429` and every later step was skipped (store-booking and store-credits merged sign in

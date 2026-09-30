@@ -8,6 +8,11 @@
     "node"
   ],
   "providesPrincipal": true,
+  "openapiSecurity": {
+    "type": "apiKey",
+    "in": "cookie",
+    "description": "The Better Auth session cookie that signing in under the auth mount sets; a browser sends it with each same-site request. Its name is the operator's Better Auth configuration and is not published."
+  },
   "schema": {
     "type": "object",
     "additionalProperties": false,
