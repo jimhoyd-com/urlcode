@@ -132,15 +132,25 @@ The mount forwards only these Better Auth paths; everything else under it is
 | `GET /ok` | Health |
 | `POST /sign-up/email` | Only with `auth({signUp: true})` |
 
-A request body on these paths passes core's JSON body reader
-([`readBody`][extensions-request-helpers]) before Better Auth sees it, and a
-refusal answers with core's status and code as `{"error": <code>}`: a string or
-key holding an unpaired UTF-16 surrogate escape (`"\ud800"` alone) is
-`400 invalid_unicode`, where Better Auth would have stored it as U+FFFD
-(#1016); a repeated key or `Content-Type`, nesting past 32, invalid UTF-8 or
-JSON is `400`, and any media type but `application/json` is `415`. Better Auth
-then parses the unchanged bytes. `urlcode-auth create-user` refuses the same
-strings in its input, and core refuses them in `tests/seed.json`.
+The mount forwards the unchanged body and `Content-Type` to Better Auth, which
+owns each endpoint's accepted formats, including form-encoded sign-in and formats
+an enabled plugin declares. It does not translate requests into a private auth
+format. Every body is limited to 1 MiB and repeated `Content-Type` headers are
+`400 duplicate_header`, regardless of format.
+
+JSON bodies (including `application/*+json`) first pass core's JSON body reader
+([`readBody`][extensions-request-helpers]): a string or key holding an unpaired
+UTF-16 surrogate escape is `400 invalid_unicode`; repeated keys, nesting past
+32, invalid UTF-8 or invalid JSON are `400`. Form-encoded and plain-text bodies
+must be valid UTF-8; form percent-encoded bytes must also decode as valid UTF-8
+(`400 invalid_encoding`). Duplicate form fields and literal percent signs retain
+upstream semantics. Binary and multipart parsing stays with the enabled upstream
+endpoint; these formats do not receive the JSON-specific structural checks.
+Better Auth still owns origin/CSRF checks on its endpoints. Supporting a format
+does not enable another path or disable those checks.
+
+`urlcode-auth create-user` refuses unpaired surrogates in its input, and core
+refuses them in `tests/seed.json`.
 
 ## Operator options
 
