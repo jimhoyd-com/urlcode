@@ -1,6 +1,4 @@
 import { isIP } from 'node:net';
-import ipaddr from 'ipaddr.js';
-import type { IPv4, IPv6 } from 'ipaddr.js';
 import { assert } from './errors.ts';
 
 // Client identity for host policies. The socket peer is the truth unless the
@@ -9,27 +7,36 @@ import { assert } from './errors.ts';
 // the usual proxy-protocol convention and docs/RESILIENCE.md. Nothing here
 // ever trusts a forwarded header from an address outside that set.
 
-export interface Cidr { range: IPv4 | IPv6; prefix: number }
+export interface Cidr { bytes: Uint8Array; prefix: number }
 
-// Node's isIP decides what an address is: ipaddr.js alone also takes forms such as `127.1` and `0x7f.0.0.1`. The
-// dotted IPv4-mapped form keeps its v4 identity so one CIDR list covers both; the hex form stays IPv6. A zone ID
-// (`fe80::1%eth0`) takes no part in matching. Any other embedded dotted quad is two trailing groups (RFC 4291 §2.2),
-// never the IPv4-mapped address ipaddr.js makes of `::a.b.c.d`.
-function parse(address: string): IPv4 | IPv6 | undefined {
-  const kind = isIP(address), mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(address);
-  if (!kind) return undefined;
-  if (kind === 4 || mapped) return ipaddr.IPv4.parse(mapped ? mapped[1]! : address);
-  const group = (high: string, low: string) => ((Number(high) << 8) | Number(low)).toString(16);
-  return ipaddr.IPv6.parse(address.replace(/%.*$/s, '').replace(/(\d+)\.(\d+)\.(\d+)\.(\d+)$/, (_, a: string, b: string, c: string, d: string) => `${group(a, b)}:${group(c, d)}`));
+function toBytes(address: string): Uint8Array | undefined {
+  const kind = isIP(address);
+  if (kind === 4) return Uint8Array.from(address.split('.').map(Number));
+  if (kind !== 6) return undefined;
+  // Mapped IPv4 in IPv6 keeps its v4 identity so one CIDR list covers both.
+  const mapped = address.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
+  if (mapped) return toBytes(mapped[1]!);
+  // Any other embedded dotted quad (RFC 4291 §2.2) is two trailing groups.
+  const dotted = address.match(/^(.*:)(\d+\.\d+\.\d+\.\d+)$/);
+  if (dotted) {
+    const [a = 0, b = 0, c = 0, d = 0] = dotted[2]!.split('.').map(Number);
+    address = dotted[1]! + ((a << 8) | b).toString(16) + ':' + ((c << 8) | d).toString(16);
+  }
+  const [head, tail = ''] = address.split('::');
+  const parts = head ? head.split(':') : [], rest = tail ? tail.split(':') : [];
+  const groups = [...parts, ...Array(8 - parts.length - rest.length).fill('0'), ...rest].map(g => parseInt(g || '0', 16));
+  const bytes = new Uint8Array(16);
+  groups.forEach((g, i) => { bytes[i*2] = g >> 8; bytes[i*2+1] = g & 255; });
+  return bytes;
 }
 
 export function parseCidr(text: string): Cidr {
   const [address = '', prefixText] = String(text).trim().split('/');
-  const range = parse(address);
-  assert(range, `Invalid trusted proxy address "${text}"`);
-  const bits = range.kind() === 'ipv4' ? 32 : 128, prefix = prefixText === undefined ? bits : Number(prefixText);
-  assert(Number.isInteger(prefix) && prefix >= 0 && prefix <= bits, `Invalid trusted proxy prefix "${text}"`);
-  return { range, prefix };
+  const bytes = toBytes(address);
+  assert(bytes, `Invalid trusted proxy address "${text}"`);
+  const prefix = prefixText === undefined ? bytes.length * 8 : Number(prefixText);
+  assert(Number.isInteger(prefix) && prefix >= 0 && prefix <= bytes.length * 8, `Invalid trusted proxy prefix "${text}"`);
+  return { bytes, prefix };
 }
 
 export function compileTrustedProxies(list: string | string[] = []): Cidr[] {
@@ -38,9 +45,16 @@ export function compileTrustedProxies(list: string | string[] = []): Cidr[] {
   return entries.map(parseCidr);
 }
 
-function within(address: string, { range, prefix }: Cidr): boolean {
-  const target = parse(address);
-  return target !== undefined && target.kind() === range.kind() && target.match(range, prefix);
+function within(address: string, { bytes, prefix }: Cidr): boolean {
+  const target = toBytes(address);
+  if (!target || target.length !== bytes.length) return false;
+  for (let i = 0; i < bytes.length; i++) {
+    const bits = Math.min(8, Math.max(0, prefix - i*8));
+    if (!bits) return true;
+    const mask = (0xff << (8 - bits)) & 0xff;
+    if ((target[i]! & mask) !== (bytes[i]! & mask)) return false;
+  }
+  return true;
 }
 
 function isTrustedProxy(address: string, trusted: Cidr[]): boolean {
@@ -86,16 +100,19 @@ export const clientKeyIpv6Prefix = 64;
 export function clientKey(address: unknown): string | undefined {
   const normalized = normalizeAddress(address);
   if (!normalized || isIP(normalized) !== 6) return normalized;
-  const parsed = parse(normalized) as IPv6;
-  if (parsed.isIPv4MappedAddress()) return parsed.toIPv4Address().toString();
-  return `${parsed.parts.slice(0, clientKeyIpv6Prefix / 16).map(part => part.toString(16)).join(':')}::/${clientKeyIpv6Prefix}`;
+  const bytes = toBytes(normalized)!;
+  if (bytes.subarray(0, 10).every(b => b === 0) && bytes[10] === 0xff && bytes[11] === 0xff) return Array.from(bytes.subarray(12)).join('.');
+  const groups: string[] = [];
+  for (let i = 0; i < clientKeyIpv6Prefix / 8; i += 2) groups.push(((bytes[i]! << 8) | bytes[i + 1]!).toString(16));
+  return `${groups.join(':')}::/${clientKeyIpv6Prefix}`;
 }
 
 
 /** Whether a bound socket address is loopback: 127.0.0.0/8, ::1 or an IPv4-mapped 127.x address. */
 export function isLoopbackAddress(address: string): boolean {
-  const parsed = parse(address);
-  return parsed instanceof ipaddr.IPv4 ? parsed.octets[0] === 127 : parsed?.toNormalizedString() === '0:0:0:0:0:0:0:1';
+  const bytes = toBytes(address);
+  if (bytes?.length === 4) return bytes[0] === 127;
+  return bytes?.length === 16 && bytes.every((byte, index) => byte === (index === 15 ? 1 : 0));
 }
 
 /**

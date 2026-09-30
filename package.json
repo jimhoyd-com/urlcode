@@ -171,7 +171,6 @@
     "ajv": "8.20.0",
     "content-disposition": "3.0.0",
     "es-module-lexer": "3.0.2",
-    "ipaddr.js": "2.5.0",
     "mime-types": "3.0.2",
     "quickjs-emscripten": "0.32.0",
     "yaml": "2.9.1"

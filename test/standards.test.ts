@@ -50,6 +50,6 @@ test('forwarded entries with ports and embedded IPv4 in IPv6 ranges resolve corr
   const trusted = compileTrustedProxies('10.0.0.0/8, 64:ff9b::/96');
   assert.equal(resolveClient('10.0.0.1', '203.0.113.5:1234, 10.0.0.2', trusted), '203.0.113.5');
   assert.equal(resolveClient('10.0.0.1', 'garbage, 10.0.0.2', trusted), '10.0.0.2');
-  assert.deepEqual([...parseCidr('64:ff9b::1.2.3.4/96').range.toByteArray().slice(12)], [1, 2, 3, 4]);
+  assert.deepEqual([...parseCidr('64:ff9b::1.2.3.4/96').bytes.slice(12)], [1, 2, 3, 4]);
   assert.equal(resolveClient('64:ff9b::1.2.3.4', '198.51.100.7', trusted), '198.51.100.7');
 });
