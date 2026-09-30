@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { Socket } from 'node:net';
 import type { AddressInfo } from 'node:net';
 import { randomUUID, createHash } from 'node:crypto';
 import { readdir, lstat, mkdir } from 'node:fs/promises';
@@ -141,6 +142,27 @@ export async function startServer(options: ServerOptions = {}): Promise<Server> 
     return { ...app, close: async () => { try { await app.close(); } finally { await removeRunDirectory(dir); } } };
   } catch (error) { if (owned) await removeRunDirectory(dir); throw error; }
 }
+/** How long a connection closed with request bytes still unread keeps discarding them before it is torn down. */
+const lingerMs = 5000;
+/**
+ * Closing a socket while request bytes are still unread makes the kernel answer the client with a reset, which can
+ * discard an answer the client has not read yet: a 413 refused on Content-Length before the body was read would reach
+ * a client still writing that body as ECONNRESET or EPIPE instead. When Node closes this request's connection
+ * (`Connection: close`) before the request was complete, only the write side is closed and the rest of the request is
+ * discarded until the client closes or `lingerMs` passes (RFC 9112 §9.6). The response has finished by then, so
+ * server shutdown treats the connection as idle and does not wait for it.
+ */
+function lingerBeforeClose(req: http.IncomingMessage): void {
+  const socket = req.socket;
+  // Node's http server ends a closing connection through destroySoon once the response is flushed.
+  socket.destroySoon = () => {
+    if (req.complete || socket.destroyed) { Socket.prototype.destroySoon.call(socket); return; }
+    const timer = setTimeout(() => socket.destroy(), lingerMs); timer.unref();
+    socket.once('end', () => socket.destroy());
+    socket.once('close', () => clearTimeout(timer));
+    socket.end();
+  };
+}
 async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000, watch = false,
   local = false, log = createJsonLogger(),
   maxBodyBytes = 1048576, maxInFlightRequests = 64, maxInFlightHealthRequests = 16,
@@ -196,8 +218,7 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
   // `draining` flips /_urlcode/ready unhealthy ahead of `shuttingDown`, which stops
   // serving entirely; the gap between them is the pre-close readiness delay.
   let shuttingDown = false, draining = false, reloading = false, watching = false, interval: NodeJS.Timeout | undefined, lastFingerprint: string | undefined, inFlight = 0, healthInFlight = 0;
-  const retired = new Set<Promise<void>>();
-  const server = http.createServer({ maxHeaderSize: 16384, headersTimeout: headersTimeoutMs, requestTimeout: requestTimeoutMs, keepAliveTimeout: keepAliveTimeoutMs }, async (req, res) => {
+  const retired = new Set<Promise<void>>();  const server = http.createServer({ maxHeaderSize: 16384, headersTimeout: headersTimeoutMs, requestTimeout: requestTimeoutMs, keepAliveTimeout: keepAliveTimeoutMs }, async (req, res) => {
     const started = performance.now();
     const url = req.url ?? '', method = req.method ?? 'GET';
     // Upstream correlation is opt-in: an untrusted client must not choose the ID
@@ -210,6 +231,7 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
       if (values.length === 1 && only !== undefined && safeRequestId.test(only)) inbound = only;
     }
     const requestId = inbound || randomUUID();
+    lingerBeforeClose(req);
     const trace: RequestTrace = {};
     let status = 500;
     res.on('error', () => {});

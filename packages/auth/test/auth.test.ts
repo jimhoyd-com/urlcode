@@ -4,6 +4,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 import { chmod, mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { connect } from 'node:net';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startServer } from '@jimhoyd/urlcode';
@@ -514,6 +515,15 @@ test('form and plugin bodies retain size and encoding guards without rewriting f
     assert.deepEqual(await response.json(), { error: 'invalid_encoding' });
     assert.equal(response.headers.getSetCookie().length, 0);
   }
-  const large = await fetch(base + '/api/auth/sign-in/email', { method: 'POST', headers: { origin, 'content-type': 'application/x-www-form-urlencoded' }, body: 'x'.repeat(1024 * 1024 + 1) });
-  assert.equal(large.status, 413);
+  // Only the head is sent: the 413 must arrive while the declared body is still unsent, i.e. before it is read (#1046).
+  const { host, port } = new URL(base);
+  const large = await new Promise<string>((resolve, reject) => {
+    const socket = connect(Number(port), '127.0.0.1');
+    let data = '';
+    socket.on('error', reject);
+    socket.on('data', chunk => { data += chunk; if (data.includes('\r\n')) { socket.destroy(); resolve(data.slice(0, data.indexOf('\r\n'))); } });
+    socket.on('close', () => reject(new Error('closed before a status line: ' + JSON.stringify(data))));
+    socket.write(`POST /api/auth/sign-in/email HTTP/1.1\r\nHost: ${host}\r\nOrigin: ${origin}\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: ${1024 * 1024 + 1}\r\n\r\n`);
+  });
+  assert.match(large, /^HTTP\/1\.1 413 /);
 });
