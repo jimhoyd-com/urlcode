@@ -105,6 +105,8 @@ file to read. The cookbook's forty routes are indexed per route in the generated
 (handler, methods, capabilities, policies and middleware module names as tags;
 `npm run docs:cookbook-index` regenerates it and `npm run check` refuses a stale
 copy), so a search for `etag` answers the cookbook and its `/versioned` route.
+The same command regenerates the `middleware` recipe's `middleware/` and
+`functions/` modules from the cookbook's, so they are edited only in the cookbook.
 Entries without a `urlcode.yaml` (operator rules, monitoring configuration,
 scripts) are `runnable: false` and carry no derived fields.
 

@@ -50,6 +50,11 @@ try {
   // installs it; a literal path here breaks silently on the next rename.
   const packageRoot = join(install,'node_modules',...pack.name.split('/'));
   const cli = join(packageRoot,'dist','cli.js');
+  // The middleware recipe's modules are generated from the cookbook (#1095): the archive must carry a standalone,
+  // byte-identical copy of each, not a reference back to the cookbook.
+  const mirrored = pack.files.map(f => f.path).filter(path => /^recipes\/middleware\/(?:middleware|functions)\/[^/]+\.mjs$/.test(path));
+  assert.ok(mirrored.length >= 14, `The middleware recipe ships ${mirrored.length} module copies`);
+  for (const path of mirrored) assert.equal(await readFile(join(packageRoot,path),'utf8'), await readFile(join(packageRoot,'examples','cookbook',path.slice('recipes/middleware/'.length)),'utf8'), `${path} differs from the packed cookbook`);
   // The archive ships dist/ but not its build scripts, so it must not declare the prepare lifecycle that builds it (#592).
   const installedManifest = JSON.parse(await readFile(join(packageRoot,'package.json'),'utf8')) as { scripts?: Record<string,string> };
   for (const name of unpublishedScripts) assert.equal(installedManifest.scripts?.[name],undefined,`The packed manifest declares ${name}`);
