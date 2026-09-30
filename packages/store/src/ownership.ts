@@ -28,7 +28,6 @@ async function transaction<T>(database: string, work: (db: StoreDatabase) => T):
   try { return db.transaction(() => work(db)); } finally { db.close(); }
 }
 const total = (db: StoreDatabase, collection: string): number => db.get<{ n: number }>('SELECT count(*) AS n FROM store_records WHERE collection = ?', collection)!.n;
-const ownedIds = (db: StoreDatabase, collection: string, owner: string): string[] => db.all<{ id: string }>('SELECT id FROM store_records WHERE collection = ? AND owner = ? ORDER BY seq', collection, owner).map(row => row.id);
 
 /**
  * Refuses, before anything is written, giving `from`'s records to `to` on a collection whose `intervals` constrain
@@ -134,9 +133,12 @@ export async function reassignOwner(database: string, options: ReassignOptions):
     }
     for (const item of collections) {
       if (!item.moved) continue;
-      const ids = specOf(item.collection).audit ? ownedIds(db, item.collection, from) : [];
-      db.run('UPDATE store_records SET owner = ? WHERE collection = ? AND owner = ?', to, item.collection, from);
-      for (const id of ids) recordAuditEvent(db, reassignedEvent(item.collection, id, from, to, actor), retention);
+      // A move is a write to each record: it gets a new `updatedAt` (and so a new ETag), as every other mutation does,
+      // so a reader that shows `_owner` sees a changed representation under a changed tag and an If-Match taken before
+      // the move no longer matches (#1088).
+      const rows = db.all<{ id: string; updated_at: string }>('SELECT id, updated_at FROM store_records WHERE collection = ? AND owner = ? ORDER BY seq', item.collection, from);
+      for (const row of rows) db.run('UPDATE store_records SET owner = ?, updated_at = ? WHERE collection = ? AND id = ?', to, stamp(row.updated_at), item.collection, row.id);
+      if (specOf(item.collection).audit) for (const row of rows) recordAuditEvent(db, reassignedEvent(item.collection, row.id, from, to, actor), retention);
     }
     return report;
   });

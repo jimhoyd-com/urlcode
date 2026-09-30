@@ -291,7 +291,9 @@ overwrite the winner's change. `If-Match` is optional; omitting it keeps the
 default last-write-wins behavior unchanged. A malformed `If-Match` (not this
 store's own quoted hex format) is `400`, not a silent bypass. The ETag is
 derived from the record's `id` and `updatedAt`, and every write moves
-`updatedAt` by at least one millisecond, so two writes in the same millisecond
+`updatedAt` by at least one millisecond, an operator's
+[`reassign`](#moving-records-to-another-principal) included (a readers mount
+with `showOwner` shows the owner, so a move changes what it answers), so two writes in the same millisecond
 still give two ETags: of concurrent writes holding the same `If-Match`,
 exactly one applies and the rest answer `412`. A
 [declared transition](#conditional-transitions-and-result-aware-retries) honours
@@ -1757,8 +1759,13 @@ npx urlcode-store reassign --database /srv/site/data/store.sqlite --project /srv
   limits the move to one of them (a shared or undeclared name is refused). A
   declared owned collection that holds no records yet has nothing to move and
   is left out of the report.
-- Only each record's owner changes. Records owned by anyone else, and records
-  with no owner, are left alone.
+- Only each record's owner and `updatedAt` change: a move is a write, so each
+  moved record gets a new `updatedAt` and a new [`ETag`](#conditional-writes)
+  ([#1088](https://github.com/jimhoyd-com/urlcode/issues/1088)). A reader that
+  shows `_owner` sees a changed record under a changed tag, and an `If-Match`
+  taken before the move answers `412`. A projected readers mount's `ETag`
+  changes only when it shows `_owner`. Records owned by anyone else, and
+  records with no owner, are left alone.
 - **Membership moves too** ([#866](https://github.com/jimhoyd-com/urlcode/issues/866)).
   In every [membership collection](#membership-gates-and-cross-owner-reads)
   that lists `--from`, its entry becomes `--to`'s (the key property and its
