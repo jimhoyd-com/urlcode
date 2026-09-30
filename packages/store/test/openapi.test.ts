@@ -48,7 +48,7 @@ const routes = {
 /** A principal-providing stand-in: the `x-badge` header names the principal, and no badge is a 401. */
 function badgeExtension(projectSha256: string): RuntimeExtension {
   return {
-    name: 'badge', version: '1', projectSha256, targets: ['node'], providesPrincipal: true, schema: { type: 'object' }, policySchema: { type: 'object' },
+    name: 'badge', version: '1', projectSha256, targets: ['node'], providesPrincipal: true, openapiSecurity: { type: 'apiKey', in: 'header', name: 'x-badge' }, schema: { type: 'object' }, policySchema: { type: 'object' },
     activate() {
       return {
         handle() { return { status: 404, headers: [], body: '' }; },
@@ -104,7 +104,8 @@ test('every store mount is described from the collection schema, and the documen
   assert.deepEqual(op('/api/links', 'post').requestBody, { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/StoreLinksCreate' } } }, 'x-urlcode': { maxBytes: 8192 } });
   assert.deepEqual(Object.keys(op('/api/links', 'post').responses['201']!.headers!), ['ETag', 'Allow-Transitions', 'Idempotency-Replayed', 'Location', 'X-Request-Id', 'X-Content-Type-Options', 'Cache-Control']);
   // The sign-in gate on the owned mounts comes from core; the redirect mount has none.
-  assert.deepEqual(op('/api/notes', 'get').security, [{ 'urlcodeSession.badge': [] }]); assert.equal(op('/go/{key}', 'get').security, undefined);
+  assert.deepEqual(op('/api/notes', 'get').security, [{ 'urlcodePrincipal.badge': [] }]);
+  assert.deepEqual(document.components.securitySchemes?.['urlcodePrincipal.badge'], { type: 'apiKey', in: 'header', name: 'x-badge', description: 'The credential the badge extension verifies before the handler runs; it provides the request principal. As the extension declares it.', 'x-urlcode': { extension: 'badge' } }); assert.equal(op('/go/{key}', 'get').security, undefined);
   assert.deepEqual(Object.keys(op('/go/{key}', 'get').responses), ['302', '404', '503']);
   // Without the host file's registration the mounts stay opaque.
   const bare = await buildOpenApi(project);

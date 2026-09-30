@@ -287,8 +287,7 @@ export class StoreError extends Error {
 /**
  * Refuses deleting a record that still holds a transfer balance (#928): on a collection declaring `transfers`, the sum
  * of each amount property never changes, so a record leaves only at 0. 409 `balance_not_zero`, naming no amount; every
- * delete path (HTTP DELETE, a host transaction's `remove`, the operator's ownerless-delete) calls it
- * before writing anything.
+ * delete path (HTTP DELETE, a host transaction's `remove`) calls it before writing anything.
  */
 export function refuseBalance(spec: Pick<NormalizedSpec, 'transfers'>, record: Readonly<StoredRecord>): void {
   for (const transfer of Object.values(spec.transfers)) {
@@ -822,10 +821,10 @@ const bound = (value: Scalar | undefined): string | number | null => value === u
  * The first pair of constrained records in one scope whose intervals overlap, or `undefined`: one pass in index order
  * (scope, then start), keeping the latest end seen in the current scope. Records with no owner are nobody's under
  * `scope: owner` and are skipped there, as the write check never matches them. With `moving` (an operator command about
- * to give `from`'s records to `to`, or with `from` null the ownerless ones), only the two principals' records are
+ * to give `from`'s records to `to`), only the two principals' records are
  * judged, as if the move had happened, before anything is written.
  */
-export function overlapping(db: StoreDatabase, intervals: NormalizedIntervals, moving?: { from: string | null; to: string }): [string, string] | undefined {
+export function overlapping(db: StoreDatabase, intervals: NormalizedIntervals, moving?: { from: string; to: string }): [string, string] | undefined {
   type Row = { id: string; group: string; since: number | null; until: number | null };
   let rows: Row[] = db.all<Record<string, string | number | null>>(intervals.scan).flatMap(row => {
     let owner = intervals.scope === 'owner' ? row.owner as string | null : null;

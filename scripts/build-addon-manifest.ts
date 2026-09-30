@@ -41,7 +41,7 @@ export async function expectedFiles(root = repositoryRoot): Promise<Map<string, 
     const stale = contractProblem(definition.contract, `${addon.packageName}/extension`);
     if (stale) throw new Error(`${stale}. Update the package to contract ${extensionContract} and set contract: ${extensionContract} in its defineExtension definition`);
     const descriptor = { kind: 'extension', name: definition.name, description: definition.description, contract: definition.contract, requires: definition.requires ?? [], ...(uses.length ? { uses } : {}),
-      targets, ...(definition.providesPrincipal === true ? { providesPrincipal: true } : {}), schema: definition.schema, ...(definition.policySchema ? { policySchema: definition.policySchema } : {}), ...(definition.hooks ? { hooks: definition.hooks } : {}), ...(definition.authoring ? { authoring: definition.authoring } : {}), ...(definition.agent ? { agent: definition.agent } : {}) };
+      targets, ...(definition.providesPrincipal === true ? { providesPrincipal: true } : {}), ...(definition.openapiSecurity ? { openapiSecurity: definition.openapiSecurity } : {}), schema: definition.schema, ...(definition.policySchema ? { policySchema: definition.policySchema } : {}), ...(definition.hooks ? { hooks: definition.hooks } : {}), ...(definition.authoring ? { authoring: definition.authoring } : {}), ...(definition.agent ? { agent: definition.agent } : {}) };
     descriptors.set(addon.name, descriptor);
     files.set(join(addon.directory, 'urlcode.json'), render(descriptor));
   }

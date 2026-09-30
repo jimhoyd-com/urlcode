@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { ConfigError, assert } from './errors.ts';
 import { isCode, isRecord } from './object-guards.ts';
 import type { ExtensionAuthoringContract, ExtensionHookContract, RuntimeExtension } from './extensions.ts';
+import { openApiSecurityProblem } from './openapi-security.ts';
+import type { ExtensionOpenApiSecurity } from './openapi-security.ts';
 
 /**
  * Add-on-owned, inert pointers for agents. The add-on remains the source of
@@ -82,6 +84,12 @@ export interface AddonDescriptor {
    * whose descriptor says so, and OpenAPI and review treat a route it gates as signed-in. Absent for an artifact.
    */
   providesPrincipal?: true;
+  /**
+   * The standard OpenAPI security scheme of the credential a principal provider verifies
+   * (`ExtensionDefinition.openapiSecurity`), which the OpenAPI export reads without running the extension. Only with
+   * `providesPrincipal`; absent when the extension does not declare one.
+   */
+  openapiSecurity?: ExtensionOpenApiSecurity;
   schema?: object;
   policySchema?: object;
   hooks?: ExtensionHookContract[];
@@ -195,6 +203,12 @@ function assertDocuments(documents: unknown, source: string): asserts documents 
   }
 }
 
+function assertOpenApiSecurity(value: unknown, provides: boolean, source: string): asserts value is ExtensionOpenApiSecurity {
+  const problem = openApiSecurityProblem(value);
+  assert(problem === undefined, `${source}: ${problem}`);
+  assert(provides, `${source}: openapiSecurity is declared only by an extension that provides the request principal`);
+}
+
 export function parseDescriptor(raw: unknown, source: string): AddonDescriptor {
   assert(isRecord(raw) && (raw.kind === 'extension' || raw.kind === 'artifact') && typeof raw.name === 'string' && addonNamePattern.test(raw.name) && typeof raw.description === 'string', `${source} is not an add-on descriptor`);
   assert(isContractVersion(raw.contract), `${source}: contract must be the URLCode extension contract the package is built for, a positive integer (this core implements ${extensionContract})`);
@@ -203,12 +217,13 @@ export function parseDescriptor(raw: unknown, source: string): AddonDescriptor {
   if (raw.agent !== undefined) assertAgentTooling(raw.agent, source);
   if (raw.kind === 'artifact') {
     assert(raw.schema === undefined && raw.policySchema === undefined && raw.hooks === undefined && raw.authoring === undefined && raw.uses === undefined, `${source}: an artifact descriptor carries no extension schema, policySchema, hooks, authoring or uses`);
-    assert(raw.targets === undefined && raw.providesPrincipal === undefined, `${source}: an artifact descriptor declares no targets and provides no principal`);
+    assert(raw.targets === undefined && raw.providesPrincipal === undefined && raw.openapiSecurity === undefined, `${source}: an artifact descriptor declares no targets and provides no principal`);
     if (raw.documents !== undefined) assertDocuments(raw.documents, source);
   } else {
     assert(isRecord(raw.schema) && raw.documents === undefined, `${source}: an extension descriptor needs its configuration schema and lists no documents`);
     assert(isExtensionTargets(raw.targets), `${source}: an extension descriptor needs targets, a non-empty list of ${extensionTargetNames.join(', ')} in that order`);
     assert(raw.providesPrincipal === undefined || raw.providesPrincipal === true, `${source}: providesPrincipal is written only as true`);
+    if (raw.openapiSecurity !== undefined) assertOpenApiSecurity(raw.openapiSecurity, raw.providesPrincipal === true, source);
   }
   return (Array.isArray(raw.uses) ? { ...raw, uses: [...raw.uses as string[]].sort() } : raw) as unknown as AddonDescriptor;
 }
@@ -227,6 +242,8 @@ export interface AddonCatalogEntry {
   targets?: ExtensionTarget[];
   /** The extension sets the request principal (its descriptor's `providesPrincipal`); absent otherwise. */
   providesPrincipal?: true;
+  /** The principal provider's declared OpenAPI security scheme (its descriptor's `openapiSecurity`); absent otherwise. */
+  openapiSecurity?: ExtensionOpenApiSecurity;
   /** An artifact's standard documents (#857): path and media type only, never contents, at most `MAX_ARTIFACT_DOCUMENTS`. */
   documents?: ArtifactDocument[];
   agent?: AddonAgentTooling;
@@ -242,6 +259,7 @@ const entryOf = (descriptor: Omit<AddonDescriptor, 'contract'>, pkg: string, ver
   ...(descriptor.uses?.length ? { uses: [...descriptor.uses] } : {}),
   ...(descriptor.targets ? { targets: [...descriptor.targets] } : {}),
   ...(descriptor.providesPrincipal ? { providesPrincipal: true as const } : {}),
+  ...(descriptor.openapiSecurity ? { openapiSecurity: structuredClone(descriptor.openapiSecurity) } : {}),
   ...(descriptor.documents?.length ? { documents: descriptor.documents.map(({ path, mediaType }) => ({ path, mediaType })) } : {}),
   ...(descriptor.agent ? { agent: { description: descriptor.agent.description, references: descriptor.agent.references.map(({ name, description, path }) => ({ name, description, path })) } } : {}),
   ...(descriptor.kind === 'extension' && descriptor.authoring ? { authoring: structuredClone(descriptor.authoring) as ExtensionAuthoringContract } : {}),
@@ -279,7 +297,7 @@ export function parseAddonCatalog(raw: unknown, source: string): AddonCatalog {
   assert(isRecord(raw) && raw.format === 1 && raw.scope === 'release' && typeof raw.version === 'string' && Array.isArray(raw.addons), `${source} is not an add-on catalog`);
   const addons = raw.addons.map((value: unknown) => {
     assert(isRecord(value) && typeof value.name === 'string' && addonNamePattern.test(value.name), `${source}: invalid add-on entry`);
-    const { name, kind, package: pkg, version, description, requires, uses, targets, providesPrincipal, documents, agent, authoring } = value;
+    const { name, kind, package: pkg, version, description, requires, uses, targets, providesPrincipal, openapiSecurity, documents, agent, authoring } = value;
     assert((kind === 'extension' || kind === 'artifact') && pkg === addonPackage(name) && typeof version === 'string' && typeof description === 'string'
       && Array.isArray(requires) && requires.every(item => typeof item === 'string' && addonNamePattern.test(item)), `${source}: ${name} is malformed`);
     assert(uses === undefined || Array.isArray(uses) && uses.every(item => typeof item === 'string' && addonNamePattern.test(item) && item !== name && !requires.includes(item)), `${source}: ${name} has malformed uses`);
@@ -287,8 +305,9 @@ export function parseAddonCatalog(raw: unknown, source: string): AddonCatalog {
     if (documents !== undefined) { assert(kind === 'artifact', `${source}: ${name} is an extension, which lists no documents`); assertDocuments(documents, `${source}: ${name}`); }
     assert(kind === 'extension' ? isExtensionTargets(targets) : targets === undefined, `${source}: ${name} has malformed targets`);
     assert(providesPrincipal === undefined || providesPrincipal === true && kind === 'extension', `${source}: ${name} has a malformed providesPrincipal`);
+    if (openapiSecurity !== undefined) assertOpenApiSecurity(openapiSecurity, providesPrincipal === true, `${source}: ${name}`);
     if (authoring !== undefined) { assert(kind === 'extension', `${source}: ${name} is an artifact, which has no authoring contract`); assertAuthoring(authoring, `${source}: ${name}`); }
-    return entryOf({ kind, name, description, requires: requires as string[], ...(Array.isArray(uses) && uses.length ? { uses: [...uses as string[]].sort() } : {}), ...(kind === 'extension' ? { targets: targets as ExtensionTarget[] } : {}), ...(providesPrincipal === true ? { providesPrincipal: true as const } : {}), ...(documents ? { documents } : {}), ...(agent ? { agent } : {}), ...(authoring ? { authoring } : {}) }, pkg, version);
+    return entryOf({ kind, name, description, requires: requires as string[], ...(Array.isArray(uses) && uses.length ? { uses: [...uses as string[]].sort() } : {}), ...(kind === 'extension' ? { targets: targets as ExtensionTarget[] } : {}), ...(providesPrincipal === true ? { providesPrincipal: true as const } : {}), ...(openapiSecurity ? { openapiSecurity } : {}), ...(documents ? { documents } : {}), ...(agent ? { agent } : {}), ...(authoring ? { authoring } : {}) }, pkg, version);
   });
   return checkCatalog({ format: 1, scope: 'release', version: raw.version, addons }, source);
 }
@@ -356,17 +375,16 @@ export async function readInstalledDescriptor(site: string, name: string): Promi
 }
 
 /**
- * The extensions among `names` (the project's declared ones) that provide the request principal, sorted, read from
- * static descriptors only (RIM-EXT-PRINCIPAL-001): each name's installed `urlcode.json` in the enclosing `site` (a
- * site dependency carrying it, else the first-party install location), else this core's release catalog. What the
- * route `auth:` short form expands to, and what OpenAPI and review treat as a sign-in gate without a host file.
- * Reads data only; imports and activates nothing.
+ * The extensions among `names` (the project's declared ones) that provide the request principal, each with the OpenAPI
+ * security scheme it declares (undefined when none), read from static descriptors only (RIM-EXT-PRINCIPAL-001): each
+ * name's installed `urlcode.json` in the enclosing `site` (a site dependency carrying it, else the first-party install
+ * location), else this core's release catalog. Reads data only; imports and activates nothing.
  */
-export async function declaredPrincipalProviders(site: string, names: readonly string[]): Promise<string[]> {
-  if (!names.length) return [];
+export async function declaredPrincipalSecurity(site: string, names: readonly string[]): Promise<Map<string, ExtensionOpenApiSecurity | undefined>> {
+  const found = new Map<string, ExtensionOpenApiSecurity | undefined>();
+  if (!names.length) return found;
   const { providers } = await installedProviders(site);
   let catalog: AddonCatalog | undefined | null;
-  const found: string[] = [];
   for (const name of names) {
     let descriptor: AddonDescriptor | AddonCatalogEntry | undefined = providers.get(name)?.descriptor;
     if (!descriptor) {
@@ -377,9 +395,16 @@ export async function declaredPrincipalProviders(site: string, names: readonly s
       if (catalog === undefined) catalog = await readAddonCatalog().catch(() => null);
       descriptor = catalog?.addons.find(entry => entry.name === name);
     }
-    if (descriptor?.kind === 'extension' && descriptor.providesPrincipal === true) found.push(name);
+    if (descriptor?.kind === 'extension' && descriptor.providesPrincipal === true) found.set(name, descriptor.openapiSecurity);
   }
-  return found.sort();
+  return found;
+}
+/**
+ * The extensions among `names` that provide the request principal, sorted (`declaredPrincipalSecurity`): what the
+ * route `auth:` short form expands to, and what OpenAPI and review treat as a sign-in gate without a host file.
+ */
+export async function declaredPrincipalProviders(site: string, names: readonly string[]): Promise<string[]> {
+  return [...(await declaredPrincipalSecurity(site, names)).keys()].sort();
 }
 let releaseProviders: ReadonlySet<string> | undefined;
 /**
@@ -397,12 +422,18 @@ export function releasePrincipalProviders(): ReadonlySet<string> {
   throw noCatalog();
 }
 /**
- * The declared extensions that provide the request principal, sorted: for a declared extension the host file
- * registers (`registrations`), its registration's `providesPrincipal`; for any other, its static descriptor
- * (`declaredPrincipalProviders`).
+ * The declared extensions that provide the request principal, each with its declared OpenAPI security scheme: for a
+ * declared extension the host file registers (`registrations`), its registration's `providesPrincipal` and
+ * `openapiSecurity`; for any other, its static descriptor (`declaredPrincipalSecurity`). Sorted by name.
  */
-export async function principalProvidersOf(site: string, declared: readonly string[], registrations: readonly Pick<RuntimeExtension, 'name' | 'providesPrincipal'>[] = []): Promise<string[]> {
-  const registered = new Map(registrations.map(registration => [registration.name, registration.providesPrincipal === true]));
-  const unregistered = declared.filter(name => !registered.has(name));
-  return [...declared.filter(name => registered.get(name) === true), ...await declaredPrincipalProviders(site, unregistered)].sort();
+export async function principalSecurityOf(site: string, declared: readonly string[], registrations: readonly Pick<RuntimeExtension, 'name' | 'providesPrincipal' | 'openapiSecurity'>[] = []): Promise<Map<string, ExtensionOpenApiSecurity | undefined>> {
+  const registered = new Map(registrations.map(registration => [registration.name, registration]));
+  const found = new Map<string, ExtensionOpenApiSecurity | undefined>();
+  for (const name of declared) { const registration = registered.get(name); if (registration?.providesPrincipal === true) found.set(name, registration.openapiSecurity); }
+  for (const [name, security] of await declaredPrincipalSecurity(site, declared.filter(name => !registered.has(name)))) found.set(name, security);
+  return new Map([...found].sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0));
+}
+/** The declared extensions that provide the request principal, sorted (`principalSecurityOf`). */
+export async function principalProvidersOf(site: string, declared: readonly string[], registrations: readonly Pick<RuntimeExtension, 'name' | 'providesPrincipal' | 'openapiSecurity'>[] = []): Promise<string[]> {
+  return [...(await principalSecurityOf(site, declared, registrations)).keys()];
 }

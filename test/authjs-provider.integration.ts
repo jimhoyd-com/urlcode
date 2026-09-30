@@ -206,7 +206,7 @@ test('private-requests with Auth.js: an independently owned provider behind the 
   assert.match(protectedRoute.stdout, /extensions\.authjs: requires \{\}/);
   assert.doesNotMatch(protectedRoute.stdout, /extensions\.auth:/);
 
-  await t.test('OpenAPI describes a route gated by authjs with its 401/403 and session scheme (#888)', async () => {
+  await t.test('OpenAPI describes a route gated by authjs with its 401/403 and states its undeclared transport (#888, #1047)', async () => {
     // The protected routes are store mounts, which OpenAPI lists but never enumerates; one ordinary route shows the gate.
     const yamlFile = join(site, 'app', 'urlcode.yaml'), yaml = await readFile(yamlFile, 'utf8');
     try {
@@ -214,10 +214,12 @@ test('private-requests with Auth.js: an independently owned provider behind the 
       for (const args of [[], ['--host-file', 'host.mjs']]) {
         const exported = urlcode(t, site, ['openapi', '--project', 'app', ...args], reviewEnv);
         assert.equal(exported.status, 0, exported.stdout + exported.stderr);
-        const document = JSON.parse(exported.stdout) as { paths: Record<string, { get: { security?: unknown; responses: Record<string, unknown> } }>; components: { securitySchemes?: Record<string, { 'x-urlcode'?: unknown }> } };
-        assert.deepEqual(document.paths['/api/whoami']!.get.security, [{ 'urlcodeSession.authjs': [] }]);
+        const document = JSON.parse(exported.stdout) as { paths: Record<string, { get: { security?: unknown; responses: Record<string, unknown>; 'x-urlcode'?: { authentication?: unknown } } }>; components: { securitySchemes?: unknown } };
+        // authjs declares no OpenAPI security scheme: no cookie is invented, the transport is stated as unknown.
+        assert.equal(document.paths['/api/whoami']!.get.security, undefined);
+        assert.deepEqual(document.paths['/api/whoami']!.get['x-urlcode']?.authentication, [{ extension: 'authjs', credential: 'unknown' }]);
         assert.deepEqual(Object.keys(document.paths['/api/whoami']!.get.responses).sort(), ['200', '401', '503']); // 403 is declared only on unsafe methods (#881)
-        assert.deepEqual(document.components.securitySchemes?.['urlcodeSession.authjs']?.['x-urlcode'], { extension: 'authjs', cookieName: 'operator-defined' });
+        assert.equal(document.components.securitySchemes, undefined);
       }
     } finally { await writeFile(yamlFile, yaml); }
   });

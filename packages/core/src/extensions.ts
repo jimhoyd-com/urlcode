@@ -12,11 +12,15 @@ import { holdsIllFormedString } from './body-validation.ts';
 import { contractProblem, extensionContract, extensionTargetNames, isAuthoringGoals } from './addon-manifest.ts';
 import { revisionPinGuidance, unpinnedInspectionRevision } from './operator-host.ts';
 import type { AddonAgentTooling, ExtensionTarget } from './addon-manifest.ts';
+import { openApiSecurityProblem } from './openapi-security.ts';
+import type { ExtensionOpenApiSecurity } from './openapi-security.ts';
 /**
  * The URLCode extension contract this core implements (#844): an integer that moves only on a breaking change to
  * the extension contract, never with core's semver. A definition declares the one it is built for as `contract`.
  */
 export { extensionContract };
+export { extensionOpenApiSecurityLimits, openApiSecurityProblem } from './openapi-security.ts';
+export type { ExtensionOpenApiSecurity } from './openapi-security.ts';
 export type { HandlerResult, HeaderPair, ResponseStream, StreamChunk } from './http-response.ts';
 /** Why a streamed response ended; also the `reason` of `ExtensionRequest.signal` when a stream ends early. */
 export type { StreamEndReason } from './http-stream.ts';
@@ -476,6 +480,13 @@ export interface RuntimeExtension {
    */
   providesPrincipal?:boolean;
   /**
+   * The standard OpenAPI security scheme of the credential this principal provider's `authorize()` verifies
+   * (`ExtensionOpenApiSecurity`, RIM-OPENAPI-001): JSON data naming how a client presents it, never a credential. Only
+   * a registration that declares `providesPrincipal` may declare it, and a `host()` must register the value its
+   * definition declares. Omitted: the OpenAPI export states that the provider's authentication transport is unknown.
+   */
+  openapiSecurity?:ExtensionOpenApiSecurity;
+  /**
    * Declares that this extension's mount `handle()` may answer with a streamed `HandlerResult` (`stream` instead of
    * `body`; docs/EXTENSIONS.md#streamed-responses). Without it a streamed result is refused with the generic 502.
    * Only the self-hosted server (native) and the Vercel adapter (delegated) deliver streams; `prepareExtensions`
@@ -651,6 +662,11 @@ export interface ExtensionDefinition<Options=Record<string,never>> {
    * the one declared extension whose descriptor declares it (RIM-CFG-002), whatever that extension is named.
    */
   providesPrincipal?:boolean;
+  /**
+   * The OpenAPI security scheme of the credential this principal provider verifies (`ExtensionOpenApiSecurity`):
+   * only with `providesPrincipal`, written into `urlcode.json`, and `host()` must register the same value.
+   */
+  openapiSecurity?:ExtensionOpenApiSecurity;
   schema:object;
   policySchema?:object;
   hooks?:readonly ExtensionHookContract[];
@@ -687,6 +703,11 @@ export function defineExtension<Options=Record<string,never>>(definition:Extensi
   assert(Array.isArray(uses)&&uses.every(name=>typeof name==='string'&&namePattern.test(name)&&name!==definition.name)&&new Set(uses).size===uses.length,`Extension ${definition.name} uses must list other extension names once each`);
   assert(uses.every(name=>!(definition.requires??[]).includes(name)),`Extension ${definition.name} lists ${uses.filter(name=>(definition.requires??[]).includes(name)).join(', ')} in both requires and uses`);
   assert(definition.providesPrincipal===undefined||typeof definition.providesPrincipal==='boolean',`Extension ${definition.name} providesPrincipal must be a boolean`);
+  if(definition.openapiSecurity!==undefined){
+    const problem=openApiSecurityProblem(definition.openapiSecurity);
+    assert(problem===undefined,`Extension ${definition.name}: ${problem}`);
+    assert(definition.providesPrincipal===true,`Extension ${definition.name} declares openapiSecurity but does not provide the request principal`);
+  }
   assert((definition.scaffold===undefined||typeof definition.scaffold==='function')&&(definition.example===undefined||typeof definition.example==='function'),`Extension ${definition.name} scaffold and example must be functions`);
   const entry=(options?:Options):ExtensionEntry=>Object.freeze({definition:definition as ExtensionDefinition<unknown>,options:options??{}});
   return Object.assign(entry,{definition}) as DefinedExtension<Options>;
@@ -790,6 +811,7 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
     assert(!provided.has(registration.name),'Duplicate extension provider');
     assert(registration.version==='1'&&typeof registration.activate==='function','Invalid extension version or activation hook');
     assert(registration.providesPrincipal===undefined||typeof registration.providesPrincipal==='boolean','Invalid extension providesPrincipal');
+    assert(registration.openapiSecurity===undefined||registration.providesPrincipal===true&&openApiSecurityProblem(registration.openapiSecurity)===undefined,'Invalid extension openapiSecurity');
     assert(registration.streams===undefined||typeof registration.streams==='boolean','Invalid extension streams');
     assert(registration.describe===undefined||typeof registration.describe==='function','Invalid extension describe hook');
     assert(registration.seedSchema===undefined||(registration.seedSchema!==null&&typeof registration.seedSchema==='object'&&!Array.isArray(registration.seedSchema)),'Invalid extension seed schema');
