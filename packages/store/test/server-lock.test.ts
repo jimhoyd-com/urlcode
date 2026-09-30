@@ -19,7 +19,7 @@ import type { CollectionSpec } from '../src/index.ts';
 import { openStoreDatabase } from '../src/database.ts';
 import { cleanup } from './cleanup.ts';
 import { answer, origin, pin, requestFor } from './direct.ts';
-import { counts, execute, initialize, records } from './rows.ts';
+import { counts, execute, records } from './rows.ts';
 
 const schema = { type: 'object', additionalProperties: false, required: ['title', 'balance'], properties: { title: { type: 'string', minLength: 1, maxLength: 40 }, status: { type: 'string', enum: ['open', 'done'] }, balance: { type: 'integer' } } };
 const todos = { mount: '/api/todos', schema, defaults: { status: 'open', balance: 0 }, readOnlyProperties: ['balance'], transitions: { finish: { from: { status: 'open' }, set: { status: 'done' } } }, transfers: { move: { amount: 'balance' } } };
@@ -186,30 +186,3 @@ test('a database directory on a network filesystem is refused on Linux before th
   await assert.rejects(openStoreDatabase(database, { probe: { platform: 'linux', statfs: async () => ({ type: 0x6969 }) } }), /NFS filesystem/);
 });
 
-test('upgrading a version 4 or 5 database drops the multi-process lease tables, and the drain marker with the outbox', async t => {
-  const { database } = await root(t);
-  const upgraded = async (): Promise<void> => {
-    (await openStoreDatabase(database)).close();
-    const db = new DatabaseSync(database);
-    try {
-      assert.equal(db.prepare('PRAGMA user_version').get()!.user_version, STORE_SCHEMA_VERSION);
-      assert.deepEqual(db.prepare("SELECT name FROM sqlite_master WHERE name IN ('store_servers', 'store_audit_drain', 'store_audit_outbox')").all(), []);
-      assert.equal(db.prepare('SELECT count(*) AS n FROM store_audit_events').get()!.n, 0);
-    } finally { db.close(); }
-  };
-  await initialize(database);
-  // Back to the version 4 shape, as that release left it.
-  const outbox = `DROP TABLE store_audit_events; DROP TABLE store_audit_tap;
-    CREATE TABLE store_audit_outbox(seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, collection TEXT NOT NULL, at INTEGER NOT NULL, event TEXT NOT NULL CHECK (json_valid(event)));`;
-  execute(database, `DROP TABLE store_declarations; ${outbox}
-    CREATE TABLE store_audit_drain(id INTEGER PRIMARY KEY CHECK (id = 1), drained_at INTEGER NOT NULL);
-    INSERT INTO store_audit_drain(id, drained_at) VALUES (1, 1234); PRAGMA user_version=4;`);
-  await upgraded();
-  // The version 5 shape: the host lease table and the drain lease.
-  execute(database, `${outbox} CREATE TABLE store_servers(instance TEXT PRIMARY KEY, host TEXT NOT NULL, boot TEXT, pid INTEGER NOT NULL,
-      heartbeat_at INTEGER NOT NULL, expires_at INTEGER NOT NULL) WITHOUT ROWID;
-    INSERT INTO store_servers VALUES ('gone', 'web-1', NULL, 1, 1, 1);
-    CREATE TABLE store_audit_drain(id INTEGER PRIMARY KEY CHECK (id = 1), drained_at INTEGER, holder TEXT, lease_until INTEGER NOT NULL DEFAULT 0);
-    INSERT INTO store_audit_drain VALUES (1, 1234, 'gone', 99); PRAGMA user_version=5;`);
-  await upgraded();
-});

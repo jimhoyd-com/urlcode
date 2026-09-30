@@ -1,11 +1,8 @@
 // Result-aware Idempotency-Key replay (#835): a retained key replays the first answer's status with the record as it
 // is now, a key reused for a different request is 422 and writes nothing, racing retries run the mutation once (in
-// one process and across connections), and the retry history survives a restart and a schema upgrade.
+// one process and across connections), and the retry history survives a restart.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DatabaseSync } from 'node:sqlite';
-import { rm, writeFile } from 'node:fs/promises';
-import { STORE_APPLICATION_ID, STORE_SCHEMA_VERSION } from '../src/index.ts';
 import { direct, race } from './direct.ts';
 import { counts, records } from './rows.ts';
 
@@ -112,40 +109,4 @@ test('the retry history survives a restart', async t => {
   assert.equal(replay.status, 201); assert.equal(replay.header('idempotency-replayed'), 'true'); assert.equal(replay.body!.id, first.body!.id);
   assert.equal((await store.call('POST', '/api/todos', { body: { title: 'other' }, headers: key('restart') })).status, 422, 'and still guards the original fingerprint');
   assert.equal(records(store.database, 'todos').length, 1);
-});
-
-test('a version 1 database moves forward: records stay, fingerprint-less claims are dropped', async t => {
-  const store = await direct(t, config, { mounts, principalMounts: [] });
-  await store.close();
-  // The shipped version 1 schema, as the first SQLite release created it (a frozen fixture of MIGRATIONS[0]).
-  const path = store.database;
-  for (const suffix of ['', '-wal', '-shm']) await rm(`${path}${suffix}`, { force: true, maxRetries: 5 });
-  await writeFile(path, '', { mode: 0o600 });
-  const db = new DatabaseSync(path);
-  try {
-    db.exec(`CREATE TABLE store_records(seq INTEGER PRIMARY KEY AUTOINCREMENT, collection TEXT NOT NULL, id TEXT NOT NULL,
-       owner TEXT, key TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-       data TEXT NOT NULL CHECK (json_valid(data) AND json_type(data) = 'object'), UNIQUE(collection, id), UNIQUE(collection, key));
-     CREATE INDEX store_records_order ON store_records(collection, seq);
-     CREATE INDEX store_records_owner ON store_records(collection, owner, seq);
-     CREATE TABLE store_idempotency(seq INTEGER PRIMARY KEY AUTOINCREMENT, collection TEXT NOT NULL, key TEXT NOT NULL,
-       claimed_at INTEGER NOT NULL, UNIQUE(collection, key));
-     CREATE INDEX store_idempotency_order ON store_idempotency(collection, seq);
-     CREATE TABLE store_audit_outbox(seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, collection TEXT NOT NULL,
-       at INTEGER NOT NULL, event TEXT NOT NULL CHECK (json_valid(event)));
-     CREATE INDEX store_audit_outbox_order ON store_audit_outbox(at, seq);
-     CREATE INDEX store_audit_outbox_collection ON store_audit_outbox(collection);
-     PRAGMA application_id=${STORE_APPLICATION_ID}; PRAGMA user_version=1;`);
-    const now = new Date().toISOString();
-    db.prepare('INSERT INTO store_records(collection, id, owner, key, created_at, updated_at, data) VALUES (?, ?, NULL, NULL, ?, ?, ?)').run('todos', '00000000-0000-4000-8000-000000000001', now, now, JSON.stringify({ title: 'old', done: false, votes: 0 }));
-    db.prepare('INSERT INTO store_idempotency(collection, key, claimed_at) VALUES (?, ?, ?)').run('todos', 'f'.repeat(64), Date.now());
-  } finally { db.close(); }
-  await store.open();
-  const upgraded = new DatabaseSync(path);
-  try {
-    assert.equal(upgraded.prepare('PRAGMA user_version').get()!.user_version, STORE_SCHEMA_VERSION);
-    assert.deepEqual(upgraded.prepare('PRAGMA table_info(store_idempotency)').all().map(column => column.name), ['seq', 'collection', 'key', 'fingerprint', 'status', 'record_id', 'claimed_at']);
-  } finally { upgraded.close(); }
-  assert.deepEqual(records(path, 'todos').map(record => record.title), ['old']);
-  assert.equal(counts(path).idempotency, 0);
 });

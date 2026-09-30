@@ -9,15 +9,14 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { DatabaseSync } from 'node:sqlite';
 import { startServer } from '@jimhoyd/urlcode';
 import { AuditError, defineExtension, inspectExtensionRevision, validateAuditEvent } from '@jimhoyd/urlcode/extensions';
 import type { AuditStoredEvent, AuditTap, ExtensionActivation, ExtensionRequest, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 import { composeHost } from '@jimhoyd/urlcode/host';
 import store from '../src/extension.ts';
-import { STORE_SCHEMA_VERSION, StoreError, createStore } from '../src/index.ts';
+import { StoreError, createStore } from '../src/index.ts';
 import type { StoreExports } from '../src/index.ts';
-import { auditEvents, counts, execute, initialize, records } from './rows.ts';
+import { auditEvents, counts, execute, records } from './rows.ts';
 
 const origin = 'https://store-audit.example.test', pin = 'a'.repeat(64);
 const notes = {
@@ -287,27 +286,3 @@ test('a record write and its audit event commit together: a failure after the re
   assert.deepEqual(auditEvents(database).map(event => event.action), ['store.record.created', 'store.record.updated']);
 });
 
-test('the version 7 upgrade moves events still waiting in the old outbox into the log, in order, and drops the outbox', async t => {
-  const root = await tempRoot(t), database = databaseOf(root);
-  await mkdir(join(root, 'app'));
-  await initialize(database);
-  // Rewind the fresh file to version 6: the outbox and the drain marker as that release left them, two events waiting.
-  const events = ['b', 'a'].map((name, index) => validateAuditEvent({ id: `00000000-0000-4000-8000-00000000000${index + 1}`, source: 'store', action: 'store.record.created', actor: name, subject: `notes/${name}`, at: 1000 - index, metadata: { collection: 'notes', fields: ['code'] } }));
-  const db = new DatabaseSync(database);
-  try {
-    db.exec(`DROP TABLE store_audit_events; DROP TABLE store_audit_tap;
-      CREATE TABLE store_audit_outbox(seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, collection TEXT NOT NULL, at INTEGER NOT NULL, event TEXT NOT NULL CHECK (json_valid(event)));
-      CREATE TABLE store_audit_drain(id INTEGER PRIMARY KEY CHECK (id = 1), drained_at INTEGER);
-      PRAGMA user_version=6;`);
-    for (const event of events) db.prepare('INSERT INTO store_audit_outbox(id, collection, at, event) VALUES (?, ?, ?, ?)').run(event.id, 'notes', event.at, JSON.stringify(event));
-  } finally { db.close(); }
-  const { exports } = await opened(t, root);
-  const page = await exports.audit.query();
-  assert.deepEqual(page.events.map(event => [event.actor, event.reason, event.metadata]), [['b', '', { collection: 'notes', fields: ['code'] }], ['a', '', { collection: 'notes', fields: ['code'] }]], 'in outbox order');
-  assert.equal((await exports.audit.peek(100)).length, 2, 'not yet forwarded');
-  const check = new DatabaseSync(database, { readOnly: true });
-  try {
-    assert.equal(check.prepare('PRAGMA user_version').get()!.user_version, STORE_SCHEMA_VERSION);
-    assert.deepEqual(check.prepare("SELECT name FROM sqlite_master WHERE name IN ('store_audit_outbox', 'store_audit_drain')").all(), []);
-  } finally { check.close(); }
-});

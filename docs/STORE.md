@@ -836,7 +836,7 @@ store.transaction(tx => {
     as the HTTP API scopes a header value to the principal. The newest 1000
     keys are kept (`TRANSACTION_RETRIES.keys`), evicted by count; an evicted
     key's retry runs again. Claims survive a restart and are carried by a
-    backup (schema version 4, table `store_transaction_results`).
+    backup (table `store_transaction_results`).
 
 ### Design decisions
 
@@ -2040,19 +2040,15 @@ takes `--actor` as a filter, not an attribution.
   `store_idempotency` (retained `Idempotency-Key` claims: the scoped key hash,
   the request fingerprint, the status and the record id, never record values).
   Beside them are `store_transaction_results` (retained
-  [host transaction](#host-transactions) keys and results; schema version 4),
+  [host transaction](#host-transactions) keys and results),
   `store_declarations` (the [declaration fence](#one-serving-process-per-database):
-  each collection's served declaration fingerprint; schema version 5) and
+  each collection's served declaration fingerprint) and
   `store_audit_events` (the [audit log](#audited-writes): one row per event,
   with its record order, a forwarded flag for [the tap](#forwarding-events-to-a-sink),
-  and indexes on actor, subject, action, time and the unforwarded events;
-  schema version 7) with `store_audit_tap` (one row: whether the tap has a
+  and indexes on actor, subject, action, time and the unforwarded events)
+  with `store_audit_tap` (one row: whether the tap has a
   consumer, and how many events were [pruned before it acknowledged
-  them](#when-a-sink-falls-behind); schema version 8). Schema version 6 dropped an earlier release's
-  `store_servers` lease table and drain lease columns. Version 7 moved any
-  events still waiting in the old `store_audit_outbox` into
-  `store_audit_events`, in order, and dropped `store_audit_outbox` and
-  `store_audit_drain`.
+  them](#when-a-sink-falls-behind)).
   Collections are rows, not
   tables, so declaring, changing or removing a collection never changes the
   tables; the rows of a collection that is no longer declared stay untouched.
@@ -2063,15 +2059,18 @@ takes `--actor` as a filter, not an attribution.
   [`sortable` and `filterable`](#sorting-and-filtering) properties
   (`store_list_*`). Activation builds them, and drops any no live activation
   declares any more.
-- The schema only moves forward. An empty file is initialized in one
-  transaction; opening an up-to-date database changes nothing; a later release
-  that changes the schema adds a step, and each step runs in its own
-  transaction with the new version (`PRAGMA user_version`). A file that is not
-  a store database (`PRAGMA application_id`) or comes from a newer release
-  refuses activation. The JSON data files of earlier releases are not read or
-  imported. Version 2 replaced the claim table for result-aware retries: claims
-  a version 1 database retained carry no fingerprint and are dropped by the
-  upgrade, so a retry of a request made before it runs again.
+- The schema starts from one baseline, schema version 8 (`PRAGMA user_version`):
+  an empty file gets every table above in one transaction, and opening an
+  up-to-date database changes nothing. Only forward steps on top of the
+  baseline are ever added: a later release that changes the schema adds a
+  step, and each step runs in its own transaction with the new version. A
+  store database of an earlier schema version (1 to 7, written by releases
+  before the baseline) is not upgraded: activation, the operator commands and
+  `urlcode-store audit` refuse it (`older than this release's baseline (8),
+  and cannot be upgraded; recreate the data directory`), so recreate the data
+  directory. A file that is not a store database (`PRAGMA application_id`) or
+  comes from a newer release is refused too. The JSON data files of earlier
+  releases are not read or imported.
 - Write-ahead log with `synchronous=FULL` by default: a write is answered
   only after a durable commit, and a crash, power loss included, leaves the
   last committed transaction. See [durability](#durability) for the one
@@ -2285,9 +2284,8 @@ this process) is refused and writes nothing, kills the first with `SIGKILL`
 in the middle of a burst of writes, and checks that `PRAGMA integrity_check`
 is `ok`, every answered write is stored, and a restart is accepted at once.
 The same file proves the declaration fence between two activations of one
-process, the operator commands' fence against a server in another process
-and in this one, and the upgrade that drops the previous release's lease
-tables. The auth suite proves the same refusal and restart for its database.
+process and the operator commands' fence against a server in another process
+and in this one. The auth suite proves the same refusal and restart for its database.
 
 These tests do not prove throughput, a power loss or long-running WAL
 growth; a full disk is covered by the tests [below](#what-the-disk-full-tests-prove).
