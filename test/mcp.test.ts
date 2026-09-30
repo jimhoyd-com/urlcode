@@ -6,7 +6,7 @@ import {readAddonCatalog} from '../packages/core/src/addon-manifest.ts';
 import {addons} from '../scripts/workspaces.ts';
 import {renderMcpConfig} from '../packages/core/src/agents-guide.ts';
 import {fileURLToPath} from 'node:url';
-import {inspectProject,validateProject,explainRoute,buildContext} from '../packages/core/src/tooling.ts';
+import {inspectProject,validateProject,explainRoute,buildContext,getCapability} from '../packages/core/src/tooling.ts';
 import {buildManifest} from '../packages/core/src/manifest.ts';
 import {loadOperatorHost} from '../packages/core/src/operator-host.ts';
 import {inspectExtensionRevision} from '../packages/core/src/extensions.ts';
@@ -251,6 +251,15 @@ test('MCP get_capability and get_schema answer from bundled data and reject unkn
  const entry=JSON.parse(replies[1]!.result.content[0]!.text);assert.equal(entry.name,'redirect');assert.equal(entry.kind,'handler');assert.equal(entry.schemaFragments[0].pointer,'#/$defs/route/properties/redirect');assert.ok(entry.recipes.length);
  const fragment=JSON.parse(replies[2]!.result.content[0]!.text);assert.equal(fragment.pointer,'#/properties/policies/properties/cache');assert.equal(JSON.stringify(fragment).includes('$ref'),false);
  assert.equal(replies[3]!.result.isError,true);assert.equal(replies[4]!.result.isError,true);assert.equal(replies[5]!.error.code,-32602);
+});
+test('MCP get_capability function returns the same bounded handler example as the CLI (#1106)',async t=>{
+ const root=await project(t,{});
+ const replies=await session(root,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'get_capability',arguments:{name:'function'}}}]);
+ const text=replies[1]!.result.content[0]!.text as string,entry=JSON.parse(text);
+ assert.ok(Buffer.byteLength(text)<=8192);
+ assert.deepEqual(entry.example,getCapability('function').example);
+ assert.equal(entry.example.module.file,'functions/hello.mjs');assert.match(entry.example.module.source,/export function hello\(request, \{args\}\)/);
+ assert.match(entry.example.yaml,/args:\n\s+name: \{from: path, name: name\}/);assert.match(entry.example.contract,/context\.secrets/);
 });
 test('MCP echoes a supported requested protocol revision and offers the latest otherwise (#590)',async t=>{
  const root=await project(t,{});

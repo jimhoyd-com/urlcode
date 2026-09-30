@@ -41,7 +41,7 @@ const definitions=[
  {name:'inspect',description:'Inspect semantically validated route metadata without binding values or code execution.',properties:{...deployTargetProps,offset:{type:'integer',minimum:0},limit:{type:'integer',minimum:1,maximum:1000}}},
  {name:'validate',description:'Validate project syntax and route/policy semantics without activation.',properties:{}},
  {name:'list_capabilities',description:'Describe implementation compatibility, separately from deployment evidence.',properties:deployTargetProps},
- {name:'get_capability',description:'Describe one catalog capability: schema fragment, constraints, grants, target support and bundled recipe/cookbook uses.',properties:{name:{type:'string',maxLength:64}},required:['name']},
+ {name:'get_capability',description:'Describe one catalog capability: schema fragment, constraints, grants, target support and bundled recipe/cookbook uses; `function` adds a paired route and handler module from the cookbook.',properties:{name:{type:'string',maxLength:64}},required:['name']},
  {name:'get_schema',description:'Return the resolved JSON Schema fragment for a dotted urlcode.yaml path such as route, redirect or policies.cache.',properties:{path:{type:'string',maxLength:256}},required:['path']},
  {name:'explain',description:'Explain the route a path selects from the compiled configuration: methods, handler, middleware, inputs, policies, cache outcome, bindings and target support. Nothing executes.',properties:{target:text},required:['target']},
  {name:'get_manifest',description:'The generated semantic manifest: routes, capabilities, extensions, external requirements, functions, target support and the revision digest.',properties:{}},
