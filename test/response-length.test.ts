@@ -185,7 +185,7 @@ test('a sandboxed GET response stating a length is refused; HEAD keeps the GET l
     // Adds contentLength to the serialized result through an inherited toJSON.
     'stated.mjs': `export default () => {
       Object.prototype.toJSON = function () {
-        if (this && typeof this.status === 'number' && 'body' in this) { const copy = {}; for (const key of Object.keys(this)) copy[key] = this[key]; copy.contentLength = 0; return copy; }
+        if (this && typeof this.status === 'number' && 'headers' in this) { const copy = {}; for (const key of Object.keys(this)) copy[key] = this[key]; copy.contentLength = 0; return copy; }
         return this;
       };
       return new Response(${JSON.stringify(inner)});
