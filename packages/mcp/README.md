@@ -285,7 +285,10 @@ export default await composeHost(import.meta.url, [
 `onToolCall` runs once for every tool/resource/prompt handler invocation after
 it settles, with `outcome: 'success'`, `'tool_error'` (a tool handler threw
 `McpToolError`) or `'error'` (the same failures `onToolError` observes), its
-duration and the request id. A call refused before
+duration and the request id. The result is serialized before the outcome is
+reported, so a result that cannot be (a BigInt, a cycle, a throwing `toJSON`, a
+function) is one `'error'` outcome answered like a thrown handler error, never
+`'success'` as well. A call refused before
 its handler runs (unknown name, arguments failing the schema) is not reported.
 Both callbacks are best-effort: one that throws is swallowed and never changes
 the response.

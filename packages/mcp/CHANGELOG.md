@@ -4,6 +4,10 @@
 
 The definition declares its deployment targets (node, aws, vercel), which `npm run build:addons` writes into `urlcode.json` as `targets` (#859); core refuses a registration whose targets differ, and the capability preflight refuses a recipe or plan that uses this extension on any other target.
 
+- A tool, resource or prompt result that cannot be serialized to JSON (a BigInt, a cycle, a throwing `toJSON`, or a
+  function or symbol that serializes to nothing) is reported to `onToolCall` once, as `'error'` (#1087). A tool result
+  was serialized after `'success'` was reported, so the failure was reported as both `'success'` and `'error'`; a
+  function result became a text item with no text. The caller still gets the generic `isError: true` answer.
 - A request body that is not valid UTF-8 answers HTTP `400` with a `-32700` parse error and a null id (#1021); the
   SDK decoded it non-fatally, so a handler received U+FFFD. The media type (`415`) and size (`413`) checks still come
   first. The README and SECURITY.md no longer claim that an `inputSchema` failure is a `-32602` error under revisions
