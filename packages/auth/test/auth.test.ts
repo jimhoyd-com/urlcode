@@ -105,7 +105,7 @@ test('an auth database directory on a network filesystem is refused on Linux and
   at.defer(() => ext4.close());
 });
 
-test('a second serving process for the auth database is refused, and a restart after SIGKILL is accepted', async t => {
+test('a second serving process for the auth database is refused, and a restart after SIGKILL is accepted', { timeout: 120_000 }, async t => {
   const at = await project(t), userId = await withUser(at);
   /** A server process (serve-child.ts) killed with SIGKILL by the test; resolves with its port, or its stderr if it exits first. */
   const launch = async (): Promise<{ port?: number; stderr: string; kill(): Promise<void> }> => {
@@ -128,6 +128,11 @@ test('a second serving process for the auth database is refused, and a restart a
   assert.match(second.stderr, /Another process is already serving this auth database \(.+auth\.sqlite\): URLCode serves each database from one process/);
   // The first one is killed: the operating system drops its lock, and a restart serves the same accounts at once.
   await first.kill();
+  // Windows releases a terminated process's locks after an OS-determined delay rather than at exit.
+  for (const deadline = Date.now() + 10_000; serverLockHeld(at.database);) {
+    assert.ok(Date.now() < deadline, 'the killed server\'s lock was not released within 10 s');
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
   const restarted = await launch();
   assert.ok(restarted.port, restarted.stderr);
   const answered = await signIn(`http://127.0.0.1:${restarted.port!}`, 'ann-local-password');

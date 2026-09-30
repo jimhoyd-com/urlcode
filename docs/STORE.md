@@ -2134,6 +2134,9 @@ inserts by event id and ignores a duplicate).
   hosts sharing one there may both believe they hold the lock.
 - It does not stop another program from opening the database. SQLite's own
   locking still keeps any connection from corrupting it.
+- On Windows the operating system releases a terminated process's file locks
+  after a delay it decides, not at the moment the process exits. A restart
+  straight after a crash can therefore be refused once; start it again.
 - Test runs (`urlcode test`, `urlcode audit`, `urlcode benchmark`, and
   `--local-review`) use a fresh temporary data directory, so their locks
   never meet a served site's.

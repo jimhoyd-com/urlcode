@@ -13,7 +13,7 @@ import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { DatabaseSync } from 'node:sqlite';
 import type { ExtensionActivation } from '@jimhoyd/urlcode/extensions';
-import { NETWORK_FILESYSTEMS } from '@jimhoyd/urlcode/extensions';
+import { NETWORK_FILESYSTEMS, serverLockHeld } from '@jimhoyd/urlcode/extensions';
 import { STORE_SCHEMA_VERSION, addMember, createStore } from '../src/index.ts';
 import type { CollectionSpec } from '../src/index.ts';
 import { openStoreDatabase } from '../src/database.ts';
@@ -70,7 +70,19 @@ async function child(t: TestContext, database: string, activation: ExtensionActi
   };
 }
 
-test('a second serving process is refused before it writes, and a restart after SIGKILL is accepted with the database intact', async t => {
+/**
+ * Waits, at most 10 s, until no process holds `database`'s server lock. Windows releases a terminated process's
+ * locks after an OS-determined delay rather than at exit; elsewhere this returns at once.
+ */
+async function released(database: string): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  while (serverLockHeld(database)) {
+    if (Date.now() > deadline) throw new Error('timed out after 10000 ms: the killed server\'s lock to be released');
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+}
+
+test('a second serving process is refused before it writes, and a restart after SIGKILL is accepted with the database intact', { timeout: 120_000 }, async t => {
   const { database, activation } = await root(t);
   const first = await child(t, database, activation, v1);
   assert.equal(first.ready.ready, true);
@@ -86,6 +98,7 @@ test('a second serving process is refused before it writes, and a restart after 
   for (let i = 0; i < 50; i++) first.send({ method: 'POST', path: '/api/todos', body: { title: `burst ${i}` } });
   for (let i = 0; i < 5; i++) assert.equal((await first.next()).status, 201);
   await first.kill();
+  await released(database);
   assert.equal(integrity(database), 'ok');
   const restarted = await child(t, database, activation, v1);
   assert.equal(restarted.ready.ready, true, 'no lease to expire: the restart is accepted at once');
@@ -149,6 +162,7 @@ test('an operator command is refused while a server declares the collection diff
   await addMember(database, { collections: { members } as unknown as Record<string, CollectionSpec>, collection: 'members', principal: 'ann' });
   await assert.rejects(addMember(database, { collections: other, collection: 'members', principal: 'bob' }), { status: 503, message: /Collection members: the serving process declares it differently/ });
   await elsewhere.kill();
+  await released(database);
   assert.equal((await addMember(database, { collections: other, collection: 'members', principal: 'bob' })).changed, true);
   // A server in this process.
   const served = await serve(t, database, activation, config);

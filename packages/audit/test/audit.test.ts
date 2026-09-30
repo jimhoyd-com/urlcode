@@ -10,6 +10,7 @@ import { AuditError, auditOutboxLimits, auditPermissions, createAudit, validateA
 import type { AuditEvent, AuditExports, AuditStoredEvent } from '../src/index.ts';
 import { activation, activeAudit, event, openAudit, pin, tempDir } from './support.ts';
 import { openAuditStore } from '../src/store.ts';
+import { serverLockHeld } from '@jimhoyd/urlcode/extensions';
 
 const rejectsWith = (promise: Promise<unknown>, status: number, code: string) =>
   assert.rejects(promise, (error: unknown) => error instanceof AuditError && error.status === status && error.code === code);
@@ -246,7 +247,7 @@ test('an audit database directory on a network filesystem is refused on Linux an
   local.close();
 });
 
-test('activation is refused while another process serves the audit database, and accepted once that process is killed', async t => {
+test('activation is refused while another process serves the audit database, and accepted once that process is killed', { timeout: 120_000 }, async t => {
   const { audit, dir, database } = await openAudit(t);
   // Another serving process: createAudit and one activation in a child `node`, which prints once it serves.
   const index = pathToFileURL(join(import.meta.dirname, '..', 'src', 'index.ts')).href;
@@ -263,6 +264,11 @@ console.log('serving'); setInterval(() => {}, 1000);`;
   assert.equal(audit.exports.active, false);
   // Killed: the operating system drops its lock, and this process activates at once.
   child.kill('SIGKILL'); await exited;
+  // Windows releases a terminated process's locks after an OS-determined delay rather than at exit.
+  for (const deadline = Date.now() + 10_000; serverLockHeld(database);) {
+    assert.ok(Date.now() < deadline, 'the killed server\'s lock was not released within 10 s');
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
   const instance = await audit.registration.activate({}, activation(dir));
   assert.equal(audit.exports.active, true);
   await audit.exports.record([event()]);

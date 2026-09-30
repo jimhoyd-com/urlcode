@@ -71,7 +71,8 @@ const busy = (error: unknown): boolean => (error as { errcode?: unknown }).errco
  * directory (0700) when absent and refuses it on a Linux network filesystem first. The lock is SQLite's own file lock
  * (`fcntl` on POSIX, `LockFileEx` on Windows) on the lock file, held as an exclusive transaction that never ends: no
  * heartbeat, timestamp or host name is involved, and the operating system releases it when the process exits or is
- * killed. A holder in this process shares it. `probe` is a test seam.
+ * killed (on Windows after a delay the OS decides, so a restart straight after a crash can be refused once). A holder
+ * in this process shares it. `probe` is a test seam.
  */
 export async function holdServerLock(database: string, what: string, probe?: Partial<HostProbe>): Promise<ServerLock> {
   const directory = dirname(resolve(database));

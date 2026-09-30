@@ -10,9 +10,12 @@ import { answer, requestFor } from './direct.ts';
 const { database, config, activation } = JSON.parse(process.argv[2]!) as { database: string; config: Record<string, unknown>; activation: ExtensionActivation };
 const reply = (value: unknown): void => { process.stdout.write(`${JSON.stringify(value)}\n`); };
 const store = createStore({ database, projectSha256: activation.projectSha256 });
-let instance: Awaited<ReturnType<typeof store.registration.activate>>;
-try { instance = await store.registration.activate(config, activation); }
-catch (error) { reply({ error: (error as Error).message }); await store.close(); process.exit(0); }
+const instance = await Promise.resolve().then(() => store.registration.activate(config, activation)).catch(async (error: unknown) => {
+  await store.close();
+  // Exit only once the line is written: a pipe write can still be pending (asynchronous on some platforms).
+  process.stdout.write(`${JSON.stringify({ error: (error as Error).message })}\n`, () => process.exit(0));
+  return new Promise<never>(() => {});
+});
 reply({ ready: true });
 for await (const line of createInterface({ input: process.stdin })) {
   const command = JSON.parse(line) as { op?: string; method?: string; path?: string; body?: unknown; who?: string };
