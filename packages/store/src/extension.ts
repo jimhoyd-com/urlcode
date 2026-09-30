@@ -39,17 +39,19 @@ function scaffold(): ScaffoldResult {
 }
 
 /**
- * `--example`: a `todos` collection on `/api/todos`. When auth is installed (added in the same command or already
- * present) the mount carries `auth: true` and the collection is per-user (`ownership: owner`, #331): each
- * signed-in user sees and changes only their own todos. auth admits writes with Better Auth's session cookie and
- * same-origin provenance. Without auth it stays a
- * shared collection and needs `--ack store:public-write`. With auth, every write to the collection is also recorded in
- * the store's audit log (`audit: true`, which needs a principal on the mount). The example is API only: a frontend
- * calls the JSON mount.
+ * `--example`: a `todos` collection on `/api/todos`. When a principal provider is installed (added in the same command
+ * or already present: the bundled auth, or any extension whose descriptor declares `providesPrincipal`) the mount is
+ * protected by it and the collection is per-user (`ownership: owner`, #331): each signed-in user sees and changes
+ * only their own todos. One provider is named with `auth: true`; with several, the mount names the first by
+ * `policies.extensions.<name>`, since `auth: true` needs exactly one. Without a provider it stays a shared collection
+ * and needs `--ack store:public-write`. With a provider, every write to the collection is also recorded in the
+ * store's audit log (`audit: true`, which needs a principal on the mount). The example is API only: a frontend calls
+ * the JSON mount.
  */
 function example(request: ScaffoldRequest): ScaffoldResult {
-  const withAuth = request.installed.includes('auth');
-  if (!withAuth && !request.acknowledgements.includes(publicWrite)) throw Object.assign(new Error('the store example serves POST, PUT, PATCH and DELETE on /api/todos, and no installed extension protects them, so anyone could write. Add auth first (urlcode extensions add auth), or acknowledge a public writable endpoint if that is really intended (that is not rate limiting, abuse protection or multi-tenant isolation)'), { acknowledgement: publicWrite });
+  const provider = request.principalProviders[0], withAuth = provider !== undefined;
+  if (!withAuth && !request.acknowledgements.includes(publicWrite)) throw Object.assign(new Error('the store example serves POST, PUT, PATCH and DELETE on /api/todos, and no installed extension protects them, so anyone could write. Add a sign-in provider first (the bundled one: urlcode extensions add auth), or acknowledge a public writable endpoint if that is really intended (that is not rate limiting, abuse protection or multi-tenant isolation)'), { acknowledgement: publicWrite });
+  const protection = !withAuth ? {} : request.principalProviders.length === 1 ? { auth: true } : { policies: { extensions: { [provider]: {} } } };
   return {
     config: { collections: { todos: {
       mount: '/api/todos',
@@ -61,11 +63,11 @@ function example(request: ScaffoldRequest): ScaffoldResult {
       ...(withAuth ? { ownership: 'owner', audit: true } : {}),
     } } },
     routes: {
-      '/api/todos/*': { extension: 'store', methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'], ...(withAuth ? { auth: true } : {}) },
+      '/api/todos/*': { extension: 'store', methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'], ...protection },
     },
     ...(withAuth ? {} : { acknowledged: [publicWrite], routeNotes: ['ACCESS MODEL: public write (--ack store:public-write). Anyone can create, change and delete records here. Not rate limiting, abuse protection or multi-tenant isolation.'] }),
     notes: [
-      withAuth ? 'store serves /api/todos to signed-in callers only (auth: true on the mount: writes are admitted with the session cookie and same-origin provenance), and each user sees and changes only their own todos (ownership: owner).' : 'store serves /api/todos with public write: anyone who can reach the server can change records. Add auth and `auth: true` on the mount to protect it.',
+      withAuth ? `store serves /api/todos to signed-in callers only (${'auth' in protection ? 'auth: true' : `policies.extensions.${provider}`} on the mount: ${provider} decides who is signed in and how writes are admitted), and each user sees and changes only their own todos (ownership: owner).` : 'store serves /api/todos with public write: anyone who can reach the server can change records. Add a sign-in provider (the bundled one: urlcode extensions add auth) and `auth: true` on the mount to protect it.',
       'Records live in the SQLite database data/store.sqlite, outside app/; back up data/ like any operator data (urlcode-store backup; see the store README, node_modules/@jimhoyd/urlcode-store/README.md). Try it: curl -X POST -H "Content-Type: application/json" -d \'{"title":"first"}\' <origin>/api/todos',
       ...(withAuth ? ['Every create, change and delete on the todos collection is recorded in the store\'s audit log (audit: true), in the same transaction: field names and the signed-in user, never values. Read it with `npx urlcode-store audit --database <abs>/data/store.sqlite`.'] : []),
     ],

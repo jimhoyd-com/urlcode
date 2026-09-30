@@ -23,8 +23,8 @@ and core pins every one of them (download URL and sha512) in its own
 artifacts add`, never by choosing an npm package. See
 [add-ons](EXTENSIONS.md#add-ons-extensions-and-artifacts).
 
-Prefer tested first-party extensions when suitable. External/private extensions
-are also supported through the same public host contract; follow the
+Inspect the installed stack first; first-party extensions are defaults, not
+requirements. External/private extensions are also supported through the same public host contract; follow the
 [external-extension workflow](EXTENSIONS.md#external-extensions-and-ai-tooling)
 for installation, AI discovery and validation outside the release catalog.
 
@@ -99,7 +99,7 @@ reads the verified user id from
 Better Auth owns accounts and sessions; the application owns its business
 rules and authorization. The
 [native-storage proof](../proofs/native-storage/README.md) is such an
-application with no store or audit extension installed: its function routes
+application with no store extension installed: its function routes
 call `node:sqlite` directly, behind `auth: true` through the independent
 Auth.js provider, and store declarations in its `urlcode.yaml` are refused
 rather than emulated.

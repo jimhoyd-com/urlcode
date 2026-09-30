@@ -22,6 +22,11 @@ test('feature planning is a bounded read-only projection of current contracts',a
  assert.ok(plan.applicable.recipes.some(recipe=>recipe.name==='store-crud'));
  assert.match(plan.extensions.ordering.note,/operator/i);
  assert.ok(Buffer.byteLength(JSON.stringify(plan))<=featurePlanMaxBytes);
+ // #1052 S6: the sign-in hint names the installed provider, not Better Auth, and the storage hint names the native path.
+ const protectedNote=plan.outline.find(item=>item.kind==='protected endpoint')!.note;
+ assert.match(protectedNote,/installed sign-in provider \(the bundled auth extension by default\)/);
+ assert.doesNotMatch(protectedNote,/Better Auth/);
+ assert.match(plan.outline.find(item=>item.kind==='durable collection')!.note,/trusted \(non-sandbox\) function that imports an ordinary npm database library/);
 });
 
 test('feature planning marks unavailable targets and unsupported workflow requirements without inventing a capability',async t=>{

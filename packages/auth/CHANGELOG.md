@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Seeds run the owner's `validateUserInfo` and database hooks (#1058).** `tests/seed.json` accounts are created
+  inside a hermetic seed context: the endpoint context Better Auth passes its hooks, with no request (`request` and
+  `path` undefined) and empty `headers`. Before, a configured `betterAuth.user.validateUserInfo` refused every seed
+  with `User validation requires an endpoint context`, and `databaseHooks` got no context at all. A validator sees
+  `{method: 'email-password', action: 'create-user'}`; one that rejects a seeded user, or a `create.before` hook that
+  returns `false`, refuses the run with a message naming the user and the hook.
 - **The owner's Better Auth choices are honoured (#1052).** `auth({database})` also takes the owner's own Better Auth
   database (an adapter, a Kysely dialect, a Postgres or MySQL pool), passed to Better Auth unchanged; before, the
   bundled SQLite file always replaced it. With one, the one-server lock, the WAL and file checks, the table check and

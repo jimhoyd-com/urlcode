@@ -11,7 +11,7 @@ import mcp from '../src/extension.ts';
 import { mcpConfigSchema } from '../src/mcp.ts';
 
 const PROJECT_SHA256 = 'b'.repeat(64);
-const request = { site: '/tmp/site', project: '/tmp/site/app', installed: ['mcp'], acknowledgements: [] } as const;
+const request = { site: '/tmp/site', project: '/tmp/site/app', installed: ['mcp'], principalProviders: [], acknowledgements: [] } as const;
 
 function pin(t: test.TestContext, value: string): void {
   const previous = process.env.PROJECT_SHA256;

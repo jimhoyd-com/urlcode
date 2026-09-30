@@ -307,7 +307,7 @@ jobs:
       - run: npm run test:ecosystem
       # The same application with Auth.js, an independent provider package, in place of Better Auth (#841).
       - run: npm run test:proof:authjs
-      # Owner choice (#1052): node:sqlite called directly from trusted routes, auth: true through Auth.js, no store or audit.
+      # Owner choice (#1052): node:sqlite called directly from trusted routes, auth: true through Auth.js, no store.
       - run: npm run test:proof:native
   # A really full filesystem (#902): `urlcode serve` with its data directory
   # (store, its audit log included, and auth) on a 16 MiB tmpfs that the harness fills to
