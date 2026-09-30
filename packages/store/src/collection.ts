@@ -4,7 +4,8 @@ import { bodyIssues, bodySchemaDialect, compileBodySchema } from '@jimhoyd/urlco
 import type { BodySchema, BodySchemaIssue, CompiledBodySchema } from '@jimhoyd/urlcode/body-schema';
 import type { AuditEvent } from '@jimhoyd/urlcode-audit';
 import { QUERY_LIMITS, parseListQuery, queryableString, runList } from './query.ts';
-import { STORE_SCHEMA_VERSION, declarationOf, liveServer } from './database.ts';
+import { serverLockHeld } from '@jimhoyd/urlcode/extensions';
+import { STORE_SCHEMA_VERSION, declarationOf } from './database.ts';
 import type { StoreDatabase } from './database.ts';
 import { listInSql, listPlan } from './listing.ts';
 import type { ListPlan } from './listing.ts';
@@ -940,16 +941,17 @@ export function declarationFingerprint(spec: NormalizedSpec): string {
  */
 export const STORED_OUTSIDE = 'A stored record does not match this collection\'s declaration';
 /** The 503 a write answers when the declaration fence refuses it: bounded, naming nothing. */
-export const REDECLARED = 'The collection was redeclared by another process';
+export const REDECLARED = 'The collection was redeclared by a newer activation';
 /**
  * The operator commands' fence (#927): they carry the project's declaration, which may differ from the one served. A
- * command is refused when a live server has recorded a different declaration of `collection` (or runs another store
- * schema): its writes would break rules the server enforces. With no live server, or nothing recorded, it proceeds.
+ * command is refused when the serving process (the holder of the database's server lock) has recorded a different
+ * declaration of `collection` (or runs another store schema): its writes would break rules the server enforces. With
+ * no server running, or nothing recorded, it proceeds.
  */
 export function operatorFence(db: StoreDatabase, collection: string, fingerprint: string): void {
   const recorded = declarationOf(db, collection);
   if (recorded === undefined || (recorded.fingerprint === fingerprint && recorded.schema_version === STORE_SCHEMA_VERSION)) return;
-  if (liveServer(db, Date.now())) throw new StoreError(503, 'storage_unavailable', `Collection ${collection}: the serving process declares it differently from this project (or runs another store release); run the command with the project it serves, or stop it first`);
+  if (serverLockHeld(db.path)) throw new StoreError(503, 'storage_unavailable', `Collection ${collection}: the serving process declares it differently from this project (or runs another store release); run the command with the project it serves, or stop it first`);
 }
 
 /** A record read for a viewer, with the transitions it may run on it (`Viewer`). */
@@ -1002,9 +1004,8 @@ export class Collection {
   constructor(name: string, spec: CollectionSpec, auditor?: CollectionAuditor, destinations: readonly string[] = [], schemas: Readonly<Record<string, unknown>> = {}) { this.name = name; this.spec = normalize(name, spec, schemas); this.fingerprint = declarationFingerprint(this.spec); this.auditor = auditor; this.destinations = destinations; }
   /**
    * The declaration fence, first inside every write transaction, under the write lock: one indexed read of the recorded
-   * declaration and the file's `user_version`. A newer activation (a reload here, or another process: a blue/green
-   * candidate, a newer release that migrated the file) recorded its own, so this view's writes would enforce rules
-   * nobody declares any more. Reads are not fenced.
+   * declaration and the file's `user_version`. A newer activation (a dev reload) recorded its own, or a newer release
+   * migrated the file, so this view's writes would enforce rules nobody declares any more. Reads are not fenced.
    */
   fenced(db: StoreDatabase): void {
     if (this.fence === 'operator') return operatorFence(db, this.name, this.fingerprint);

@@ -48,11 +48,11 @@ export { clientKey, clientKeyIpv6Prefix } from './client-address.ts';
 export { ExtensionHttpError, readBody, jsonResponse, isSameOriginRequest } from './extension-http.ts';
 export type { ExtensionHttpErrorCode, ReadBodyOptions, SameOriginOptions } from './extension-http.ts';
 /**
- * The setup checks every SQLite-backed extension runs before it serves (#927, #941): a Linux network filesystem
- * refusal and a host lease in the extension's own database, so a peer serving it from another host refuses activation.
+ * One serving process per database, for every SQLite-backed extension: a Linux network filesystem refusal and the
+ * server lock (`<database>.server-lock`), an OS lock a second serving process is refused on and a killed one leaves free.
  */
-export { hostProbe, joinHostLease, NETWORK_FILESYSTEMS, refuseNetworkFilesystem, SERVER_LEASE } from './host-lease.ts';
-export type { HostLease, HostLeaseConnection, HostLeaseOptions, HostLeaseStatements, HostProbe } from './host-lease.ts';
+export { holdServerLock, hostProbe, NETWORK_FILESYSTEMS, refuseNetworkFilesystem, serverLockHeld, serverLockPath } from './server-lock.ts';
+export type { HostProbe, ServerLock } from './server-lock.ts';
 export interface ExtensionDeclaration { version:'1'; config:Record<string,unknown> }
 export type ExtensionPolicies = Record<string,Record<string,unknown>|false>;
 /**

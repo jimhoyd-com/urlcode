@@ -168,20 +168,17 @@ Back audit up **after** the producers' data (the store database): events a
 producer has not delivered yet are still in its outbox, so they travel in its
 backup and are drained again, once, after a restore.
 
-Several serving processes on one host may share `data/audit.sqlite` (WAL, a
-2 second busy timeout). With the store, one process at a time drains its
-outbox. A database directory on a Linux network filesystem is refused. From
-its first activation until it closes, a serving process keeps a lease row in
-`audit_servers` in `audit.sqlite`, and activation is refused while a live peer
-runs on another host, with or without the store; processes and containers on
-one host are accepted. A process that finds another host serving the database
-logs it and stores nothing (`503 audit_unavailable`) until that host is gone.
-How the lease judges a peer, and its timing, are in
-[several serving processes][store-several-processes]. Producers keep their events
-meanwhile and deliver them once it holds the lease again.
+One process serves `data/audit.sqlite`. From its first activation until it
+closes, it holds an OS lock on `audit.sqlite.server-lock`, and a second
+serving process is refused, with or without the store; the lock is released
+when the process exits or is killed. `urlcode-audit list`, `backup` and
+`restore` do not take it and run beside the server (WAL, a 2 second busy
+timeout). A database directory on a Linux network filesystem is refused. With
+the store, the serving process is the outbox's only drainer. See
+[one serving process per database][store-one-process].
 
 <!-- urlcode-current-version:start -->
-[store-several-processes]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#several-serving-processes-on-one-host
+[store-one-process]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#one-serving-process-per-database
 <!-- urlcode-current-version:end -->
 
 Requires the matching `@jimhoyd/urlcode` core as a peer. Apache-2.0.

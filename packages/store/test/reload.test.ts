@@ -36,8 +36,8 @@ async function site(t: TestContext) {
   const store = createStore({ database, projectSha256 });
   return { project, data, database, edit, store, projectSha256, extensions: [store.registration, breaker(projectSha256)] };
 }
-/** Only the database file is left once the last connection closed and checkpointed its write-ahead log. */
-const closedCleanly = async (data: string) => assert.deepEqual(await readdir(data), ['store.sqlite']);
+/** Only the database file and its server lock file are left once the last connection closed and checkpointed its write-ahead log. */
+const closedCleanly = async (data: string) => assert.deepEqual(await readdir(data), ['store.sqlite', 'store.sqlite.server-lock']);
 const titles = async (call: (path: string, init?: RequestInit) => Promise<Response>) => ((await (await call('/api/todos')).json()) as { items: { title: string }[] }).items.map(item => item.title);
 const stored = async (database: string) => records(database, 'todos').map(record => record.title);
 
@@ -50,7 +50,7 @@ test('a dev reload shares the store: data written before is served, writes after
   const call = (path: string, init: RequestInit = {}) => fetch(`http://127.0.0.1:${app.address.port}${path}`, init);
   assert.equal((await call('/api/todos', { method: 'POST', headers: json, body: JSON.stringify({ title: 'before' }) })).status, 201);
   await edit(todos, false, 'v2');
-  assert.equal(await app.reload(), true, 'the replacement joins the lease instead of failing on the lock');
+  assert.equal(await app.reload(), true, 'the replacement shares the process\'s server lock instead of being refused by it');
   assert.equal(events.filter(event => event.event === 'reload').at(-1)?.status, 'ok');
   assert.equal(await (await call('/hello')).text(), 'v2');
   assert.deepEqual(await titles(call), ['before'], 'data written before the reload is served');
@@ -77,7 +77,7 @@ test('a reload that fails after the store accepted its hand-off leaves the servi
   cleanup(t, async () => { await app.close(); await store.close(); });
   const call = (path: string, init: RequestInit = {}) => fetch(`http://127.0.0.1:${app.address.port}${path}`, init);
   assert.equal((await call('/api/todos', { method: 'POST', headers: json, body: JSON.stringify({ title: 'one' }) })).status, 201);
-  // Another extension throws after the store joined the lease.
+  // Another extension throws after the store took its share of the server lock.
   await edit(todos, true, 'v2');
   assert.equal(await app.reload(), false);
   assert.match(JSON.parse(diagnostics.at(-1)!).message, /Extension "breaker" failed to activate/);
@@ -111,7 +111,7 @@ test('during the overlap the replacement\'s declaration wins: the retiring runti
   assert.deepEqual(await list(serving), ['a', 'b'], 'the serving view still reads, and sees the replacement write at once');
   const refused = await post(serving, 'far too long');
   assert.equal(refused.status, 503, 'the retiring declaration no longer writes');
-  assert.deepEqual(JSON.parse(Buffer.from(refused.body as Uint8Array).toString()), { error: { code: 'storage_unavailable', message: 'The collection was redeclared by another process' } });
+  assert.deepEqual(JSON.parse(Buffer.from(refused.body as Uint8Array).toString()), { error: { code: 'storage_unavailable', message: 'The collection was redeclared by a newer activation' } });
   assert.deepEqual(await stored(database), ['a', 'b'], 'and wrote nothing');
   assert.equal((await post(next, 'c')).status, 201);
   await serving.close();

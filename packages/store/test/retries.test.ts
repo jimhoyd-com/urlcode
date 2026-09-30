@@ -90,7 +90,7 @@ test('racing retries in one process run the mutation once and replay it to every
   assert.deepEqual(counts(store.database), { records: 1, idempotency: 1, outbox: 0 });
 });
 
-test('racing retries from separate connections (as separate processes) run the mutation once', async t => {
+test('racing retries from separate connections run the mutation once', async t => {
   const store = await direct(t, config, { mounts, principalMounts: [] });
   const target = (await store.call('POST', '/api/todos', { body: { title: 'shared' } })).body!.id as string;
   await store.close();
