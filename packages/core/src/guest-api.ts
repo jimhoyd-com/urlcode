@@ -1,11 +1,14 @@
 import type { HeaderPair } from './http-response.ts';
-// The JSON that crosses the guest boundary, in both directions. Only strings
-// cross it; function-worker.ts stringifies the request and checks the
-// response's shape before trusting it.
+// What crosses the guest boundary, in both directions. Only strings cross it;
+// function-worker.ts stringifies the request and checks the response's shape
+// before trusting it. The response body crosses on its own, in slices, not
+// inside the JSON: escaping and copying it whole would multiply its size in the
+// guest heap (up to six times for control characters), so the body a guest
+// could deliver would depend on its content (#1096).
 /** The request the guest receives (stringified as JSON in the worker). */
 export interface GuestRequestPayload { url: string; method: string; headers: HeaderPair[]; body?: Uint8Array | undefined }
-/** What the guest returns as JSON text; the worker enforces this shape before trusting it. */
-export interface GuestResponsePayload { status: number; headers: HeaderPair[]; body: string; nativeBody?: boolean; contentLength?: number }
+/** The response metadata the guest returns as JSON text; the worker enforces this shape before trusting it. The body is read separately. */
+export interface GuestResponsePayload { status: number; headers: HeaderPair[]; nativeBody?: boolean; contentLength?: number }
 // Runs only inside QuickJS/WASM. No native host functions or objects are exposed.
 // This is the documented text/JSON subset, not a complete Fetch implementation.
 export const guestBootstrap = String.raw`
@@ -35,11 +38,33 @@ export const guestBootstrap = String.raw`
   // accessors and calls the entry points below, all fixed before guest code
   // runs, so a guest can neither rewrite its result nor replace the code that
   // shapes it. The first outcome settles the invocation.
-  let state = 'pending', output = '';
-  const settle = (next, text = '') => { if (state === 'pending') { state = next; output = text; } };
+  let state = 'pending', output = '', content = '';
+  const settle = (next, text = '', body = '') => { if (state === 'pending') { state = next; output = text; content = body; } };
   const fix = (name, value) => Object.defineProperty(globalThis, name, {value, writable:false, enumerable:false, configurable:false});
   Object.defineProperty(globalThis, '__state', {get: () => state, enumerable:false, configurable:false});
   Object.defineProperty(globalThis, '__output', {get: () => output, enumerable:false, configurable:false});
+  // The host reads the body in slices of at most 2^20 UTF-16 units, so the
+  // hand-over needs one slice's copy in the heap, not the whole body's. A slice
+  // never ends between the halves of a surrogate pair.
+  const isWellFormed = Function.prototype.call.bind(String.prototype.isWellFormed);
+  const toWellFormed = Function.prototype.call.bind(String.prototype.toWellFormed);
+  const slice = Function.prototype.call.bind(String.prototype.slice);
+  const charCodeAt = Function.prototype.call.bind(String.prototype.charCodeAt);
+  Object.defineProperty(globalThis, '__bodyLength', {get: () => content.length, enumerable:false, configurable:false});
+  fix('__bodyChunk', start => {
+    let end = start + 1048576;
+    if (end >= content.length) end = content.length;
+    else { const code = charCodeAt(content, end - 1); if (code >= 0xd800 && code <= 0xdbff) end--; }
+    return slice(content, start, end);
+  });
+  // The body the host reads. A lone surrogate becomes U+FFFD here, as Node's
+  // UTF-8 encoding would make it and byteLength counts it; a well-formed
+  // string is kept as is, without a copy.
+  const bodyText = response => {
+    const text = response._text;
+    if (typeof text !== 'string') throw new TypeError('Invalid body');
+    return isWellFormed(text) ? text : toWellFormed(text);
+  };
   fix('__ready', () => settle('done'));
   const timers = new Map(); let next = 1;
   globalThis.setTimeout = (fn, delay = 0) => {
@@ -127,9 +152,9 @@ export const guestBootstrap = String.raw`
       // materialized string at construction time, no stream read needed
       // (#144, mirroring #139's fix for the trusted path). Only the
       // transmitted bytes are suppressed for HEAD, never the length.
-      settle('done', stringify({status:response.status,headers:response.headers._pairs,
-        body:nativeBody || isHead ? '' : response._text,nativeBody,
-        ...(isHead && !nativeBody ? {contentLength:byteLength(response._text)} : {})}));
+      const text = bodyText(response);
+      settle('done', stringify({status:response.status,headers:response.headers._pairs,nativeBody,
+        ...(isHead && !nativeBody ? {contentLength:byteLength(text)} : {})}), nativeBody || isHead ? '' : text);
     } catch { settle('failed'); }
   });
   fix('__invoke', async (handler, payload) => {
@@ -139,8 +164,9 @@ export const guestBootstrap = String.raw`
       if (!(response instanceof Response)) throw new TypeError('Return a Response');
       const headers = response.headers._pairs;
       const isHead = input.request.method === 'HEAD';
-      settle('done', stringify({status:response.status,headers,body: isHead ? '' : response._text,
-        ...(isHead ? {contentLength:byteLength(response._text)} : {})}));
+      const text = bodyText(response);
+      settle('done', stringify({status:response.status,headers,
+        ...(isHead ? {contentLength:byteLength(text)} : {})}), isHead ? '' : text);
     } catch { settle('failed'); }
   });
 })();

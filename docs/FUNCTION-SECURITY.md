@@ -82,15 +82,29 @@ into it; only the default for routes that declare neither option has changed.
 - A fresh guest heap/module state per invocation prevents state crossing requests.
 - 32 MiB guest heap, 512 KiB stack, source/input/output/header limits, bounded
   concurrency, guest interruption and an independent worker termination deadline.
-  The heap is enforced by capping each sandbox worker's WebAssembly memory at
-  44 MiB (the 32 MiB guest heap plus the engine's own baseline and growth
-  step), not by QuickJS's allocation counter, which this build undercounts. A
-  guest whose allocations reach the cap fails with the generic 502 even if it
-  catches the error, and its worker is retired and replaced (logged as a
-  `function_worker` restart), because WebAssembly memory never shrinks. The
+  The heap is enforced by giving each sandbox worker a fixed 44 MiB
+  WebAssembly memory (the 32 MiB guest heap plus the engine's own baseline),
+  not by QuickJS's allocation counter, which this build undercounts. The memory
+  is allocated at that size and never grows: a grow detaches the host's views
+  of it, which made the engine leak a context and abort at runtime disposal
+  for some response sizes (#1096). Untouched pages are not resident, so this
+  costs address space, not RSS. A guest whose allocations reach the cap fails
+  with the generic 502 even if it catches the error, and its worker is retired
+  and replaced (logged as a `function_worker` restart). An engine that aborts
+  while freeing an invocation's runtime is retired the same way. The
   in-guest interrupt is polled between bytecode batches, so a loop of few, very
   expensive operations can overrun it; the worker termination deadline is the
   enforced bound for those.
+- The response body lives in the guest heap as the engine's string, at most
+  one byte of heap per UTF-8 byte of the body, and the host reads it in slices
+  of 2^20 UTF-16 units outside the JSON metadata, so handing it over costs one
+  slice's copy rather than an escaped copy of the whole body. A body within the
+  16 MiB `--max-response-bytes` ceiling therefore fits whatever its characters,
+  leaving about half the heap for the guest's own work, and the ceiling is the
+  same for trusted and sandboxed routes. Measured with a guest that builds
+  nothing else, the heap holds a body string of up to 32 MiB (32 MiB of ASCII
+  or of 4-byte characters, 64 MiB of Latin-1 text), twice the ceiling. A body
+  the heap cannot hand over answers 502; it never arrives short.
 - The guest's result is recorded where guest code cannot rewrite it, and the
   host checks its shape before trusting it. A result that states a body length
   for any method other than HEAD is invalid and answers 502; the runtime frames

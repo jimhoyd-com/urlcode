@@ -139,6 +139,7 @@ const helpEntries: HelpEntry[] = [
     # on a loopback --host (the default), a request whose Host is not localhost, 127.0.0.1 or [::1] on the bound port, or the --origin or an --alias-origin authority, gets 421 before routing (DNS-rebinding defence; dev too)
     capacity: [--workers 2] [--function-timeout-ms 5000] [--max-response-bytes 1048576]
               [--max-body-bytes 1048576] [--max-in-flight 64] [--max-in-flight-health 16]
+              # max-response-bytes: 1–16777216, one ceiling for trusted and sandbox: true routes; a sandboxed body counts against the guest's 32 MiB heap
     logging:  [--request-log minimal|detailed] [--trust-request-id] [--metrics]  # metrics: GET /_urlcode/metrics, Prometheus text; keep internal
               [--debug-errors]  # serve only: write dev's function-error and reload diagnostics (stacks, source paths) to stderr; responses stay generic
     policies: [--trusted-proxies 10.0.0.0/8,fd00::/8]  # peers allowed to set X-Forwarded-For for client policies

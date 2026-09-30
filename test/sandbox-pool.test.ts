@@ -21,8 +21,8 @@ function snapshot(modules: Record<string, string>, entries: [string, string][] =
 const route = (source: string, middleware: string[] = []): FunctionRoute => ({ function: { source: ROOT + source, export: 'default' }, middleware: middleware.map(m => ({ source: ROOT + m, export: 'default' })) });
 const payload = (extra: Partial<GuestRequestPayload> = {}): GuestRequestPayload => ({ url: 'http://localhost/', method: 'GET', headers: [], ...extra });
 const context = (extra: Partial<FunctionContext> = {}): FunctionContext => ({ inputs: { path: {}, query: {}, header: {} } as FunctionContext['inputs'], env: {}, secrets: {}, requestId: 'test-request', ...extra });
-async function pool(t: TestContext, modules: Record<string, string>, options: { workers?: number; timeoutMs?: number; log?: (event: Record<string, unknown>) => void } = {}): Promise<FunctionPool> {
-  const instance = await new FunctionPool(Object.keys(modules).map(name => route(name)), { snapshot: snapshot(modules), workers: options.workers ?? 1, timeoutMs: options.timeoutMs ?? 5000, log: options.log }).start();
+async function pool(t: TestContext, modules: Record<string, string>, options: { workers?: number; timeoutMs?: number; maxBytes?: number; log?: (event: Record<string, unknown>) => void } = {}): Promise<FunctionPool> {
+  const instance = await new FunctionPool(Object.keys(modules).map(name => route(name)), { snapshot: snapshot(modules), workers: options.workers ?? 1, timeoutMs: options.timeoutMs ?? 5000, maxBytes: options.maxBytes, log: options.log }).start();
   t.after(() => instance.close());
   return instance;
 }
@@ -239,4 +239,31 @@ test('a guest allocating past its 32 MiB heap fails with 502 and the worker is r
   await until(() => p.healthy);
   assert.ok(events.some(e => e['event'] === 'function_worker' && e['status'] === 'restarting'));
   assert.deepEqual((await Promise.all([run('/ok.mjs'), run('/fits.mjs')])).map(body), ['ok','28']);
+});
+
+// #1096: a sandboxed response body is handed to the host in slices, outside the
+// JSON metadata, from a memory that never grows. Before, a body of about 3 MiB
+// or more grew the worker's memory during the guest's job, quickjs-emscripten
+// leaked a context on that grow and freeing the runtime aborted, so some sizes
+// answered 502; and JSON escaping made the deliverable size depend on the
+// content (a body of control characters stopped near 3 MiB). Every size up to
+// the 16 MiB response ceiling now arrives intact, whatever its characters.
+test('sandboxed bodies of every size up to the 16 MiB response ceiling arrive intact, whatever their characters', async t => {
+  const modules = { '/big.mjs': `export default (request) => {
+    const query = new Map(request.url.split('?')[1].split('&').map(pair => pair.split('=')));
+    return new Response(decodeURIComponent(query.get('unit')).repeat(Number(query.get('count'))));
+  }` };
+  const p = await pool(t, modules, { maxBytes: 16 * 1024 * 1024, timeoutMs: 20000 });
+  for (const unit of ['x', '\u0001', '"', 'é', '€', '😀']) {
+    for (const mib of [1, 2, 3, 4, 6, 8, 12, 16]) {
+      const count = Math.floor(mib * 1024 * 1024 / Buffer.byteLength(unit));
+      const result = await p.execute(route('/big.mjs'), payload({ url: `http://localhost/?unit=${encodeURIComponent(unit)}&count=${count}` }), context(), undefined);
+      assert.ok(Buffer.from(result.body ?? []).equals(Buffer.from(unit.repeat(count))), `${JSON.stringify(unit)} × ${count}`);
+    }
+  }
+  assert.equal(p.restarts.size, 0);
+  // A lone surrogate reaches the wire as U+FFFD, and a slice boundary never splits a pair.
+  const edge = await pool(t, { '/edge.mjs': `export default () => new Response('a\\ud800b' + 'x'.repeat(1048572) + '😀' + 'y')` }, { maxBytes: 2 * 1024 * 1024 });
+  const edged = Buffer.from((await edge.execute(route('/edge.mjs'), payload(), context(), undefined)).body ?? []);
+  assert.ok(edged.equals(Buffer.from('a�b' + 'x'.repeat(1048572) + '😀' + 'y')));
 });
