@@ -69,5 +69,6 @@ Each page holds the recipes for one task; the section numbers continue across pa
 | `methods: [GET]` expecting HEAD | Declare HEAD too or omit methods for default GET/HEAD |
 | YAML fields for rate limits/workers/DNS/TLS | Deployment controls live outside portable route YAML |
 | YAML aliases, anchors or implicit date objects | Use plain JSON-compatible YAML and quoted timestamps |
+| A lone `"\uD800"`-style escape in a double-quoted string | Write the character itself or its full surrogate pair; a lone surrogate fails with `invalid-unicode` |
 | Automatic hot updates in `serve` | Deploy/restart or use the embedding reload API deliberately |
 | “All examples are production-ready” | Validate your security, load and deployment requirements separately |

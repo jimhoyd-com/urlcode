@@ -311,7 +311,7 @@ asserts `expectBody`, `expectJson` or `expectHeaders`
 A failed command prints one JSON line, `{"event":"error","message":...}`, with
 structured fields where they apply: `code` (for example `unknown-key`,
 `multiple-handlers`, `no-handler`, `missing-key`, `invalid-value`,
-`invalid-yaml`, `express-parameter`, `undeclared-parameter`, `missing-file`,
+`invalid-yaml`, `invalid-unicode`, `express-parameter`, `undeclared-parameter`, `missing-file`,
 `invalid-file-reference`, `binding-denied`, `sandbox-import`, `invalid-fixture`, `no-test-cases`,
 `unknown-option`, `extension-activation`, `extension-registration`,
 `extension-host`, `host-load`), `file`,

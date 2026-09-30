@@ -42,6 +42,9 @@ test('egress grants are separate by purpose and reject malformed operator policy
  const root=await project(t,{'/':{proxy:{url:'https://example.com'},signals:[{url:'https://example.com/hook'}]}}),permissions=await approveBindings(root);
  delete permissions.routes['/']!.egress!.signals;await assert.rejects(createRuntime(root,{permissions}),/Egress denied/);
  for(const origins of [['http://example.com'],['https://example.com/'],['https://example.com/path']])assert.throws(()=>validatePolicy({...permissions,routes:{'/':{egress:{proxy:origins}}}}));
+ // An unpaired surrogate escape anywhere, even in a route key no route can have, is refused, not kept as a dead grant (#1021).
+ for(const policy of [{...permissions,routes:{...permissions.routes,'/\ud800':{}}},{...permissions,routes:{'/':{...permissions.routes['/'],env:['A\udc00']}}}])
+  assert.throws(()=>validatePolicy(policy),(error:Error&{details?:{code?:string}})=>/unpaired surrogate escape/.test(error.message)&&error.details?.code==='policy-invalid');
 });
 test('providers refuse proxy and signal declarations',async t=>{
  const root=await project(t,{'/':{proxy:{url:'https://example.com'},signals:[{url:'https://example.com/hook'}]}});

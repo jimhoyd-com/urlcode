@@ -1106,9 +1106,12 @@ release supports (2025-11-25 back to 2024-11-05 at the time of writing).
 URLCode owns the tool list, argument validation, the calls and the bounds
 below. Tool calls run one at a time in arrival order, so a client can send
 `create_route` then `run_validate` and the second sees the first's edit.
-Requests are UTF-8 newline-delimited JSON-RPC 2.0. A line that is not one
-JSON-RPC message (malformed JSON, a batch, invalid UTF-8) is ignored and the
-session continues; an input message over 1 MiB ends the session. A tool
+Requests are UTF-8 newline-delimited JSON-RPC 2.0. A line that is not valid
+UTF-8 answers a `-32700` parse error with a null id and never reaches a tool,
+even when it is otherwise one valid message (the SDK would decode the bytes as
+U+FFFD; #1021); the session continues. Any other line that is not one JSON-RPC
+message (malformed JSON, a batch) is ignored and the session continues; an
+input message over 1 MiB ends the session. A tool
 result over 1 MiB is returned as an `isError` result naming the limit. Import
 text is additionally capped at 512 KiB. Tool schemas reject
 unknown arguments. A `-32602` error names the problem: an unknown tool (and the

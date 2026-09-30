@@ -19,7 +19,7 @@ function run(command: string, input: unknown): Promise<{ code: number | null; st
     child.stderr.on('data', chunk => { stderr += chunk; });
     child.on('error', reject);
     child.on('close', code => resolve({ code, stdout, stderr }));
-    child.stdin.end(typeof input === 'string' ? input : JSON.stringify(input));
+    child.stdin.end(typeof input === 'string' || Buffer.isBuffer(input) ? input : JSON.stringify(input));
   });
 }
 
@@ -66,6 +66,12 @@ test('list refuses a bad filter, a relative path, unknown input and a missing da
     assert.match(answer.stderr, /^urlcode-audit: /);
   }
   await assert.rejects(stat(join(root, 'missing.sqlite')), { code: 'ENOENT' }, 'list never creates a database');
+  // A path the file system would rewrite with U+FFFD is refused: an unpaired surrogate escape or invalid UTF-8 (#1021).
+  for (const input of [{ database: `${database}\ud800` }, { database, query: { ['\udc00']: 1 } }, Buffer.from([...Buffer.from(`{"database":"${database}`), 0xff, ...Buffer.from('"}')])]) {
+    const answer = await run('list', input);
+    assert.equal(answer.code, 1, String(input));
+    assert.match(answer.stderr, /^urlcode-audit: (Input holds a string or key with an unpaired surrogate escape|The encoded data was not valid)/);
+  }
   assert.equal((await run('prune', {})).code, 1);
   assert.match((await run('--help', '')).stdout, /urlcode-audit list/);
 });

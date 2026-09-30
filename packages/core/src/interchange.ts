@@ -31,6 +31,9 @@ function row(value: unknown, index: number): Row {
   if (!statuses.has(status)) throw new Error('Unsupported redirect status');
   if (!/^\/[A-Za-z0-9_./~-]*$/.test(item.path)) throw new Error('Only literal ASCII paths are supported; patterns, escapes and conditions require the runtime');
   if (/[{}]/.test(item.url)) throw new Error('Destination placeholders require the runtime');
+  // JSON and YAML refuse an unpaired surrogate escape when parsed (parseYaml, #1021); a CSV or provider text handed in
+  // as a string (the importRoutes API) can still carry one, which a redirect would send as %EF%BF%BD.
+  if (!item.url.isWellFormed()) throw new Error('Destination holds an unpaired UTF-16 surrogate (\\uD800-\\uDFFF), which UTF-8 cannot carry');
   return {path:item.path,url:item.url,status,row:index};
 }
 /** RFC 4180-style fields, including quoted commas/newlines and escaped quotes. */

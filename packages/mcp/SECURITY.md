@@ -56,8 +56,8 @@ client-supplied id) that motivated adding this extension.
 **Tool arguments are always schema-checked before a handler runs.** A
 `tools/call` whose `arguments` fails the tool's declared `inputSchema` never
 reaches the handler; the caller gets a list of which declared constraint
-failed (under MCP revision `2025-11-25` as an `isError: true` tool result,
-under earlier revisions as a structured `-32602 Invalid params` error), using the same bounded
+failed as an `isError: true` tool result under every negotiated revision,
+using the same bounded
 validator (`@jimhoyd/urlcode/body-schema`, the exact code
 `request.body.<METHOD>.schema` itself runs) a native route body already uses. Nothing
 the caller sent is echoed back in an issue; only the schema's own declared
