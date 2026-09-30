@@ -29,6 +29,10 @@ it there when routes are added or removed. The initial audit reports
 expected state of an intentionally empty app, not deployment readiness. The
 generated GitHub workflow permits only that result until its first route is
 added; then remove `allow-empty-project: true` and require a passing audit.
+An extension's mount counts as that first route: `urlcode extensions add`
+removes the workflow line and rewrites the site's `AGENTS.md` audit paragraph
+when the site gains its first route, and `extensions remove` restores both when
+it loses its last, as both move `app/tests/audit.json`.
 
 Without a global install, `npx` runs the published runtime once to create the
 site, which then pins it:

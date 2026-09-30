@@ -2,103 +2,88 @@
 
 `/api/profile` is a function behind `auth: true`, the route-level short
 form that expands to `policies.extensions.auth: {}`. The project declares the
-`auth` extension; it never chooses or loads the module that implements it. Authorization happens in trusted operator code before the route's function
-runs, and the host strips `Authorization` and `Cookie` before dispatch -- for
-trusted and `sandbox: true` routes alike.
-
-This recipe does not activate on its own. Every command needs an operator host
-file outside the project, the canonical origin and the project revision the
-operator reviewed (see [the review gate](#the-review-gate)):
-
-```sh
-export PROJECT_SHA256=<the reviewed revision>
-urlcode validate --local --project . --host-file /operator/host.mjs --origin https://api.example.com
-urlcode test --project . --host-file /operator/host.mjs --origin https://api.example.com
-urlcode audit --project . --expect-routes 1 --host-file /operator/host.mjs --origin https://api.example.com
-```
+`auth` extension; it never chooses or loads the module that implements it.
+Authorization happens in trusted operator code before the route's function
+runs: the auth extension (Better Auth) admits a request only with a verified
+session and hands the function the signed-in user's id as
+`context.capabilities.auth.identity.userId`. The host strips `Authorization`
+and `Cookie` before dispatch, for trusted and `sandbox: true` routes alike, and
+a `sandbox: true` route cannot name `auth` at all.
 
 ## The host file
 
-A real deployment installs the `auth` extension (`urlcode extensions add auth`),
-which serves Better Auth on its own mount and admits a request only with a
-verified session; see [the auth package][packages/auth/README.md]. The
-minimal shape below
-accepts one bearer token read from the operator's environment, so the bundled
-fixtures pass; it is a protocol example, not deployable authentication. Keep it
-outside the project directory: `--host-file` refuses a path inside it.
-
-Like every add-on's host, it never computes the project revision itself.
-`composeHost` hands `host()` the revision the operator reviewed, as
-`projectSha256`: the verified `--policy` file's revision, otherwise
-`PROJECT_SHA256`. Neither present refuses before anything activates.
+The recipe does not activate on its own. In a site, `urlcode extensions add
+auth` installs the extension and registers it in `host.mjs`, outside the
+project; see [the auth package][packages/auth/README.md]:
 
 ```js
-// /operator/host.mjs — trusted operator code, never part of the project
+// host.mjs -- trusted operator code, outside app/
 import {composeHost} from '@jimhoyd/urlcode/host';
-import {defineExtension} from '@jimhoyd/urlcode/extensions';
-const schema = {type: 'object', properties: {realm: {type: 'string'}}, required: ['realm'], additionalProperties: false};
-const policySchema = {type: 'object', properties: {}, additionalProperties: false}; // auth: true is {}
-const token = process.env.API_DEMO_TOKEN; // "demo-token" reproduces tests/requests.json
-const demoAuth = defineExtension({
-  name: 'auth', description: 'Demo bearer-token check; a protocol example, not authentication.', contract: 2, targets: ['node', 'aws', 'vercel'], schema, policySchema,
-  providesPrincipal: true, // auth: true expands to the one declared extension that provides the principal
-  host({projectSha256}) { // the reviewed revision, never recomputed from the project
-    return {registration: {
-      name: 'auth', version: '1', projectSha256, targets: ['node', 'aws', 'vercel'], schema, policySchema, providesPrincipal: true,
-      activate(config) {
-        return {
-          handle() { return {status: 404, headers: [], body: 'no auth mount declared'}; },
-          authorize(_requirement, request) {
-            if (request.headers.get('authorization') === `Bearer ${token}`) return undefined;
-            return {status: 401, headers: [['www-authenticate', `Bearer realm="${config.realm}"`]], body: 'sign in'};
-          },
-        };
-      },
-    }};
-  },
-});
-export default await composeHost(import.meta.url, [demoAuth()]);
+import auth from '@jimhoyd/urlcode-auth/extension';
+
+export default await composeHost(import.meta.url, [auth()]);
 ```
 
-## The review gate
+The auth extension serves exactly one mount, so the recipe carries it:
+`routes/auth.yaml`, included from `urlcode.yaml`, is the file
+`urlcode extensions add auth` writes. In a site created with
+`urlcode init <site>` and `urlcode extensions add auth`, copy `urlcode.yaml`,
+`functions/profile.mjs`, `tests/requests.json` and `tests/seed.json` into
+`app/` unchanged (the site already has `routes/auth.yaml`) and set
+`expectRoutes` in `app/tests/audit.json` to 2.
 
-`projectSha256` pins the registration to the exact project revision the
-operator reviewed. Review the project, then print its revision once and keep
-it outside the project:
+## The local loop
+
+```sh
+urlcode validate --local --project . --host-file /operator/host.mjs --local-review
+urlcode test --project . --host-file /operator/host.mjs --local-review
+urlcode audit --project . --expect-routes 2 --host-file /operator/host.mjs --local-review
+```
+
+`--local-review` pins the host to the project's current revision for that one
+run, on `http://localhost`, and reads no operator policy
+([the local review loop][docs/EXTENSIONS.md#the-local-review-loop]). `test`
+and `audit` run on a fresh, throwaway auth database and create the account
+the fixtures sign in as, `ada`, from `tests/seed.json` (`auth.users`); use
+synthetic accounts only. The fixtures sign in through the extension's own
+`POST /api/auth/sign-in/email`, whose cookie jar keeps the session for the
+later steps, then read the profile, sign out and are refused again. The asserted
+sign-in and `GET /api/auth/get-session` cover the auth mount, which the audit
+counts like any route ([authenticated routes][docs/READINESS.md#authenticated-routes-auth-true]).
+
+## Serving and the review gate
+
+`urlcode serve` and `urlcode dev` need the project revision the operator
+reviewed, never one the host recomputes. Review the project, print its revision
+once and keep it outside the project:
 
 ```sh
 urlcode extensions --project .     # prints "Project revision: <sha256>"
 ```
 
-Supply it to every command, either as `PROJECT_SHA256=<sha256>` or through a
-reviewed operator policy, whose `projectSha256` is the same revision:
-
-```sh
-urlcode permissions --project . > /operator/api-policy.json   # review, then keep outside the project
-urlcode validate --local --project . --policy /operator/api-policy.json --host-file /operator/host.mjs --origin https://api.example.com
-```
-
-Editing `urlcode.yaml` or the function changes the revision, so `validate`,
-`test`, `audit` and `serve` then refuse with `Extension revision pin mismatch:
-auth` (with `--policy`, a `revision-pin-mismatch` naming both revisions) until
-the operator reviews the change and supplies the new revision. `urlcode dev`
-alone lets a hot reload carry the pin it started with forward to the edited
-project, for development only (#777; see
-[the revision pin][docs/EXTENSIONS.md#the-revision-pin]).
+Supply it as `PROJECT_SHA256=<sha256>` or through a reviewed operator policy
+(`urlcode permissions --project . > /operator/api-policy.json`, then
+`--policy`), with the public `--origin`. Editing `urlcode.yaml` or the function
+changes the revision, so a pinned command then refuses with `Extension
+revision pin mismatch: auth` until the operator reviews the change
+([the revision pin][docs/EXTENSIONS.md#the-revision-pin]). Before serving,
+create the accounts: `npx urlcode-auth migrate`, then
+`npx urlcode-auth create-user`.
 
 `auth: true` is the whole requirement: the auth policy has no role or
-permission keys. With the real extension the function reads the signed-in user
-id from `context.capabilities.auth.identity.userId` (declare nothing more), and
-roles, ownership and approvals are application data keyed by that id. The demo
-host above provides no such capability. See [extensions][docs/EXTENSIONS.md]
-and the end-to-end application in
-[`proofs/private-requests`][proofs/private-requests/README.md].
+permission keys. Roles, ownership and approvals are application data keyed by
+the user id; the store keeps them with no handler code (the store-approval
+recipe, and the end-to-end application in
+[`proofs/private-requests`][proofs/private-requests/README.md]). See
+[extensions][docs/EXTENSIONS.md].
 
 Edit `functions/profile.mjs` to return real data. Cloudflare refuses extensions;
 functions need the self-hosted runtime.
 
 <!-- urlcode-current-version:start -->
 [packages/auth/README.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth/README.md
+[docs/EXTENSIONS.md#the-local-review-loop]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-local-review-loop
+[docs/READINESS.md#authenticated-routes-auth-true]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#authenticated-routes-auth-true
 [docs/EXTENSIONS.md#the-revision-pin]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-revision-pin
 [docs/EXTENSIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md
 [proofs/private-requests/README.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/private-requests/README.md

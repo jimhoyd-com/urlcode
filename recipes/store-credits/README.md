@@ -41,33 +41,32 @@ site, `urlcode extensions add auth store` installs both and registers them in
 `host.mjs`, outside the project. The database file stays outside the project,
 and one server process serves it.
 
-Who may issue is data, not YAML. `urlcode test` and `audit` run on a throwaway
-database and seed the issuer the fixtures sign in as, `treasurer`, from
-`tests/seed.json`. A served site adds the issuer's principal id before issuing:
+Who may issue is data, not YAML. `urlcode test` and `audit` run on throwaway
+databases and seed them from `tests/seed.json`: the accounts the fixtures sign
+in as (`treasurer`, `alice`, `bob`) under `auth.users`, and the issuer,
+`treasurer`, under `store.members`. A served site adds the issuer's user id
+(`npx urlcode-auth find-user --email <email>` prints it) before issuing:
 
 ```sh
 npx urlcode-store members add --database /operator/data/store.sqlite --project /absolute/site/app \
-  --collection issuers --principal treasurer
+  --collection issuers --principal <user id>
 ```
 
-**The fixtures need a stand-in principal.** They name their callers with
-`Authorization: Bearer <id>` (`treasurer`, `alice`, `bob`), which only the
-stand-in principal in the
-[store-booking recipe](../store-booking/README.md#operator-prerequisites)
-accepts. It is a protocol example, not authentication, and the real auth
-extension does not accept it. In a site created with `extensions add auth`,
-each caller signs in instead: write the caller's requests as a `steps` fixture
-that first posts to `/api/auth/sign-in/email`, and add the accounts to
-`tests/seed.json` under `auth.users`, with the ids `store.members` names
-([authenticated routes][docs/READINESS.md#authenticated-routes-auth-true]).
-The issuer is then added by their Better Auth user id.
+**The fixtures sign in through the real auth extension**, and cover its mount
+with an asserted sign-in and `GET /api/auth/get-session`, as in the
+[store-booking recipe](../store-booking/README.md#operator-prerequisites),
+which also shows the host. `routes/auth.yaml` is the auth mount
+`urlcode extensions add auth` writes: in a site created with
+`extensions add auth store`, copy `urlcode.yaml`, `tests/requests.json` and
+`tests/seed.json` into `app/` unchanged and set `expectRoutes` in
+`app/tests/audit.json` to 3.
 
 ## The local loop
 
 ```sh
 urlcode validate --local --project . --host-file /operator/host.mjs --local-review
 urlcode test --project . --host-file /operator/host.mjs --local-review
-urlcode audit --project . --expect-routes 2 --host-file /operator/host.mjs --local-review
+urlcode audit --project . --expect-routes 3 --host-file /operator/host.mjs --local-review
 ```
 
 `--local-review` pins the host to the project's current revision for that one
@@ -79,7 +78,7 @@ reviewed and the public `--origin`.
 The fixtures open three wallets, refuse a taken handle, issue 100 credits,
 look the recipient up in the directory and pay it, refuse an overdraft and a
 deletion, and pay everything back to the issuer. Every `test` and `audit` run
-starts from an empty, seeded database, never the site's own, so they run again
+starts from empty, seeded databases, never the site's own, so they run again
 unchanged.
 
 ## Before exposing it
@@ -96,6 +95,5 @@ runtime with a persistent disk.
 <!-- urlcode-current-version:start -->
 [docs/STORE.md#declared-transfers]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#declared-transfers
 [docs/STORE.md#a-directory-by-a-unique-handle]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#a-directory-by-a-unique-handle
-[docs/READINESS.md#authenticated-routes-auth-true]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#authenticated-routes-auth-true
 [docs/EXTENSIONS.md#the-local-review-loop]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-local-review-loop
 <!-- urlcode-current-version:end -->

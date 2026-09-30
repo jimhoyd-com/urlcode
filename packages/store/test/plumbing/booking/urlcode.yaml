@@ -1,6 +1,8 @@
 # The host-transaction counterexample of recipes/store-booking (#902 item 6): the same API, served by the trusted
 # `bookings` extension in bookings.mjs instead of a declared `intervals` constraint. A measurement fixture, not a recipe.
 version: "1"
+# The auth mount, exactly as `urlcode extensions add auth` writes it: the fixtures sign in through it.
+includes: [routes/auth.yaml]
 extensions:
   auth:
     version: "1"

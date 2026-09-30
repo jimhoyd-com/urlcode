@@ -30,57 +30,54 @@ site, `urlcode extensions add auth store` installs both and registers them in
 `host.mjs`, outside the project. The database file stays outside the project,
 and one server process serves it.
 
-Who may book is data, not YAML. `urlcode test` and `audit` run on a fresh,
-throwaway database and seed the staff the fixtures sign in as, `alice` and
-`bob`, from `tests/seed.json`. A served site adds each member's principal id:
+Who may book is data, not YAML. `urlcode test` and `audit` run on fresh,
+throwaway databases and seed them from `tests/seed.json`: the accounts the
+fixtures sign in as (`alice` and `bob`, who are staff, and `carol`, who is
+not) under `auth.users`, and the staff under `store.members`. A served site
+adds each member's user id (`npx urlcode-auth find-user --email <email>`
+prints it):
 
 ```sh
 npx urlcode-store members add --database /operator/data/store.sqlite --project /absolute/site/app \
   --collection staff --principal <user id>
 ```
 
-**The fixtures need this stand-in principal.** They name their callers with
-`Authorization: Bearer <id>` (`alice`, `bob`, and `carol`, who is not staff),
-which only the stand-in below accepts. It is a protocol example, not
-authentication, and the real auth extension does not accept it. In a site
-created with `extensions add auth`, each caller signs in instead: write the
-caller's requests as a `steps` fixture that first posts to
-`/api/auth/sign-in/email`, and add the accounts to `tests/seed.json` under
-`auth.users`, with the ids `store.members` names
+**The fixtures sign in through the real auth extension.** Each caller's
+requests are a `steps` fixture that first posts to `/api/auth/sign-in/email`
+and asserts the signed-in user's id; the fixture's cookie jar keeps the
+session, and the next sign-in switches the caller. The auth mount is a route
+like any other, so the audit needs it covered: the asserted sign-ins cover its
+`POST` and an asserted `GET /api/auth/get-session` its `GET`
 ([authenticated routes][docs/READINESS.md#authenticated-routes-auth-true]).
-The store-credits and store-approval recipes use the same stand-in.
+Better Auth allows 10 sign-ins a minute per client, so the fixtures change
+caller only where the story needs it.
+
+The auth extension serves exactly one mount, so the recipe carries it:
+`routes/auth.yaml`, included from `urlcode.yaml`, is the file
+`urlcode extensions add auth` writes. In a site created with
+`urlcode init <site>` and `urlcode extensions add auth store`, copy
+`urlcode.yaml`, `tests/requests.json` and `tests/seed.json` into `app/`
+unchanged (the site already has `routes/auth.yaml`) and set
+`expectRoutes` in `app/tests/audit.json` to 2. The site's own `host.mjs` is
+the host:
 
 ```js
-// /operator/host.mjs -- trusted operator code, never part of the project
+// host.mjs -- trusted operator code, outside app/
 import { composeHost } from '@jimhoyd/urlcode/host';
+import auth from '@jimhoyd/urlcode-auth/extension';
 import store from '@jimhoyd/urlcode-store/extension';
 
-const schema = { type: 'object', properties: {}, additionalProperties: false };
-const standIn = { definition: { name: 'auth', contract: 2, targets: ['node'], schema, policySchema: schema, providesPrincipal: true,
-  host({ projectSha256 }) {
-    return { registration: { name: 'auth', version: '1', projectSha256, targets: ['node'], schema, policySchema: schema, providesPrincipal: true,
-      activate() {
-        return {
-          handle() { return { status: 404, headers: [] }; },
-          authorize(_requirement, request) {
-            const match = /^Bearer ([a-z]{1,32})$/.exec(request.headers.get('authorization') ?? '');
-            if (!match) return { status: 401, headers: [['content-type', 'text/plain']], body: 'sign in' };
-            request.setPrincipal({ id: match[1] });
-            return undefined;
-          },
-        };
-      } } };
-  } }, options: {} };
-
-export default await composeHost(import.meta.url, [standIn, store({ database: '/operator/data/store.sqlite' })]);
+export default await composeHost(import.meta.url, [auth(), store({ database: '/operator/data/store.sqlite' })]);
 ```
+
+The store-credits and store-approval recipes work the same way.
 
 ## The local loop
 
 ```sh
 urlcode validate --local --project . --host-file /operator/host.mjs --local-review
 urlcode test --project . --host-file /operator/host.mjs --local-review
-urlcode audit --project . --expect-routes 1 --host-file /operator/host.mjs --local-review
+urlcode audit --project . --expect-routes 2 --host-file /operator/host.mjs --local-review
 ```
 
 `--local-review` pins the host to the project's current revision for that one
@@ -91,7 +88,7 @@ reviewed, as the `projectSha256` of the `--policy` file or `PROJECT_SHA256`,
 and the public `--origin`.
 
 The fixtures book, cancel and rebook one Monday in 2030. Every `test` and
-`audit` run starts from an empty, seeded database, never the site's own, so
+`audit` run starts from empty, seeded databases, never the site's own, so
 they run again unchanged.
 
 ## Before exposing it

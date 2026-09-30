@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { githubSlug, headingText, markdownAnchors, pinnedRepositoryPath, shippedLinkProblem } from '../scripts/check-local-links.ts';
 import { asProject, checkBlock, yamlBlocks } from '../scripts/check-doc-yaml.ts';
+import { proseFailures, withoutFences } from '../scripts/check-guidance-claims.ts';
 
 const script = (name: string): string => fileURLToPath(new URL(`../scripts/${name}`, import.meta.url));
 const run = (name: string) => spawnSync(process.execPath, [script(name)], { encoding: 'utf8', timeout: 60000 });
@@ -92,4 +93,57 @@ test('every fenced yaml block in authored Markdown parses, and project YAML vali
   const result = run('check-doc-yaml.ts');
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /[1-9]\d* block\(s\) validated/);
+});
+
+// Names each failure reports, in order, for one paragraph of guidance prose.
+const denied = (text: string): string[] => proseFailures(text, 'x.md:1').map(failure => /`([^`]+)`/.exec(failure)?.[1] ?? '');
+
+test('a negative claim denying a schema key fails: the #1008 sentence and its variants', () => {
+  // The exact sentence docs/AI-AUTHORING.md shipped while the fixture schema had `expectJson`.
+  assert.deepEqual(denied('There is no `json` or `expectJson` key: send JSON as `body` with a `content-type` header, and assert a JSON answer with its exact text in `expectBody`.'), ['json', 'expectJson']);
+  assert.deepEqual(denied('A request case has no `expectJson`.'), ['expectJson']);
+  assert.deepEqual(denied('The fixture format has no `expectJson` key.'), ['expectJson']);
+  assert.deepEqual(denied('`expectJson` is not a key.'), ['expectJson']);
+  assert.deepEqual(denied('`expectJson` is not a valid request key; compare the body text.'), ['expectJson']);
+  assert.deepEqual(denied('Cases take no `expectJson` field.'), ['expectJson']);
+  assert.deepEqual(denied('There are no `expectJson`, `expectSignals` or `steps` keys.'), ['expectJson', 'expectSignals', 'steps']);
+  assert.match(proseFailures('There is no `expectJson` key.', 'docs/AI-AUTHORING.md:267')[0] ?? '', /^docs\/AI-AUTHORING\.md:267 {2}no-denied-field: `expectJson` is defined in schemas\/requests\.schema\.json/);
+});
+
+test('a negative claim about a key that really does not exist passes (#1008)', () => {
+  // PR #1007's replacement: scoped to request keys, where `json` is not one
+  // (it is a `respond` key and a `capture` pointer, neither a request key).
+  assert.deepEqual(denied('There is no `json` request key: send JSON as `body` with a `content-type` header.'), []);
+  assert.deepEqual(denied('There is no `expectText` key; assert text with `expectBody`.'), []);
+  // Scoped to a closed key set: the auth policy takes `role`, not `roles`.
+  assert.deepEqual(denied('`roles` is not a key of `auth`; write `role`.'), []);
+  assert.deepEqual(denied('`auth` has no `roles` key.'), []);
+  assert.deepEqual(denied('`auth` has no `required` key.'), ['required']);
+});
+
+test('instances, quotations and wrong-YAML examples are not negative claims (#1008)', () => {
+  assert.deepEqual(denied('A route with no `auth` field is public.'), []);
+  assert.deepEqual(denied('A project with no `policies` key and no `profiles` key behaves exactly as before.'), []);
+  assert.deepEqual(denied('If there is no `cache` key, responses are not cached.'), []);
+  assert.deepEqual(denied('A case that has no `expectBody` covers nothing.'), []);
+  assert.deepEqual(denied('The old guide said "there is no `expectJson` key", which was wrong.'), []);
+  assert.deepEqual(denied('Do not write `json: {ok: true}` in a case; send `body` text instead.'), []);
+  const dontWrite = ['Do not write this:', '', '```yaml', '# there is no `expectJson` key, so this is wrong', 'json: {ok: true}', '```', '', 'Write this instead.'].join('\n');
+  const stripped = withoutFences(dontWrite);
+  assert.equal(stripped.split('\n').length, dontWrite.split('\n').length, 'line numbers hold');
+  assert.deepEqual(denied(stripped.split('\n').join(' ')), []);
+  assert.deepEqual(denied(dontWrite.split('\n').join(' ')), ['expectJson'], 'the same text outside a fence is a claim');
+});
+
+test('guidance that tells the reader to use a key the schema lacks fails (#1008)', () => {
+  assert.deepEqual(denied('Use the `expectText` key to assert a body.'), ['expectText']);
+  assert.deepEqual(denied('Set the `json` request key to an object.'), ['json']);
+  assert.deepEqual(denied('Use the `expectJson` key with JSON Pointers.'), []);
+  assert.deepEqual(denied('Declare the `cache` block on the route.'), []);
+});
+
+test('the guidance-claims check passes on this checkout (#1008)', () => {
+  const result = run('check-guidance-claims.ts');
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /no contradictions/);
 });

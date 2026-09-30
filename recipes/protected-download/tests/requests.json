@@ -1,32 +1,10 @@
 [
-  {
-    "path": "/downloads/report",
-    "status": 401
-  },
-  {
-    "path": "/downloads/report",
-    "headers": {
-      "authorization": "Bearer demo-token"
-    },
-    "status": 200,
-    "expectBody": "Quarterly report (placeholder). Replace this file with the real attachment.\n",
-    "expectHeaders": {
-      "content-disposition": "attachment; filename=quarterly-report.txt",
-      "cache-control": "no-store"
-    }
-  },
-  {
-    "path": "/downloads/report",
-    "method": "HEAD",
-    "headers": {
-      "authorization": "Bearer demo-token"
-    },
-    "status": 200,
-    "expectBody": ""
-  },
-  {
-    "path": "/downloads/report",
-    "method": "HEAD",
-    "status": 401
-  }
+  {"path": "/downloads/report", "status": 401, "expectJson": {"/error": "authentication_required"}},
+  {"path": "/downloads/report", "method": "HEAD", "status": 401, "expectBody": ""},
+  {"steps": [
+    {"path": "/api/auth/sign-in/email", "method": "POST", "headers": {"origin": "{{origin}}", "content-type": "application/json"}, "body": "{\"email\":\"ada@example.test\",\"password\":\"ada-local-demo-password\"}", "status": 200, "expectJson": {"/user/id": "ada"}},
+    {"path": "/api/auth/get-session", "status": 200, "expectJson": {"/user/id": "ada"}},
+    {"path": "/downloads/report", "status": 200, "expectBody": "Quarterly report (placeholder). Replace this file with the real attachment.\n", "expectHeaders": {"content-disposition": "attachment; filename=quarterly-report.txt", "cache-control": "no-store"}},
+    {"path": "/downloads/report", "method": "HEAD", "status": 200, "expectBody": ""}
+  ]}
 ]

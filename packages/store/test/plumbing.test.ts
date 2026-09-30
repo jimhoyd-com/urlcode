@@ -16,33 +16,19 @@ import { cleanup } from './cleanup.ts';
 
 const cli = fileURLToPath(new URL('../../core/src/cli.ts', import.meta.url));
 const hostModule = pathToFileURL(fileURLToPath(new URL('../../core/src/host.ts', import.meta.url))).href;
+const authModule = pathToFileURL(fileURLToPath(new URL('../../auth/src/extension.ts', import.meta.url))).href;
 const storeModule = pathToFileURL(fileURLToPath(new URL('../src/extension.ts', import.meta.url))).href;
 const plumbing = (...parts: string[]) => fileURLToPath(new URL(`plumbing/${parts.join('/')}`, import.meta.url));
 const recipes = { booking: 'store-booking', credits: 'store-credits' } as const;
 const extensions = { booking: 'bookings.mjs', credits: 'wallets.mjs' } as const;
 type Kind = keyof typeof recipes;
 
-/** recipes.test.ts's host (the store and the README's stand-in bearer principal), plus the counterexample's extension. */
+/** recipes.test.ts's host (the real auth extension and the store), plus the counterexample's extension. */
 function hostFile(database: string, extension?: string): string {
   return `import { composeHost } from ${JSON.stringify(hostModule)};
+import auth from ${JSON.stringify(authModule)};
 import store from ${JSON.stringify(storeModule)};
-${extension === undefined ? '' : `import counterexample from ${JSON.stringify(pathToFileURL(extension).href)};\n`}const schema = { type: 'object', properties: {}, additionalProperties: false };
-const standIn = { definition: { name: 'auth', contract: 2, targets: ['node'], schema, policySchema: schema, providesPrincipal: true,
-  host({ projectSha256 }) {
-    return { registration: { name: 'auth', version: '1', projectSha256, targets: ['node'], schema, policySchema: schema, providesPrincipal: true,
-      activate() {
-        return {
-          handle() { return { status: 404, headers: [] }; },
-          authorize(_requirement, request) {
-            const match = /^Bearer ([a-z]{1,32})$/.exec(request.headers.get('authorization') ?? '');
-            if (!match) return { status: 401, headers: [['content-type', 'text/plain']], body: 'sign in' };
-            request.setPrincipal({ id: match[1] });
-            return undefined;
-          },
-        };
-      } } };
-  } }, options: {} };
-export default await composeHost(import.meta.url, [standIn, store({ database: ${JSON.stringify(database)} })${extension === undefined ? '' : ', counterexample()'}]);
+${extension === undefined ? '' : `import counterexample from ${JSON.stringify(pathToFileURL(extension).href)};\n`}export default await composeHost(import.meta.url, [auth(), store({ database: ${JSON.stringify(database)} })${extension === undefined ? '' : ', counterexample()'}]);
 `;
 }
 
@@ -57,7 +43,7 @@ async function site(t: Parameters<typeof cleanup>[0], kind: Kind, version: 'decl
   await writeFile(join(root, 'host.mjs'), hostFile(database, version === 'host' ? plumbing(kind, extensions[kind]) : undefined));
   const { PROJECT_SHA256: _pin, URLCODE_ORIGIN: _origin, URLCODE_POLICY: _policy, ...env } = process.env;
   const run = (...args: string[]) => spawnSync(process.execPath, ['--conditions=development', cli, ...args, '--project', project, '--host-file', join(root, 'host.mjs'), '--local-review'], { cwd: root, encoding: 'utf8', timeout: 120000, env });
-  // The credits recipe's tests/seed.json seeds its issuer into each run's throwaway database, for both versions.
+  // The recipe's tests/seed.json seeds its accounts and members into each run's throwaway databases, for both versions.
   return { project, database, run };
 }
 type Site = Awaited<ReturnType<typeof site>>;
@@ -78,7 +64,7 @@ function commands({ run }: Site, routes: number) {
 
 test('the booking counterexample passes the store-booking recipe fixtures through a host transaction', async t => {
   const host = await site(t, 'booking', 'host');
-  commands(host, 2);
+  commands(host, 3);
   assert.equal(existsSync(host.database), false, 'validate, test and audit under --local-review never open the configured database (#954)');
 });
 
@@ -86,7 +72,7 @@ test('the credits counterexample passes the store-credits recipe fixtures, and b
   const retries = JSON.parse(await readFile(plumbing('credits-retries.json'), 'utf8')) as unknown[];
   for (const version of ['declared', 'host'] as const) {
     const current = await site(t, 'credits', version);
-    if (version === 'host') commands(current, 3);
+    if (version === 'host') commands(current, 4);
     // Idempotency is part of the contract the recipe declares, and its fixtures send no Idempotency-Key: run the
     // same retry cases against both versions.
     const fixtures = join(current.project, 'tests', 'requests.json');

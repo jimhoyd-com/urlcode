@@ -4,12 +4,12 @@ tags: [booking, bookings, book, schedule, scheduling, reservation, reservations,
 complexity: advanced
 capabilities: [enabled, extension, methods, policies.extensions]
 targets: {self-hosted: conditional, cloudflare: refused, aws: refused, vercel: refused, static: refused}
-routes: 1
+routes: 2
 services:
   - name: store extension
     description: The store (`urlcode extensions add store`) keeps the bookings and the staff list in its SQLite database outside the project and checks every write against the declared intervals.
   - name: auth extension
-    description: "A principal-providing auth extension behind `auth: true` (`urlcode extensions add auth` in a real site); the README shows the stand-in bearer principal the bundled fixtures sign in with."
+    description: "The auth extension (`urlcode extensions add auth`, Better Auth) behind `auth: true`, mounted at /api/auth/* by routes/auth.yaml; the fixtures sign in through it as the accounts tests/seed.json declares."
 grants:
   - kind: extension
     description: The host registers the project revision it is pinned to. `--local-review` pins validate, test and audit to the current revision for one local run; serving needs the reviewed revision (--policy or PROJECT_SHA256).
@@ -21,14 +21,14 @@ inputs:
     description: The bookable rooms (the room enum), the slot grid (intervals length, step and an optional origin) and the booking limits.
   - name: staff
     file: urlcode.yaml
-    description: Who may book is data, not YAML. The operator adds a principal id with `urlcode-store members add`; test and audit runs seed `alice` and `bob` from tests/seed.json into their throwaway database.
-files: [urlcode.yaml, tests/requests.json, tests/seed.json, README.md]
+    description: Who may book is data, not YAML. The operator adds a principal id with `urlcode-store members add`; test and audit runs seed the accounts `alice`, `bob` and `carol` and the staff `alice` and `bob` from tests/seed.json into their throwaway databases.
+files: [urlcode.yaml, routes/auth.yaml, tests/requests.json, tests/seed.json, README.md]
 tests:
   fixtures: tests/requests.json
   commands:
     - urlcode validate --local --project . --host-file /operator/host.mjs --local-review
     - urlcode test --project . --host-file /operator/host.mjs --local-review
-    - urlcode audit --project . --expect-routes 1 --host-file /operator/host.mjs --local-review
+    - urlcode audit --project . --expect-routes 2 --host-file /operator/host.mjs --local-review
 behavior:
   - POST /api/bookings from a staff member with a room and a one-hour UTC slot on the hour answers 201 with status booked, owned by the caller; a signed-in non-member answers 403 membership_required
   - a booking longer than an hour or starting off the hour answers 422, so a 12-hour booking is never stored
