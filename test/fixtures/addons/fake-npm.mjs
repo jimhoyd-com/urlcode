@@ -2,7 +2,7 @@
 // site's package.json into node_modules/, and a `name@version` dependency from $FAKE_NPM_REGISTRY/<name with / as
 // +>@<version> when that directory exists, and writes the package-lock.json entries npm writes for linked directories.
 // Tarballs are unpacked, as npm installs them: a `file:….tgz` dependency, or a registry version held as
-// $FAKE_NPM_REGISTRY/<name with / as +>@<version>.tgz (locked as resolved from $FAKE_NPM_TARBALL_BASE, default
+// $FAKE_NPM_REGISTRY/<name with / as +>@<version>.tgz (locked as resolved from
 // https://registry.example/-/), each locked with its sha512 integrity and left alone while that integrity is unchanged.
 // `install <spec>` saves a directory or tarball as `file:<absolute path>` and a registry spec as its exact version (the
 // newest tarball when the spec names no version). Like npm 7+, it also installs each linked package's
@@ -23,7 +23,7 @@ const args = process.argv.slice(2), cwd = process.cwd();
 if (process.env.FAKE_NPM_LOG) appendFileSync(process.env.FAKE_NPM_LOG, JSON.stringify(args) + '\n');
 if (process.env.FAKE_NPM_FAIL && args.includes(process.env.FAKE_NPM_FAIL)) { process.stderr.write('fake npm failure\n'); process.exit(1); }
 if (args[0] === 'view') { process.stdout.write(JSON.stringify(JSON.parse(process.env.FAKE_NPM_VIEW ?? 'null'))); process.exit(0); }
-const registry = process.env.FAKE_NPM_REGISTRY, tarballBase = process.env.FAKE_NPM_TARBALL_BASE ?? 'https://registry.example/-/';
+const registry = process.env.FAKE_NPM_REGISTRY, tarballBase = 'https://registry.example/-/';
 const plus = name => name.replace('/', '+');
 const inRegistry = (name, spec) => registry && existsSync(join(registry, `${plus(name)}@${spec}`)) ? join(registry, `${plus(name)}@${spec}`) : undefined;
 const registryTarball = (name, version) => registry && existsSync(join(registry, `${plus(name)}@${version}.tgz`)) ? join(registry, `${plus(name)}@${version}.tgz`) : undefined;

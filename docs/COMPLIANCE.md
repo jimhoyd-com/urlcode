@@ -235,5 +235,5 @@ this runtime enforce" serves both. Compose organisation rules on top of a
 built-in profile with `override` for stricter severities and `disable` for
 rules that a documented decision replaces, and run `urlcode audit
 --compliance strict --compliance-rules …` in CI with the exit code as the
-gate. Record the report beside the readiness and benchmark evidence for the
+gate. Record the report beside the readiness and load-test evidence for the
 revision; a report proves what was declared at that commit, nothing more.

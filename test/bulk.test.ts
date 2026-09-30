@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile,lstat} from 'node:fs/promises';
 import {join} from 'node:path';
+import {tmpdir} from 'node:os';
 import {stringify} from 'yaml';
 import {importBulkProject} from '../packages/core/src/bulk.ts';
 import {loadDocument} from '../packages/core/src/config.ts';
@@ -40,4 +41,36 @@ test('bulk failures retain row diagnostics and never overwrite or publish a part
   assert.equal(invalid.ok,false);await assert.rejects(lstat(output),{code:'ENOENT'});
   await importBulkProject('[]','json',output);const original=await readFile(join(output,'urlcode.yaml'),'utf8');
   await assert.rejects(importBulkProject('[]','json',output),/already exists/);assert.equal(await readFile(join(output,'urlcode.yaml'),'utf8'),original);
+});
+
+// Row validation for the csv, json and yaml row forms.
+const rows=(text:string,format:'csv'|'json'|'yaml',source?:string)=>importBulkProject(text,format,join(tmpdir(),`urlcode-bulk-rows-${process.pid}-never-written`),{dryRun:true,...(source?{source}:{})});
+test('CSV quotes are parsed without dropping columns or malformed data',async()=>{
+  assert.equal((await rows('path,url,status\r\n/a,"https://example.test/?a=x,y",302\r\n','csv')).diagnostics.length,0);
+  for(const text of ['path,url,status\n/a,"https://example.test,302','path,url,status\n/a,"https://example.test"oops,302','path,url,status\n/a,https://example.test,302,extra'])assert.equal((await rows(text,'csv')).ok,false,text);
+});
+test('invalid or unsupported row semantics are refused',async()=>{
+  for(const [format,text] of [
+    ['json','[{"path":"/a","url":"https://user:password@example.test"}]'],['json','[{"path":"/a","url":"javascript:alert(1)"}]'],
+    ['json','[{"path":"/a","url":"https://example.test/{x}"}]'],['json','[{"path":"/_urlcode/health","url":"https://example.test"}]'],
+    ['json','[{"path":"/../a","url":"https://example.test"}]'],['json','[{"path":"/a","url":"https://example.test","__proto__":{}}]'],
+    ['json','[{"path":"/a","path":"/b","url":"https://example.test"}]'],['json','[{"path":"/a","url":"https://example.test","status":200}]'],
+    ['yaml','- &row {path: /a, url: "https://example.test"}\n- *row'],
+  ] as const){const report=await rows(text,format);assert.equal(report.ok,false,`${format}: ${text}`);assert.deepEqual(report.files,[]);}
+});
+test('an invalid row names its file and physical CSV row without echoing credentials',async()=>{
+  const result=await rows('path,url,status\n/a,https://private:credential@example.test,301\n','csv','data.csv');
+  assert.equal(result.diagnostics[0]?.row,2);assert.equal(result.diagnostics[0]?.source,'data.csv');assert.ok(!JSON.stringify(result.diagnostics).includes('credential'));
+});
+test('late invalid rows keep their provenance through bounded compiler diagnostics, and input size is bounded',async()=>{
+  const late=Array.from({length:1000},(_,i)=>({path:`/p${i}`,url:i===999?'https://secret:credential@example.test':'https://example.test'}));
+  const result=await rows(JSON.stringify(late),'json','rows.json');assert.equal(result.ok,false);assert.equal(result.diagnostics[0]?.row,1000);assert.equal(result.diagnostics[0]?.source,'rows.json');
+  assert.equal((await rows(' '.repeat(32*1024*1024+1),'json')).ok,false);
+});
+test('an unpaired surrogate is refused in every row format, never written as an escape the redirect sends as U+FFFD (#1021)',async()=>{
+  for(const [format,text] of [['json','[{"path":"/a","url":"https://example.test/\\ud800","status":301}]'],['yaml','- {path: /a, url: "https://example.test/\\udc00", status: 301}\n'],['csv','path,url,status\n/a,https://example.test/\ud800,301\n']] as const){
+    const result=await rows(text,format);
+    assert.equal(result.ok,false,format);
+    assert.match(result.diagnostics.find(d=>d.severity==='error')?.message??'',/unpaired UTF-16 surrogate/i,format);
+  }
 });

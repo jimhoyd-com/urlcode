@@ -122,7 +122,7 @@ folders or behind symlink targets is outside the normal watcher: use ordinary
 source folders or restart after such changes. File grouping does not weaken
 function isolation or operator binding requirements.
 
-`validate`, `routes`, `test`, `audit` and `benchmark` all use the same merged
+`validate`, `routes`, `test` and `audit` all use the same merged
 project. To move files safely: edit the include list and any changed project-root
 references, validate, then run the audit with the same expected count. Paths
 inside a moved route file need no change when their target files remain in place.

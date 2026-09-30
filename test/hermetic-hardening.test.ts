@@ -68,7 +68,7 @@ export default { extensions: [legacyRegistration(site, process.env.PROJECT_SHA25
   const closed = (): number => (globalThis as Record<string, unknown>).__hardeningClosed as number;
   const before = await readdir(tmpdir());
   await assert.rejects(loadOperatorHost(join(site, 'host.mjs'), app, { hermetic: true }), (error: Error & { details?: { code?: string } }) => {
-    assert.match(error.message, /^A hermetic run \(test, audit, benchmark, MCP run_tests, or validate and routes with --local-review\) needs every extension the host file exports composed on its fresh temporary data directory, and at least one was not/);
+    assert.match(error.message, /^A hermetic run \(test, audit, MCP run_tests, or validate and routes with --local-review\) needs every extension the host file exports composed on its fresh temporary data directory, and at least one was not/);
     assert.equal(error.details?.code, 'hermetic-host-unconfirmed');
     return true;
   });

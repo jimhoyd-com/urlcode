@@ -1,10 +1,9 @@
 # Bulk redirect projects
 
 Bulk import converts CSV, JSON or YAML redirect rows into an ordinary Git-owned
-URLCode project. It delegates semantics and row diagnostics to the strict
-[redirect interchange](INTERCHANGE.md) converter. Only literal paths and
-absolute HTTP(S) redirect destinations are accepted; unsupported behavior and
-duplicate paths fail rather than being discarded or overwritten.
+URLCode project. Only literal paths and absolute HTTP(S) redirect destinations
+are accepted; unsupported behavior and duplicate paths fail rather than being
+discarded or overwritten.
 
 ```sh
 urlcode bulk-import csv redirects.csv --out ./imported --dry-run
@@ -12,10 +11,21 @@ urlcode bulk-import csv redirects.csv --out ./imported
 urlcode validate --local --project ./imported
 ```
 
-CSV requires the header `path,url,status`; status can be empty for 302. JSON and
-YAML are arrays of `{path, url, status?}` rows. Input is limited to 32 MiB and
-100,000 routes. This command is for data import, not arbitrary provider config.
-Use explicit provider interchange commands when migrating provider files.
+| Format | Rows |
+| --- | --- |
+| `csv` | Header exactly `path,url,status`; an empty status means 302; quoted fields, commas and escaped quotes |
+| `json` | Array of `{path, url, status?}`; status must be a number |
+| `yaml` | The same row array in strict URLCode YAML syntax; not a project file |
+
+Statuses are restricted to 301, 302, 303, 307 and 308. Paths must be literal
+ASCII; destination placeholders, wildcards, extra fields and duplicate paths
+fail. The normal schema and route compiler validate the result, so a
+destination with credentials, a non-HTTP(S) scheme or a reserved path is
+refused too. Input is limited to 32 MiB and 100,000 routes, and diagnostic
+collection stops after 100 invalid rows. Diagnostics name the source label, the
+physical CSV row or JSON/YAML array index and the path, never the destination.
+This command is for data import; URLCode does not convert provider
+configuration files.
 
 The SDK provides
 `importBulkProject(text, format, output, {dryRun, source})`. `format` is `csv`,

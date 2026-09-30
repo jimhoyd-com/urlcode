@@ -5,7 +5,7 @@ import { getCapability, formatCapability } from './capability-query.ts';
 import { getSchemaFragment } from './schema-query.ts';
 import { stringify as stringifyYaml } from 'yaml';
 import { parseArgs } from 'node:util';
-import { auditProject, benchmarkProject } from './readiness.ts';
+import { auditProject } from './readiness.ts';
 import type { ComplianceOptions } from './readiness.ts';
 import { createRuntime } from './runtime.ts';
 import { loadOperatorHost } from './operator-host.ts';
@@ -87,13 +87,6 @@ const helpEntries: HelpEntry[] = [
 `  urlcode routes [--project directory] [--origin https://links.example] [--alias-origin https://www.links.example]… [--policy /absolute/policy.mjs] [--host-file /absolute/operator/host.mjs] [--local-review]
     diff: [--compare previous-routes.json] [--format json|markdown]  # added/removed/changed routes against an earlier report; always exits 0
 ` },
-  { name:'import', group:'Author', text:
-`  urlcode import [netlify|cloudflare|vercel|netlify-toml] <file> [--format csv|json|yaml] [--out new-file] [--dry-run] [--report json]
-` },
-  { name:'export', group:'Author', text:
-`  urlcode export --target netlify|cloudflare|vercel|netlify-toml|csv|json|yaml [--project directory] [--out new-file] [--report json]
-    conversion: [--accept-provider-differences]  # explicit non-lossless migration candidate; exact behavior requires runtime
-` },
   { name:'recipes', group:'Author', text:
 `  urlcode recipes [list|search <text>|show <name>|add <name> --out new-directory] [--dry-run] [--json]
   urlcode recipes add <name> --project existing-project [--dry-run]  # merge into a project (app in a site): routes, includes, extension config, fixtures, seed and tests/audit.json; any clash refuses it all, naming each; writes all or nothing
@@ -113,10 +106,6 @@ const helpEntries: HelpEntry[] = [
     compliance: [--compliance baseline|strict|privacy|none] [--compliance-rules /absolute/rules.mjs] [--compliance-ignore id,id]
                 [--compliance-warn] [--origin https://links.example] [--request-log minimal|detailed]  # declare the deployment under review
     deployment: [--trusted-proxies 10.0.0.0/8] [--metrics]  # as passed to serve; drives deploymentAdvisories, never fails the audit
-` },
-  { name:'benchmark', group:'Check', text:
-`  urlcode benchmark [--project directory] [--requests 1000] [--concurrency 2] [--seconds 30] [--max-p95-ms 50] [--policy /absolute/policy.mjs] [--host-file /absolute/operator/host.mjs]
-    [--warmup 50] [--target https://links.example]  # target measures a running deployment, not a local snapshot
 ` },
   { name:'verify-deployment', group:'Check', text:
 `  urlcode verify-deployment --target https://links.example [--project directory] [--origin https://links.example] [--policy /absolute/policy.mjs]
@@ -171,7 +160,7 @@ const helpEntries: HelpEntry[] = [
   urlcode extensions add <name|package spec|tarball> […] [--example] [--ack extension:id] [--site directory]
   urlcode extensions remove <name> [--site directory]
   urlcode extensions list [--strict] [--json] [--site directory]
-  urlcode extensions verify [<name>] [--online] [--json] [--site directory]
+  urlcode extensions verify [<name>] [--json] [--site directory]
   urlcode extensions outdated [--json] [--site directory]
   urlcode extensions [--project directory] [--host-file operator/host.mjs] [--json]  # without a subcommand: registered contracts and schemas; executes trusted host code, activates nothing
     # extensions are executable add-ons released with this runtime and pinned by it (URL and sha512 in its addons.json), or an operator's independent package (npm spec or local tarball carrying a urlcode.json descriptor, pinned by its package-lock sha512); add installs each once with npm --ignore-scripts, checks the lock against the pin, writes its app/urlcode.yaml block, app/routes/<name>.yaml, operator files and host.mjs line
@@ -179,7 +168,6 @@ const helpEntries: HelpEntry[] = [
     # remove refuses while another extension requires it or the project still uses it; data/ and operator files are never deleted
     # list --strict exits 1 on a pin mismatch, a nested copy, drift between package.json, app/urlcode.yaml and host.mjs, or installed files that differ from addon-files.lock.json; an extension neither declared nor imported is a library install, still pin-checked, not drift
     # add records the sha256 of every installed file in addon-files.lock.json (commit it with package-lock.json); verify compares the installed files with it offline and exits 1 on any difference
-    # verify --online is a network operation, never implicit: it downloads each locked tarball from its package-lock.json resolved URL, checks the sha512 integrity and compares file by file
     # re-running add <spec> for an installed independent package upgrades it in place through the same checks, with the same rollback; outdated asks the registry (npm view, network) for the newest version matching each independent package's recorded spec and changes nothing
 ` },
   { name:'upgrade', group:'Extensions', text:
@@ -193,14 +181,14 @@ const helpEntries: HelpEntry[] = [
   urlcode artifacts add <name|package spec|tarball> […] [--site directory]
   urlcode artifacts remove <name> [--site directory]
   urlcode artifacts list [--strict] [--json] [--site directory]
-  urlcode artifacts verify [<name>] [--online] [--json] [--site directory]
+  urlcode artifacts verify [<name>] [--json] [--site directory]
   urlcode artifacts outdated [--json] [--site directory]
   urlcode artifacts inspect <name> [--strict] [--json] [--site directory]
   urlcode artifacts stage <registry-item.json|source directory> [--into directory] [--json] [--site directory]
   urlcode artifacts stage <source> --materialize --into <directory> [--allow-app] [--json] [--site directory]
     # artifacts are inert data add-ons (JSON, YAML and Markdown: OpenAPI and JSON Schema documents, example configuration); they never execute and are never wired into host.mjs
     # released ones are pinned by this runtime like extensions; an operator's independent package (npm spec or local tarball carrying a urlcode.json artifact descriptor) is pinned by its package-lock sha512
-    # add, list --strict, verify and inspect check each installed file against the sha256 record in addon-files.lock.json, offline; verify --online re-downloads the locked tarball (network) and compares file by file; re-running add <spec> upgrades an independent artifact; outdated reports newer registry versions matching its spec
+    # add, list --strict, verify and inspect check each installed file against the sha256 record in addon-files.lock.json, offline; re-running add <spec> upgrades an independent artifact; outdated reports newer registry versions matching its spec
     # YAML documents parse under a bounded inert-document profile: anchors, aliases and merge keys allowed, tags refused, at most 1024 aliases, no recursive alias, expanded size at most 10 times the input and 16 MiB, nesting 256 after expansion
     # inspect reads the documents its urlcode.json lists, offline and as untrusted data: media type, OpenAPI version or JSON Schema dialect, sha256, size, origin, local $refs resolved inside the package; remote refs are listed, never fetched; --strict exits 1 on an error diagnostic
     # stage reads a local shadcn registry item or Agent Skill directory offline and reports every file it would write (target, sha256, size, media type, code/data/docs), its npm and registry dependencies (listed, never installed or fetched), shadcn cssVars/css/tailwind/envVars as data, and diagnostics (path escapes, absolute targets, symlinks, limits, remote URLs, unknown fields); it exits 1 on an error diagnostic. Staging does not make code inert: a staged source is not an artifact
@@ -447,23 +435,18 @@ try {
     if (values['signal-sink'] !== undefined && command !== 'dev') throw new ConfigError(command === 'serve' ? '--signal-sink is only supported by dev: serve always delivers signals to their granted destinations' : '--signal-sink is only supported by dev; test and audit already record signals without delivering them');
     if (values['debug-errors'] && command !== 'serve') throw new ConfigError('--debug-errors is only supported by serve; dev always reports function and reload errors');
     if (values.strict && !['extensions', 'artifacts'].includes(command)) throw new ConfigError('--strict is only supported by extensions list and artifacts list|inspect');
-    if (values.online && !(['extensions', 'artifacts'].includes(command) && arg === 'verify')) throw new ConfigError('--online is only supported by extensions verify and artifacts verify');
     if ((values.materialize || values.into !== undefined || values['allow-app']) && !(command === 'artifacts' && arg === 'stage')) throw new ConfigError('--materialize, --into and --allow-app are only supported by artifacts stage');
     if (values.site !== undefined && !['extensions', 'artifacts', 'upgrade'].includes(command)) throw new ConfigError('--site is only supported by extensions, artifacts and upgrade');
     if (values.to !== undefined && command !== 'upgrade') throw new ConfigError('--to is only supported by upgrade');
     if (values.check && !['upgrade', 'openapi'].includes(command)) throw new ConfigError('--check is only supported by upgrade and openapi');
     if (values['alias-origin'] !== undefined && !(aliasOriginCommands as readonly string[]).includes(command)) throw new ConfigError(`--alias-origin is only supported by ${aliasOriginCommands.join('/')}`);
     const hostOptions = { extensions: operatorHost.extensions, plugins: operatorHost.plugins };
-    if ((!['import','recipes','recipe','examples','example','docs','bulk-import','artifacts','extensions','mcp','diff'].includes(command) && extra.length) || (!['init','add','import','recipes','recipe','examples','example','docs','bulk-import','explain','capabilities','schema','plan-feature','bootstrap','artifacts','extensions','mcp','fixtures','diff','report','studio'].includes(command) && !(command === 'openapi' && values.check) && arg)) throw new ConfigError('Unexpected positional arguments');
+    if ((!['recipes','recipe','examples','example','docs','bulk-import','artifacts','extensions','mcp','diff'].includes(command) && extra.length) || (!['init','add','recipes','recipe','examples','example','docs','bulk-import','explain','capabilities','schema','plan-feature','bootstrap','artifacts','extensions','mcp','fixtures','diff','report','studio'].includes(command) && !(command === 'openapi' && values.check) && arg)) throw new ConfigError('Unexpected positional arguments');
 
     if(command==='artifacts'||(command==='extensions'&&arg!==undefined)){
       if(command==='artifacts'&&arg===undefined)throw new ConfigError('Use urlcode artifacts available|add|remove|list|verify|outdated|inspect|stage');
       const code=await runAddonCommand(command,arg!,extra,values,print);
       if(code!==undefined)process.exitCode=code;
-    }else if(command==='import'||command==='export'){
-      const { runInterchange } = await import('./interchange-cli.ts');
-      const converted = await runInterchange(command,positionals.slice(1),{project:values.project,target:values.target,format:values.format,out:values.out,report:values.report,dryRun:values['dry-run'],acceptProviderDifferences:values['accept-provider-differences']});
-      print(converted.text); if(!converted.report.ok)process.exitCode=1;
     }else if(['recipes','recipe','examples','example','docs','build-typescript','bulk-import','verify-provider','mcp'].includes(command)){
       const {runEcosystemCommand}=await import('./ecosystem-cli.ts');
       await runEcosystemCommand(command,positionals.slice(1),{...values,projectGiven:parsed.project!==undefined},print);
@@ -573,8 +556,8 @@ try {
     }else{
       const permissions = verifiedPolicy ?? await loadOperatorPolicy(values.policy,values.project);
       switch (command) {
-        case 'routes': case 'audit': case 'benchmark': {
-          const number = (key: 'expect-routes' | 'requests' | 'concurrency' | 'seconds' | 'max-p95-ms' | 'warmup',fallback?: number): number | undefined => {
+        case 'routes': case 'audit': {
+          const number = (key: 'expect-routes',fallback?: number): number | undefined => {
             const value = values[key];
             if(value===undefined)return fallback;
             if(!/^\d+(?:\.\d+)?$/.test(value) || !Number.isFinite(Number(value)))throw new ConfigError('Invalid numeric option');
@@ -586,13 +569,11 @@ try {
           const format=values.format ?? 'json';
           if(!['json','markdown'].includes(format))throw new ConfigError('Use --format json or markdown');
           if(values.format!==undefined && values.compare===undefined)throw new ConfigError('--format applies to routes --compare');
-          const started=performance.now();
           // audit records signals in process (as test does) so its fixtures deliver nothing and can assert them.
           const signals=command==='audit'?new SignalRecorder():undefined;
           const serverOptions={...hostOptions,project:values.project,port:0,local:true,permissions,origin:values.origin,aliasOrigins:values['alias-origin'],log:()=>{},signalRecorder:signals};
           // Only audit replays fixtures, so only audit needs a server its restart steps can restart.
           const app=command==='audit'?await startRestartable(serverOptions):await startServer(serverOptions);
-          const startupMs=performance.now()-started;
           try {
             if(command==='routes') {
               const plan=app.testPlan();
@@ -603,13 +584,9 @@ try {
                 const diff=diffRoutes(before,{inventory:plan.inventory,policies:plan.policies});
                 print(format==='markdown'?renderRouteDiff(diff):diff);
               }
-            } else if(command==='audit') {
+            } else {
               const report=await auditProject(app,{signals,expectRoutes:expected,log:print,compliance,deployment:{trustedProxies:values['trusted-proxies'],metrics:values.metrics}});print(report);if(!report.ready)process.exitCode=1;
               if(report.compliance && !report.compliance.pass && !values['compliance-warn'])process.exitCode=1;
-            } else {
-              const report=await benchmarkProject(app,{requests:number('requests',1000),concurrency:number('concurrency',2),seconds:number('seconds',30),maxP95Ms:number('max-p95-ms'),warmup:number('warmup',0),target:values.target});
-              // Local startup time is meaningless when the load went elsewhere.
-              print(values.target?report:{...report,startupMs});if(!report.pass)process.exitCode=1;
             }
           } finally {await app.close();}
           break;

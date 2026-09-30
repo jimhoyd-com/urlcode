@@ -9,7 +9,6 @@ import { compileRoutes } from '../packages/core/src/router.ts';
 import { parseTarget, matchRoute, contextFor, redirectLocation } from '../packages/core/src/match.ts';
 import { buildStatic } from '../packages/core/src/build-static.ts';
 import { buildCloudflare } from '../packages/core/src/build-cloudflare.ts';
-import { exportRoutes } from '../packages/core/src/interchange.ts';
 
 // Agent-efficiency plan, phase 1 (#383): root-relative redirect destinations and the `/**` suffix wildcard.
 const idParam = { name: 'id', in: 'path', required: true, schema: { type: 'string', minLength: 1 } };
@@ -73,11 +72,8 @@ test('static hosting refuses a suffix redirect rather than changing its meaning'
   await writeFile(join(root, 'urlcode.yaml'), stringify({ version: '1', routes: { '/legacy/**': { redirect: { url: 'https://example.com/n/{**}', status: 301 } } } }));
   await assert.rejects(buildStatic(root, { out: join(root, 'out') }), /cannot redirect a path suffix/);
 });
-test('the Worker target and the provider exporters refuse what they cannot express', async () => {
+test('the Worker target refuses what it cannot express', async () => {
   const root = await mkdtemp(join(tmpdir(), 'urlcode-wildcard-targets-'));
   await writeFile(join(root, 'urlcode.yaml'), stringify({ version: '1', routes: { '/legacy/**': { redirect: { url: '/new/{**}' } } } }));
   await assert.rejects(buildCloudflare(root, { out: join(root, 'out') }), /no suffix matching yet/);
-  const document = (await loadDocument(root)).document;
-  const report = await exportRoutes({ format: 'csv', document });
-  assert.ok(report.diagnostics.some(item => item.severity === 'error' && item.code === 'runtime-required'), JSON.stringify(report.diagnostics));
 });

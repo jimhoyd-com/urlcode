@@ -108,12 +108,6 @@ try {
     command(process.execPath,[cli,'bulk-import','csv',input,'--out',bulk]);
     command(process.execPath,[cli,'validate','--local','--project',bulk]);
     assert.ok(existsSync(join(bulk,'provenance.json')));
-    const imported = join(root,'imported.yaml');
-    command(process.execPath,[cli,'import',input,'--format','csv','--out',imported]);
-    const importedProject=join(root,'imported-project');await mkdir(importedProject);await cp(imported,join(importedProject,'urlcode.yaml'));
-    const exported = join(root,'exported.csv');
-    command(process.execPath,[cli,'export','--project',importedProject,'--target','csv','--out',exported]);
-    assert.equal(await readFile(exported,'utf8'),'path,url,status\n/docs,https://example.com/docs,301\n');
     const messages=[
       {jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'package-smoke',version:'1'}}},
       {jsonrpc:'2.0',method:'notifications/initialized'},
@@ -144,9 +138,6 @@ try {
     assert.equal(emptyAudit.status,1,'A project with no active routes is intentionally not ready');
     const emptyReport=JSON.parse(emptyAudit.stdout.trim().split('\n').at(-1) ?? '') as {ready:boolean;notReadyReasons:string[]};
     assert.equal(emptyReport.ready,false);assert.deepEqual(emptyReport.notReadyReasons,['no-active-routes']);
-    const emptyBenchmark=spawnSync(process.execPath,[cli,'benchmark','--project',project,'--requests','10'],{encoding:'utf8',timeout:childTimeoutMs});
-    assert.equal(emptyBenchmark.status,1,'A project with no successful request fixture cannot provide a benchmark workload');
-    assert.match(emptyBenchmark.stderr+emptyBenchmark.stdout,/No GET\/HEAD workload/);
     // The unmodified starter source is also usable as a copied/cloned app.
     const copied = join(root,'app-copy');
     await cp(resolve('starters','default'),copied,{recursive:true});
@@ -266,15 +257,15 @@ process.stdout.write(JSON.stringify(skills.map(skill => ({name:skill.name, versi
       await writeFile(join(install,'consumer.ts'),`import { getCapabilities, analyzeProjectCapabilities, type CapabilityCatalog, createRuntime, startServer, loadDocument, createEmbeddedHandler, type EmbeddedHandler, type EmbeddedHandlerOptions, type EmbeddedRequestInfo, type Runtime, type RuntimeOptions, type Server } from '@jimhoyd/urlcode';
 const catalog: CapabilityCatalog = getCapabilities('cloudflare');
 void catalog; void analyzeProjectCapabilities;
-import {listRecipes, showRecipe, addRecipe, buildTypeScriptProject, importBulkProject, inspectProject, validateProject, explainRoute, previewImport, previewExport, serveMcp, providerConformanceCases, runProviderConformance, verifyProviderDeployment, matchesRoute, importRoutes, exportRoutes, type BulkImportReport, type TypeScriptBuildReport, type RecipeSummary, type McpOptions, type RouteMatch} from '@jimhoyd/urlcode';
-import {buildCloudflare, runProjectTests, scaffoldProject, initProject, addRedirect, type CloudflareBuildOptions, type CloudflareBuildReport, type ProjectTestOptions, type ProjectTestResult, type ScaffoldReport, type ScaffoldUnresolved, type ConversionCounts} from '@jimhoyd/urlcode';
+import {listRecipes, showRecipe, addRecipe, buildTypeScriptProject, importBulkProject, inspectProject, validateProject, explainRoute, serveMcp, providerConformanceCases, runProviderConformance, verifyProviderDeployment, matchesRoute, type BulkImportReport, type TypeScriptBuildReport, type RecipeSummary, type McpOptions, type RouteMatch} from '@jimhoyd/urlcode';
+import {buildCloudflare, runProjectTests, scaffoldProject, initProject, addRedirect, type CloudflareBuildOptions, type CloudflareBuildReport, type ProjectTestOptions, type ProjectTestResult, type ScaffoldReport, type ScaffoldUnresolved, type BulkDiagnostic} from '@jimhoyd/urlcode';
 const compile: (project: string, options?: CloudflareBuildOptions) => Promise<CloudflareBuildReport> = buildCloudflare;
 const testProject: (project: string, options?: ProjectTestOptions) => Promise<ProjectTestResult> = runProjectTests;
-declare const scaffold: ScaffoldReport; declare const unresolved: ScaffoldUnresolved; declare const counts: ConversionCounts;
-void [compile, testProject, scaffoldProject, initProject, addRedirect, scaffold, unresolved, counts];
+declare const scaffold: ScaffoldReport; declare const unresolved: ScaffoldUnresolved; declare const diagnostic: BulkDiagnostic;
+void [compile, testProject, scaffoldProject, initProject, addRedirect, scaffold, unresolved, diagnostic];
 declare const bulkReport: BulkImportReport; declare const buildReport: TypeScriptBuildReport;
 declare const recipe: RecipeSummary; declare const mcp: McpOptions; declare const match: RouteMatch;
-void [listRecipes, showRecipe, addRecipe, buildTypeScriptProject, importBulkProject, inspectProject, validateProject, explainRoute, previewImport, previewExport, serveMcp, providerConformanceCases, runProviderConformance, verifyProviderDeployment, matchesRoute, importRoutes, exportRoutes, bulkReport, buildReport, recipe, mcp, match];
+void [listRecipes, showRecipe, addRecipe, buildTypeScriptProject, importBulkProject, inspectProject, validateProject, explainRoute, serveMcp, providerConformanceCases, runProviderConformance, verifyProviderDeployment, matchesRoute, bulkReport, buildReport, recipe, mcp, match];
 import { createLambdaHandler, type LambdaEvent, type LambdaHandler } from '@jimhoyd/urlcode/aws';
 import { createFetchHandler, rehydrate, type Artifact, type WorkerRoute } from '@jimhoyd/urlcode/cloudflare';
 import { prerenderPages, assertNativeProject, type PrerenderOptions, type PrerenderedPage } from '@jimhoyd/urlcode/prerender';

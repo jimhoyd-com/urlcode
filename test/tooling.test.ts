@@ -1,6 +1,6 @@
 import {fileURLToPath} from 'node:url';
 import test from 'node:test';import assert from 'node:assert/strict';
-import {inspectProject,validateProject,explainRoute,previewImport,previewExport,listRecipes,showRecipe,searchRecipes,searchExamples} from '../packages/core/src/tooling.ts';
+import {inspectProject,validateProject,explainRoute,listRecipes,showRecipe,searchRecipes,searchExamples} from '../packages/core/src/tooling.ts';
 import {project,redirect,param} from './helpers.ts';
 test('tooling validates without executing function bodies or reading credential values',async t=>{
  const root=await project(t,{'/f':{function:{source:'f.mjs'},secrets:{KEY:{secret:'NEVER_READ_THIS_BINDING'}}},'/go':redirect()},{'f.mjs':'while(true){}; export default () => new Response("never");','.env.local':'broken dotenv secret-content'});
@@ -11,17 +11,9 @@ test('tooling uses semantic compiler and explains without activation',async t=>{
  const exact=await explainRoute(root,'/item/a'),dynamic=await explainRoute(root,'/item/b');assert.ok(exact.matched&&exact.path==='/item/a');assert.ok(dynamic.matched&&dynamic.path==='/item/{id}');assert.equal((await explainRoute(root,'/missing')).matched,false);
  const bad=await project(t,{'/{id}':redirect()});await assert.rejects(validateProject(bad));await assert.rejects(inspectProject(root,{limit:1001}));
 });
-test('tooling exposes conversion previews and fixed local recipe catalog',async t=>{
- const root=await project(t,{'/a':redirect('https://example.com')});assert.equal((await previewExport(root,'json')).ok,true);assert.equal((await previewImport({format:'json',text:'[{"path":"/a","url":"https://example.com"}]'})).ok,true);
+test('tooling exposes the fixed local recipe catalog',async()=>{
  assert.ok((await listRecipes()).length);assert.equal((await showRecipe('redirect')).name,'redirect');await assert.rejects(showRecipe('../outside'));
  assert.equal((await searchRecipes('redirect')).results[0]!.id,'redirect');assert.equal((await searchExamples('lambda')).best!.id,'aws');
-});
-test('export previews flatten includes without discarding project behavior',async t=>{
- const included='version: "1"\nroutes:\n  /included:\n    redirect: {url: "https://example.test/included"}\n';
- const root=await project(t,{'/root':redirect('https://example.test/root')},{'routes.yaml':included},{includes:['routes.yaml']});
- const report=await previewExport(root,'json');assert.equal(report.ok,true);assert.equal(report.routeCount,2);assert.ok(report.output?.includes('/included'));
- const governed=await project(t,{'/root':redirect('https://example.test/root')},{'routes.yaml':included},{includes:['routes.yaml'],policies:{cache:{strategy:'no-store'}}});
- const refused=await previewExport(governed,'json');assert.equal(refused.ok,false);assert.equal(refused.output,undefined);
 });
 
 test('read-only inspection compiles egress declarations and example without grants or networking',async t=>{
