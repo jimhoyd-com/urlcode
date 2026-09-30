@@ -188,9 +188,15 @@ Use a library for what the vocabulary cannot express.
 - A `sandbox: true` route imports only relative project modules. A package
   import there is refused before serving (`sandbox-import`); direct use does
   not waive the sandbox.
-- Review labels the route `execution: trusted (in-process)`. It does not list
-  what the route imports, and the operator approval digest covers only the
-  entry file ([function security](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/FUNCTION-SECURITY.md#granting-selected-bindings)).
+- Review labels the route `execution: trusted (in-process)` and names the
+  directly imported npm packages, recording a bounded inventory of the
+  route's locally followed relative/dynamic-import files and npm lockfile
+  metadata into the operator approval digest — not just the entry file. This
+  is explicitly incomplete: it never traverses installed package
+  implementation bytes in `node_modules`, and a computed/dynamic import,
+  `require`/`createRequire`, a symlink or anything past the inventory's
+  bounds is recorded as opaque rather than silently allowed
+  ([trusted dependency review](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/FUNCTION-SECURITY.md#trusted-dependency-review)).
 - Functions run only on the self-hosted Node runtime, including a runtime
   embedded in another Node host
   ([operations](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OPERATIONS.md#hosting-urlcode-inside-another-framework)).
