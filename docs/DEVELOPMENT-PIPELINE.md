@@ -27,7 +27,6 @@ belong under their logical `scripts/` area when that improves cohesion.
 ```sh
 npm run check:docs                   # prose checks without runtime tests
 npm run check:code                   # remaining static checks
-npm run ci:plan -- BASE_SHA HEAD_SHA # preview PR classification
 npm run ci:report -- RUN_ID          # inspect GitHub job/step durations
 npm run ci:history -- 100 2026-09-19 # group historical timing samples
 npm run verify                       # full local validation

@@ -160,7 +160,6 @@
     "create-extension": "node scripts/create-extension.ts",
     "sync:agents": "node scripts/sync-agent-lists.ts",
     "check:docs": "node scripts/check-trust-model-prose.ts && node scripts/check-version-statements.ts && node scripts/check-local-links.ts && node scripts/check-doc-yaml.ts && node scripts/check-guidance-claims.ts && node scripts/check-agent-facts.ts && node scripts/generate-yaml-reference.ts --check && node scripts/generate-extension-reference.ts --check && node scripts/build-llms-full.ts --check && node scripts/build-cookbook-index.ts --check && node scripts/generate-agent-assets.ts --check",
-    "ci:plan": "node scripts/ci-plan.ts",
     "ci:build-fidelity": "node scripts/ci-build-fidelity.ts",
     "ci:container-smoke": "node scripts/ci-container-smoke.ts",
     "test:examples": "npm run build && npm run test:examples:built",
@@ -203,6 +202,7 @@
     "@types/semver": "7.8.0",
     "eslint": "10.11.0",
     "globals": "17.12.0",
+    "picomatch": "^4.0.7",
     "semver": "7.8.5",
     "typescript": "6.0.3",
     "typescript-eslint": "8.70.1"

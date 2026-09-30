@@ -170,14 +170,20 @@ test('each publish.yml job holds only the permissions it needs', async () => {
   assert((build.steps ?? []).some(step => step.uses?.startsWith('actions/attest@') && step.with?.['subject-path'] === 'release/*'));
 });
 
-test('every third-party action is pinned to a full commit SHA', async () => {
-  for (const name of await readdir(directory)) {
-    const workflow = await load(name);
-    for (const [jobName, definition] of Object.entries(workflow.jobs)) {
-      for (const step of definition.steps ?? []) {
-        if (!step.uses || step.uses.startsWith('./')) continue;
-        assert.match(step.uses, /^[\w.-]+\/[\w./-]+@[0-9a-f]{40}$/, `${name} ${jobName}: ${step.uses}`);
-      }
+// docs/CI.md#actions-and-the-actions-policy: the repository's Actions policy runs only actions GitHub created or
+// jimhoyd-com owns, pinned to a full SHA; any other action ends the whole run in startup_failure before a job starts.
+// The comment names the release the SHA was taken from, for a reviewer and Dependabot. The project Action runs inside ci.yml.
+test('every action is GitHub-created or jimhoyd-com-owned, pinned to a full commit SHA with its release in a comment', async () => {
+  let pinned = 0;
+  const files = [...(await readdir(directory)).map(name => join(directory, name)), 'action/action.yml'];
+  for (const name of files) {
+    for (const line of (await readFile(name, 'utf8')).split('\n')) {
+      const uses = /^\s*(?:- )?uses: (\S+)(.*)$/.exec(line);
+      if (!uses || uses[1]!.startsWith('./')) continue;
+      assert.match(uses[1]!, /^(?:actions|github|jimhoyd-com)\/[\w./-]+@[0-9a-f]{40}$/, `${name}: ${line} is not an allowed owner pinned by SHA`);
+      assert.match(uses[2]!, /^ # v\d+\.\d+\.\d+$/, `${name}: ${line}`);
+      pinned++;
     }
   }
+  assert(pinned > 0);
 });

@@ -7,7 +7,6 @@ import { reproducible } from '../scripts/ci-build-fidelity.ts';
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { containerSmokeScript } from '../scripts/ci-container-smoke.ts';
-import { SHARDS } from '../scripts/ci-plan.ts';
 
 interface Step { run?: string; env?: Record<string, string>; with?: Record<string, unknown> }
 interface Job {
@@ -30,46 +29,21 @@ function workflowJob(workflow: Workflow, name: string): Job {
   return job;
 }
 
-test('CI gate covers every producer and all conditional jobs depend on the plan', async () => {
+test('every job but the plan and the docs check needs the plan and skips only on its explicit outputs', async () => {
   const workflow = await ci();
-  assert.deepEqual([...(workflowJob(workflow, 'verify-complete').needs as string[])].sort(), Object.keys(workflow.jobs).filter(name => name !== 'verify-complete').sort());
+  // Lane selection itself is evaluated in ci-lanes.test.ts; this is the wiring.
+  for (const [name, definition] of Object.entries(workflow.jobs)) {
+    if (['plan', 'docs', 'verify-complete'].includes(name)) continue;
+    assert(([] as string[]).concat(definition.needs ?? []).includes('plan'), name);
+    assert.match(definition.if ?? '', /^needs\.plan\.outputs\.lane != 'docs'(?: && needs\.plan\.outputs\.\w+ != 'false')?$/, name);
+  }
+  // The disk-full harness (#902) runs in every code lane, extension-only diffs included.
   for (const name of ['static', 'workspace-verify', 'disk-full']) {
     assert.deepEqual(workflowJob(workflow, name).needs, 'plan');
-    assert.equal(workflowJob(workflow, name).if, "needs.plan.outputs.lane == 'full'");
+    assert.equal(workflowJob(workflow, name).if, "needs.plan.outputs.lane != 'docs'");
   }
-  for (const name of ['verify', 'checks', 'audit']) assert.equal(workflowJob(workflow, name).if, "needs.plan.outputs.lane == 'full' && needs.plan.outputs.coreChecks == 'true'");
-  assert.equal(workflowJob(workflow, 'action').if, "needs.plan.outputs.lane == 'full' && needs.plan.outputs.action == 'true'");
-  for (const [name, output] of [['build-fidelity', 'buildFidelity'], ['container', 'container']] as const) assert.equal(workflowJob(workflow, name).if, `needs.plan.outputs.lane == 'full' && needs.plan.outputs.${output} == 'true'`);
   assert.deepEqual(workflowJob(workflow, 'workspace-integration').needs, ['plan', 'workspace-verify']);
-  assert.equal(workflowJob(workflow, 'workspace-integration').if, "needs.plan.outputs.lane == 'full' && needs.plan.outputs.workspaceIntegration == 'true'");
-  assert.equal(workflowJob(workflow, 'verify-complete').if, 'always()');
-  const plan = workflowJob(workflow, 'plan').steps.at(-1)!;
-  assert.match(plan.env!.BASE!, /pull_request\.base\.sha \|\| github\.event\.before/);
-  assert.match(plan.env!.HEAD!, /pull_request\.head\.sha \|\| github\.event\.after/);
-  // publish.yml calls this workflow with `release: true`; the plan then selects exact-commit coverage.
-  assert.equal(plan.env!.CI_RELEASE, '${{ inputs.release }}');
-  assert.equal(workflowJob(workflow, 'plan').steps[0]!.with!['fetch-depth'], 0);
   assert(Object.hasOwn(workflow.on, 'merge_group'));
-});
-
-test('high-impact selection reaches jobs only through planned matrices (#744)', async () => {
-  const workflow = await ci();
-  const outputs = (workflow.jobs.plan as Job & { outputs: Record<string, string> }).outputs;
-  const planner = await readFile('scripts/ci-plan.ts', 'utf8');
-  // Every declared plan output is written by the planner, including the new diagnostics.
-  for (const [name, value] of Object.entries(outputs)) {
-    assert.equal(value, `\${{ steps.plan.outputs.${name} }}`);
-    // Each `name=${...}` line of the GITHUB_OUTPUT template starts the template or follows a literal `\n`.
-    assert.match(planner, new RegExp(`(?:\`|\\\\n)${name}=\\$\\{`), name);
-  }
-  for (const name of ['highImpact', 'platformLegs']) assert(Object.hasOwn(outputs, name), name);
-  // The added Windows shards and packed-integration leg arrive as matrix entries of existing jobs,
-  // so no job is renamed and `verify-complete` still aggregates each job's overall result.
-  assert.equal(workflowJob(workflow, 'verify').strategy!.matrix, '${{ fromJSON(needs.plan.outputs.shards) }}');
-  assert.equal(workflowJob(workflow, 'workspace-verify').strategy!.matrix, '${{ fromJSON(needs.plan.outputs.workspacePackages) }}');
-  assert.equal(workflowJob(workflow, 'workspace-integration').strategy!.matrix, '${{ fromJSON(needs.plan.outputs.workspaceIntegrationMatrix) }}');
-  const gate = workflowJob(workflow, 'verify-complete').steps.at(-1)!;
-  assert.equal(gate.env!.CI_WORKSPACE_INTEGRATION, '${{ needs.plan.outputs.workspaceIntegration }}');
 });
 
 test('workflow command bodies call the tested CI scripts', async () => {
@@ -109,7 +83,8 @@ test('workflows time out jobs and use safe installs', async () => {
     if (job === 'build-fidelity') assert.deepEqual(installs, ['npm ci']);
     else for (const install of installs) assert.equal(install, 'npm ci --ignore-scripts', job);
   }
-  assert(runs(workflow, 'verify').some(run => run.includes(`--test-shard=\${{ matrix.shard }}/${SHARDS}`)));
+  assert(runs(workflow, 'verify').some(run => run.includes('--test-shard=${{ matrix.shard }}/3')));
+  assert.deepEqual(workflowJob(workflow, 'verify').strategy!.matrix, { os: '${{ fromJSON(needs.plan.outputs.testOs) }}', node: '${{ fromJSON(needs.plan.outputs.node) }}', shard: [1, 2, 3] });
   // The operator-triggered compatibility workflow (workspace-integration.yml) was retired with the signed bundle
   // releases; cross-OS add-on installs run in ci.yml's workspace-integration job.
   await assert.rejects(readFile(join(directory, 'workspace-integration.yml'), 'utf8'), /ENOENT/);

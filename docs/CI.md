@@ -9,18 +9,39 @@ and the [composite Action for URLCode projects](#checking-a-urlcode-project-on-g
 pull requests, the merge queue, a manual dispatch and the nightly sweep; `main`
 is verified by **Publish release** (`publish.yml`), which calls `ci.yml` on every push
 to `main` and passes `release: true` when that commit is about to be released.
-`verify-complete` accepts
-only the successful results specified by the plan; failed, cancelled, missing or
-unexpectedly skipped work fails the gate. `container` and CodeQL remain
-separately required by the repository ruleset. The planner in
-`scripts/ci-plan.ts` classifies a complete Git diff; unknown, empty and
-unavailable diffs fail closed.
+`container` and CodeQL remain separately required by the repository ruleset.
+
+The `plan` job classifies a pull request or a push by its changed paths.
+`scripts/ci-changes.ts` lists them with `git diff --no-renames` (a pull
+request against its merge base, `base...head`; a push tip to tip,
+`before..after`) and matches them with picomatch against the path filters in
+`.github/ci-filters.yml`: a filter matches when one of its patterns includes a
+path and none of its `!` patterns excludes it. It only reports which filters
+matched. The plan's outputs, every job's `if:` and the matrices are workflow
+expressions in `ci.yml`. The selection fails closed:
+
+- A release run, a dispatch, the merge queue and the nightly sweep are never
+  classified; they run everything.
+- The install and the classification step may fail without failing the plan
+  (a malformed or absent commit, history git cannot read), and a failed
+  outcome selects full verification, as an empty diff does.
+- Any path the filters do not name as prose, including an unknown one, selects
+  the runtime lane.
+- Every job skips only on an explicit `docs` lane or `false` output of a
+  successful plan, so a missing output runs the job.
+
+`verify-complete` fails when the plan did not succeed, when `docs` did not
+succeed, and when any job failed or was cancelled, including a job skipped
+because a job it needs failed. `test/ci-lanes.test.ts` runs the real filters
+through `scripts/ci-changes.ts`, including on a real git history, and evaluates
+the plan outputs, conditions and matrices with the subset of GitHub's
+expression language they use.
 
 | Change portfolio | Routine PR and `main` work |
 | --- | --- |
 | Prose | `plan`, `docs` and `verify-complete`; code jobs intentionally skip. The narrow allowlist is root project Markdown, `docs/**/*.md`, `llms.txt`, `llms-full.txt`, and package contributor/governance prose. |
 | Extension-only | Static checks plus the changed extension and reverse dependencies on Linux/Node 24, and on a pull request the same suites on Windows/Node 24. Unrelated core tests, examples/drills, audit, package, Action, container and reproducibility proofs skip. |
-| Runtime, shared, shipping or unknown | Static checks, Linux/Node 24 core shards, all consuming extensions and applicable root-runtime proofs. On a pull request that also changes extension code, only those extensions and their reverse dependencies run on Windows/Node 24; an empty or unclassifiable diff runs every extension there. |
+| Runtime, shared, shipping or unknown | Static checks, Linux/Node 24 core shards, all consuming extensions and applicable root-runtime proofs. On a pull request that also changes extension code, or whose diff is empty or unclassifiable, every extension runs on Windows/Node 24 too. |
 | High-impact (pull requests only, on top of the rows above) | A Windows/Node 24 test leg and the Linux/Node 24 packed add-on integration; see [high-impact pull requests](#high-impact-pull-requests). |
 
 The prose allowlist is reviewed non-executable contributor prose, not every
@@ -33,9 +54,8 @@ uses `paths-ignore`.
 Routine pull request and `main` work is intentionally the fast feedback
 portfolio. Scheduled **Verify — sweep**, merge-queue, manually dispatched and
 release runs are exact-commit coverage: the full Linux/macOS/Windows × Node
-22/24/26 matrix, whatever the diff. A release run (the plan step receives
-`CI_RELEASE=true` from the `release` input and plans it like a dispatch) and a
-dispatch also run the cross-workspace integration on Linux, macOS and Windows
+22/24/26 matrix, whatever the diff. A release run (`ci.yml` called with
+`release: true`) and a dispatch also run the cross-workspace integration on Linux, macOS and Windows
 with Node 24, so a version is published only after that proof passes on its
 exact commit. `build-fidelity` (`npm run ci:build-fidelity`) builds everything
 twice from clean builds and packs both with the release packer on the
@@ -52,18 +72,17 @@ whose diff changes extension code, meaning any path under an extension's
 `packages/<name>/` other than its contributor prose, therefore also runs those
 extensions and their reverse dependencies on Windows/Node 24
 ([#824](https://github.com/jimhoyd-com/urlcode/issues/824)).
-`windowsWorkspacePackages` in `scripts/ci-plan.ts` selects them with the same
-dependency map as the Linux suites, but from the extension paths alone: a core
-or shared path in the same diff widens the Linux suites to every extension and
-leaves the Windows ones proportional to the extension change. A core-only
-change adds no Windows extension suites. Its Windows coverage comes from the
-high-impact core shards below and from release coverage.
+
+The Windows leg runs the same selection as the Linux leg (the plan's
+`packages`, whose filters in `.github/ci-filters.yml` encode which
+extension builds against which). A core or shared path in the same diff
+therefore widens both legs to every extension. A core-only change adds no
+Windows extension suites; its Windows coverage comes from the high-impact core
+shards below and from release coverage.
 
 The Windows suites are entries of the existing `workspace-verify` matrix, not
-a separate job, so no new job can skip. `verify-complete` already requires
-`workspace-verify` to succeed on every code-lane run, and any failed Windows
-entry fails it. The plan reports the selection as `windowsWorkspacePackages`.
-Main pushes are unchanged, and exact-commit runs already cover every package on
+a separate job, so any failed Windows entry fails `verify-complete`. Main
+pushes are unchanged, and exact-commit runs already cover every package on
 every OS and Node.
 
 ### High-impact pull requests
@@ -76,12 +95,12 @@ cleanup order ([#668](https://github.com/jimhoyd-com/urlcode/issues/668),
 whose diff touches one of these areas keeps the lane above and adds two things
 ([#744](https://github.com/jimhoyd-com/urlcode/issues/744)):
 
-| Area | Paths (`HIGH_IMPACT` in `scripts/ci-plan.ts`) |
+| Area | Paths (the `highImpact` filter in `ci.yml`) |
 | --- | --- |
 | Installer, upgrade and scaffolding | `packages/core/src/{addon-install,extensions-cli,init-with,scaffold,recipes}.ts`, `packages/core/src/upgrade*`, `scripts/create-extension*`, `starters/**` |
 | Package manifests and dependency wiring | every `package.json` and `package-lock.json`, `packages/*/urlcode.json`, `scripts/{workspaces,build-addon-manifest,check-workspace-links}.ts` |
 | Release tooling | `scripts/release-*.ts`, `scripts/pack-addons.ts`, `scripts/package-*.ts`, `scripts/npm-command.ts`, `.github/workflows/publish.yml` |
-| Integration and cleanup | `test/addons.integration.ts`, `scripts/test-addons*`, `packages/*/test/cleanup.ts` |
+| Integration and cleanup | `test/{addons,private-requests,authjs-provider,native-storage,ecosystem}.integration.ts`, `proofs/**`, `scripts/test-addons*`, `packages/*/test/cleanup.ts` |
 | Shared inputs (fail closed) | anything under `.github/`, any root-level file that is not admitted prose, and an empty or unclassifiable diff |
 
 - **Windows/Node 24 tests.** `verify` gains Windows entries for all three
@@ -97,11 +116,9 @@ whose diff touches one of these areas keeps the lane above and adds two things
 
 Docs-only and ordinary source pull requests do not get either. Ordinary
 extension code still gets its Windows `workspace-verify` suites. Main pushes are
-unchanged, and exact-commit runs already cover every OS. The plan reports
-`highImpact` and `platformLegs`; jobs receive the extra entries through the
-existing `shards`, `workspacePackages` and `workspaceIntegration*` outputs, so
-no job is renamed and `verify-complete` accepts a skipped
-`workspace-integration` only when the plan did not select it.
+unchanged, and exact-commit runs already cover every OS. Jobs receive the extra
+entries through the plan's `testOs`, `integration` and `integrationOs` outputs,
+so no job is renamed.
 
 Whether this finds platform and packaging failures earlier, and what it costs,
 is not yet measured. Over the next releases, record first-attempt elapsed time,
@@ -179,7 +196,6 @@ in the cross-workspace integration and in the Windows leg of a
 runs cover all supported Node versions.
 
 ```sh
-npm run ci:plan -- BASE_SHA HEAD_SHA
 npm run check:docs
 npm run check:code
 npm run verify
@@ -188,6 +204,31 @@ npm run verify:addons
 
 For releasing, retries and recovery, see
 [release operations](RELEASE-OPERATIONS.md).
+
+### Actions and the Actions policy
+
+The repository's Actions policy runs only actions that GitHub created or that
+`jimhoyd-com` owns (plus `mxschmitt/action-tmate`, which no workflow uses),
+each pinned to a full commit SHA. Any other `uses:` ends the whole run in
+`startup_failure` before a job starts. So every workflow here uses only
+`actions/*`, `github/*` or `jimhoyd-com/*`, with the release the SHA was taken
+from in a comment:
+
+```yaml
+uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+```
+
+A tag can be moved to other code after review, and a commit cannot. The comment
+tells a reviewer and Dependabot (`.github/dependabot.yml`, the `github-actions`
+ecosystem) which release is pinned, and Dependabot's update pull requests move
+the SHA and the comment together. `test/workflows.test.ts` fails on a
+reference in a workflow or `action/action.yml` from another owner, or one that
+is not a 40-character SHA followed by `# vX.Y.Z`. `test/action.test.ts` checks
+that the project Action and the starter's workflow pin theirs to a commit.
+
+Anything else a workflow needs runs as an npm package from the root lockfile,
+pinned by its integrity hash: the path classification is
+`scripts/ci-changes.ts` with picomatch, not a path-filter action.
 
 ### Diagnostic workflows
 

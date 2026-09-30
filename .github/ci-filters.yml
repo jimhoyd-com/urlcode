@@ -1,0 +1,61 @@
+# The path filters of ci.yml's plan (docs/CI.md), read by scripts/ci-changes.ts. A changed path matches a filter
+# when one of its patterns includes it and none of its `!` patterns excludes it (picomatch, dot files included).
+lanes:
+  any:
+    - '**'
+  # Anything but reviewed contributor prose. Skills, starters, recipes, examples, schemas, manifests, workflows,
+  # shipped or agent-facing package documents and unknown paths are code. Everything prose is still checked by the
+  # always-run `docs` job.
+  code:
+    - '**'
+    - '!docs/**/*.md'
+    - '!{README,CONTRIBUTING,SECURITY,GOVERNANCE,CODE_OF_CONDUCT,AGENTS,ROADMAP}.md'
+    - '!llms.txt'
+    - '!llms-full.txt'
+    - '!packages/*/{CONTRIBUTING,CODE_OF_CONDUCT,GOVERNANCE}.md'
+  # Anything outside the extension packages can change the core archive, its tests, the Action, the image or the
+  # reproducible build.
+  core:
+    - '**'
+    - '!packages/{auth,store,mcp}/**'
+  extensionCode:
+    - 'packages/{auth,store,mcp}/**'
+    - '!packages/*/{CONTRIBUTING,CODE_OF_CONDUCT,GOVERNANCE}.md'
+  # Paths that once passed the Linux lane and failed on Windows or at the packed add-on boundary during release
+  # coverage (#668, #669, #673, #744).
+  highImpact:
+    # Installer, upgrade and scaffolding.
+    - 'packages/core/src/{addon-install,extensions-cli,init-with,scaffold,recipes}.ts'
+    - 'packages/core/src/upgrade*'
+    - 'scripts/create-extension*'
+    - 'starters/**'
+    # Package manifests and dependency wiring.
+    - '**/package.json'
+    - '**/package-lock.json'
+    - 'packages/*/urlcode.json'
+    - 'scripts/{workspaces,build-addon-manifest,check-workspace-links}.ts'
+    # Release tooling.
+    - 'scripts/{release-*,pack-addons,package-*,npm-command}.ts'
+    # Integration, proofs and per-package fixture cleanup.
+    - 'test/{addons,private-requests,authjs-provider,native-storage,ecosystem}.integration.ts'
+    - 'proofs/**'
+    - 'scripts/test-addons*'
+    - 'packages/*/test/cleanup.ts'
+    # Shared inputs fail closed: repository automation and any root file but prose.
+    - '.github/**'
+    - '*'
+    - '!{README,CONTRIBUTING,SECURITY,GOVERNANCE,CODE_OF_CONDUCT,AGENTS,ROADMAP}.md'
+    - '!llms.txt'
+    - '!llms-full.txt'
+# The extension suites to run: a changed extension and every extension that builds against it (none today), or all
+# of them when a path outside the extensions changed.
+packages:
+  auth:
+    - '**'
+    - '!packages/{store,mcp}/**'
+  store:
+    - '**'
+    - '!packages/{auth,mcp}/**'
+  mcp:
+    - '**'
+    - '!packages/{auth,store}/**'
