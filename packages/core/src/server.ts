@@ -142,25 +142,52 @@ export async function startServer(options: ServerOptions = {}): Promise<Server> 
     return { ...app, close: async () => { try { await app.close(); } finally { await removeRunDirectory(dir); } } };
   } catch (error) { if (owned) await removeRunDirectory(dir); throw error; }
 }
-/** How long a connection closed with request bytes still unread keeps discarding them before it is torn down. */
-const lingerMs = 5000;
+/** How long, and for how many more bytes, a connection closed with request bytes still unread keeps discarding them. */
+const lingerMs = 5000, lingerMaxBytes = 16 * 1024 * 1024;
 /**
  * Closing a socket while request bytes are still unread makes the kernel answer the client with a reset, which can
- * discard an answer the client has not read yet: a 413 refused on Content-Length before the body was read would reach
- * a client still writing that body as ECONNRESET or EPIPE instead. When Node closes this request's connection
- * (`Connection: close`) before the request was complete, only the write side is closed and the rest of the request is
- * discarded until the client closes or `lingerMs` passes (RFC 9112 §9.6). The response has finished by then, so
- * server shutdown treats the connection as idle and does not wait for it.
+ * discard an answer the client has not read yet: a 413 sent before the body was read would reach a client still
+ * writing that body as ECONNRESET or EPIPE instead. When Node closes a request's connection (`Connection: close`)
+ * before the request was complete, only the write side is closed, and what the client still sends is read and
+ * discarded until it closes, `lingerMs` passes or `lingerMaxBytes` more arrive. A request that arrives in that window
+ * is never dispatched (RFC 9112 §9.6). Shutdown destroys lingering connections rather than waiting for them.
  */
-function lingerBeforeClose(req: http.IncomingMessage): void {
-  const socket = req.socket;
-  // Node's http server ends a closing connection through destroySoon once the response is flushed.
-  socket.destroySoon = () => {
-    if (req.complete || socket.destroyed) { Socket.prototype.destroySoon.call(socket); return; }
-    const timer = setTimeout(() => socket.destroy(), lingerMs); timer.unref();
-    socket.once('end', () => socket.destroy());
-    socket.once('close', () => clearTimeout(timer));
-    socket.end();
+function createLinger() {
+  /** Each lingering connection and the `bytesRead` past which it is torn down. */
+  const lingering = new Map<Socket, number>();
+  let closing = false;
+  const discard = (req: http.IncomingMessage, until: number) => {
+    const socket = req.socket;
+    if (socket.bytesRead > until) { socket.destroy(); return; }
+    req.on('data', () => { if (socket.bytesRead > until) socket.destroy(); });
+    req.resume();
+  };
+  return {
+    /** Arms `req`'s connection to linger if Node closes it before `req` was complete. */
+    attach(req: http.IncomingMessage): void {
+      const socket = req.socket;
+      // Node's http server ends a closing connection through destroySoon once the response is flushed.
+      socket.destroySoon = () => {
+        if (closing || req.complete || socket.destroyed) { Socket.prototype.destroySoon.call(socket); return; }
+        const until = socket.bytesRead + lingerMaxBytes;
+        lingering.set(socket, until);
+        const timer = setTimeout(() => socket.destroy(), lingerMs); timer.unref();
+        socket.once('end', () => socket.destroy());
+        socket.once('close', () => { clearTimeout(timer); lingering.delete(socket); });
+        // A body refused part way through was paused by its reader, and nothing else would drain it.
+        discard(req, until);
+        socket.end();
+      };
+    },
+    /** True when `req` arrived on a lingering connection: it is discarded unanswered, never dispatched. */
+    refuses(req: http.IncomingMessage): boolean {
+      const until = lingering.get(req.socket);
+      if (until === undefined) return false;
+      discard(req, until);
+      return true;
+    },
+    /** Shutdown: from now on no connection lingers, and those lingering are closed. */
+    close(): void { closing = true; for (const socket of lingering.keys()) socket.destroy(); },
   };
 }
 async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000, watch = false,
@@ -218,7 +245,10 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
   // `draining` flips /_urlcode/ready unhealthy ahead of `shuttingDown`, which stops
   // serving entirely; the gap between them is the pre-close readiness delay.
   let shuttingDown = false, draining = false, reloading = false, watching = false, interval: NodeJS.Timeout | undefined, lastFingerprint: string | undefined, inFlight = 0, healthInFlight = 0;
-  const retired = new Set<Promise<void>>();  const server = http.createServer({ maxHeaderSize: 16384, headersTimeout: headersTimeoutMs, requestTimeout: requestTimeoutMs, keepAliveTimeout: keepAliveTimeoutMs }, async (req, res) => {
+  const retired = new Set<Promise<void>>();
+  const linger = createLinger();
+  const server = http.createServer({ maxHeaderSize: 16384, headersTimeout: headersTimeoutMs, requestTimeout: requestTimeoutMs, keepAliveTimeout: keepAliveTimeoutMs }, async (req, res) => {
+    if (linger.refuses(req)) return;
     const started = performance.now();
     const url = req.url ?? '', method = req.method ?? 'GET';
     // Upstream correlation is opt-in: an untrusted client must not choose the ID
@@ -231,7 +261,7 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
       if (values.length === 1 && only !== undefined && safeRequestId.test(only)) inbound = only;
     }
     const requestId = inbound || randomUUID();
-    lingerBeforeClose(req);
+    linger.attach(req);
     const trace: RequestTrace = {};
     let status = 500;
     res.on('error', () => {});
@@ -386,6 +416,7 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
         if (readinessDrainMs > 0) await new Promise<void>(resolve => setTimeout(resolve, readinessDrainMs));
       }
       shuttingDown = true; clearInterval(interval); clearInterval(metricsTimer);
+      linger.close();
       // Open streams get the same grace as other in-flight responses, then end (reason `shutdown`) just before the
       // remaining connections are forced closed.
       const deadline = setTimeout(() => { streams.endAll('shutdown'); server.closeAllConnections(); }, closeTimeoutMs);
