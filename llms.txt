@@ -30,7 +30,7 @@ grants. Unsupported features fail with the route named; nothing degrades silentl
    `plan_feature`) names the matching recipes and the extension authoring surfaces the goal asks for (store ownership,
    transitions, membership and readers; auth route protection), from installed or catalog descriptors; its `commands`
    end with `urlcode recipes add NAME --project app`, which merges a recipe into the site's `app/` (routes, includes,
-   extension config, fixtures, seed and the audit count; any clash refuses it all, named) instead of copying its files. With `--host-file`,
+   extension config, fixtures, seed and the audit count; any clash refuses it all, named) instead of copying its files (MCP `merge_recipe` with `--allow-authoring`, for the served project only). With `--host-file`,
    `explain`, `plan-feature`, `context` and `review` read the registrations without a revision pin; anything that
    activates (`validate`, `test`, `dev`, `serve`) still needs the reviewed pin, which `urlcode permissions --project app` prints.
    The site's check scripts and the authoring MCP runners review each edit without a new pin; serving still needs one

@@ -10,6 +10,7 @@ import {validateProject} from './tooling.ts';
 import {scaffoldProject} from './scaffold.ts';
 import {isRecord as object, isCode} from './object-guards.ts';
 import {addRecipe} from './recipes.ts';
+import {mergeRecipe} from './recipe-merge.ts';
 import {authoringPath} from './authoring-files.ts';
 import {assert} from './errors.ts';
 import {declaredPrincipalProviders} from './addon-manifest.ts';
@@ -33,6 +34,7 @@ const middleware={type:'array',maxItems:32,items:{anyOf:[{type:'string',maxLengt
 export const authoringDefinitions=[
  {name:'create_route',description:'Add one route to urlcode.yaml or a named include under the project. The merged project is validated before the write; missing function sources are reported for scaffold_feature.',properties:{path:{type:'string',maxLength:2048},handler,middleware,file:text},required:['path','handler']},
  {name:'add_recipe',description:'Copy a bundled recipe into a new directory inside the project (recipes add). dryRun reports the destination and writes nothing.',properties:{name:{type:'string',maxLength:64},destination:text,dryRun:{type:'boolean'}},required:['name','destination']},
+ {name:'merge_recipe',description:'Merge a bundled recipe into the project this server serves (recipes add --project): its routes, include files, other files, extension configuration, request fixtures, test seed and the committed audit route count. It takes no path: the target is always the server\'s own project. Any clash with what the project already has, or an extension the project has not declared, refuses the whole merge as an error result naming every clash, and nothing is written; an identical entry is not a clash. dryRun reports what would be added and written and writes nothing.',properties:{name:{type:'string',maxLength:64},dryRun:{type:'boolean'}},required:['name']},
  {name:'scaffold_feature',description:'Create placeholder modules, pages and directories the project YAML references and that do not exist yet; existing files are never edited.',properties:{dryRun:{type:'boolean'}},required:[]},
  {name:'run_validate',executes:true,description:'Run `urlcode validate --local` against the project in a child process; returns exit code and bounded output. This activates the local runtime, which imports the project\'s trusted function and middleware modules with full Node access (their top-level code runs and may write or delete files, spawn processes or reach the network); the minimal environment is not confinement. With the operator\'s --host-file the child receives that same path and, besides PATH, exactly one environment variable: PROJECT_SHA256, only when the server\'s own is a well-formed 64-hex revision, the pin its host already loaded under and imports that operator-supplied host module, whose code runs with full Node access too; --origin and --policy (as an absolute path) are repeated only when the operator gave them. The child always also receives --local-review: when neither that --policy nor PROJECT_SHA256 reaches it, it pins this one run to the project\'s current revision, reads no policy and defaults --origin to http://localhost, so an edited extension site is checked without a new pin; an operator pin always wins, and serving never accepts the flag. No other flag and no other environment variable is forwarded, and no tool argument adds one: without the operator\'s --policy, bindings and egress that need an operator grant fail as they do without one, and no grant is ever created or changed.',properties:{},required:[]},
  {name:'run_test',executes:true,description:'Run `urlcode test` against the project in a child process; returns exit code and bounded output. This activates the local runtime and executes the fixtures, so the project\'s trusted function and middleware modules run with full Node access and may write or delete files, spawn processes or reach the network; the minimal environment and scratch data directory are not confinement. With the operator\'s --host-file the child receives that same path and, besides PATH, exactly one environment variable: PROJECT_SHA256, only when the server\'s own is a well-formed 64-hex revision, the pin its host already loaded under and imports that operator-supplied host module, whose code runs with full Node access too; --origin and --policy (as an absolute path) are repeated only when the operator gave them. The child always also receives --local-review: when neither that --policy nor PROJECT_SHA256 reaches it, it pins this one run to the project\'s current revision, reads no policy and defaults --origin to http://localhost, so an edited extension site is checked without a new pin; an operator pin always wins, and serving never accepts the flag. No other flag and no other environment variable is forwarded, and no tool argument adds one: without the operator\'s --policy, bindings and egress that need an operator grant fail as they do without one, and no grant is ever created or changed.',properties:{},required:[]},
@@ -123,6 +125,18 @@ async function createRoute(root:string,args:Record<string,unknown>,origin?:strin
   return {created:true,path,file,route:added,sources:present,missingSources:missing,next:missing.length?'Call scaffold_feature to create placeholder modules, then implement them.':null,validation:await verdict(root,origin,extensions)};
  } finally {if(temp)await rm(temp,{recursive:true,force:true});await lock.close();await rm(lockPath,{force:true});}
 }
+// #1024: `recipes add NAME --project` for the served project. The target is the operator-selected root and nothing a
+// tool argument names; the write runs under the same authoring lock as create_route. mergeRecipe refuses a clash (and a
+// symlinked or non-file target) before writing anything and restores every file when a write fails.
+async function mergeIntoProject(root:string,args:Record<string,unknown>,origin?:string,extensions?:RuntimeExtension[]) {
+ const dryRun=args.dryRun===true,lockPath=join(root,'urlcode.yaml.lock');
+ const lock=dryRun?undefined:await open(lockPath,'wx',0o600);
+ try {
+  const report=await mergeRecipe(args.name as string,root,{dryRun});
+  // The CLI's next commands name a --project path and a guessed host file; through MCP the runners already carry the operator's flags.
+  return {...report,project:'.',next:['run_validate','run_test','run_audit'],validation:await verdict(root,origin,extensions)};
+ } finally {if(lock){await lock.close();await rm(lockPath,{force:true});}}
+}
 const outputLimit=32768;
 function bounded(chunks:Buffer[]):{text:string;truncated:boolean} {
  const all=Buffer.concat(chunks);return {text:all.subarray(0,outputLimit).toString('utf8'),truncated:all.length>outputLimit};
@@ -158,6 +172,7 @@ export async function callAuthoringTool(root:string,name:string,args:Record<stri
    const report=await addRecipe(args.name as string,destination,{dryRun:args.dryRun===true});
    return {...report,output:args.destination,validation:await verdict(root,origin,extensions)};
   }
+  case 'merge_recipe':return mergeIntoProject(root,args,origin,extensions);
   case 'scaffold_feature':return {...await scaffoldProject(root,{dryRun:args.dryRun===true}),validation:await verdict(root,origin,extensions)};
   case 'run_validate':return runCli(root,'validate',operator);
   case 'run_test':return runCli(root,'test',operator);
