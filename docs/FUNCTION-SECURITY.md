@@ -82,6 +82,15 @@ into it; only the default for routes that declare neither option has changed.
 - A fresh guest heap/module state per invocation prevents state crossing requests.
 - 32 MiB guest heap, 512 KiB stack, source/input/output/header limits, bounded
   concurrency, guest interruption and an independent worker termination deadline.
+  The heap is enforced by capping each sandbox worker's WebAssembly memory at
+  44 MiB (the 32 MiB guest heap plus the engine's own baseline and growth
+  step), not by QuickJS's allocation counter, which this build undercounts. A
+  guest whose allocations reach the cap fails with the generic 502 even if it
+  catches the error, and its worker is retired and replaced (logged as a
+  `function_worker` restart), because WebAssembly memory never shrinks. The
+  in-guest interrupt is polled between bytecode batches, so a loop of few, very
+  expensive operations can overrun it; the worker termination deadline is the
+  enforced bound for those.
 - The guest's result is recorded where guest code cannot rewrite it, and the
   host checks its shape before trusting it. A result that states a body length
   for any method other than HEAD is invalid and answers 502; the runtime frames
@@ -286,9 +295,10 @@ allocations, loops, unauthorized secret requests and stale/repo-local policies.
 These are regression tests, not a proof of complete security.
 
 The URLCode host, parser, QuickJS/WASM engine, native runtime and dependencies
-remain trusted computing components that need patching and review. Guest heap
-limits do not cap all host/WASM RSS; use OS/container memory/CPU/PID limits as an
-additional layer. Native engine bugs or resource exhaustion remain residual risks.
+remain trusted computing components that need patching and review. The per-worker
+WebAssembly memory cap bounds each guest, but not the host worker's own V8 and
+native memory or the rest of the process; use OS/container memory/CPU/PID limits
+as an additional layer. Native engine bugs or resource exhaustion remain residual risks.
 For a public arbitrary-code/multi-tenant service, require independent security
 review plus process/VM-level isolation and operational controls before launch.
 Do not advertise this release as an audited hostile multi-tenant hosting platform.

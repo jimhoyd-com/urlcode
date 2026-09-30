@@ -83,7 +83,7 @@ exactly the kind of route `sandbox: true` exists for.
 | Sandbox execution deadline (`sandbox: true` only) | 5 s default | Entire middleware + handler invocation; forcibly terminates the worker; timeout returns 504 |
 | Trusted concurrency (`sandbox` false/absent, the default) | Ordinary Node concurrency | Bounded by `--max-in-flight` (default 64), not a worker count; no separate pool to exhaust |
 | Trusted execution deadline (`sandbox` false/absent) | 5 s default (same `timeoutMs` knob) | Races the call's promise; cannot preempt synchronous event-loop-blocking code (see "Trusted-path deadlines" above); timeout returns 504 |
-| Guest heap / stack (`sandbox: true` only) | 32 MiB / 512 KiB | Fresh per invocation; not a bound on total process RSS |
+| Guest heap / stack (`sandbox: true` only) | 32 MiB / 512 KiB | Fresh per invocation; enforced by a 44 MiB WebAssembly memory cap per worker, and a guest that reaches it answers 502 and retires the worker; not a bound on total process RSS |
 | Outer worker old-generation V8 budget (`sandbox: true` only) | 128 MiB | Separate from WASM/host/native allocations |
 | Function response | 1 MiB default, 16 KiB / 256 header pairs | Buffered text/JSON; YAML headers also bounded; applies to both execution modes |
 | Middleware | 16 entries per route | One shared slot/deadline (`sandbox: true`) or one in-process call (trusted), not 16 independent workers either way |

@@ -453,9 +453,13 @@ value does not authorize exposing it to a function; the policy still applies.
 
 A `sandbox: true` invocation has a fresh guest heap and module state every
 time. No cross-request counters, cached secrets or prototype mutation. QuickJS
-heap limit is 32 MiB, stack limit 512 KiB; outer worker and deployment limits
-are additional defenses, not a claim that total process RSS is capped at 32
-MiB. Two workers, no queue; saturation returns 503. The independent 5-second
+heap limit is 32 MiB, stack limit 512 KiB. The heap limit is enforced by each
+worker's WebAssembly memory maximum of 44 MiB (heap plus engine baseline); a
+guest whose allocations reach it answers 502, even if it caught the error, and
+its worker is replaced. The in-guest interrupt is polled between bytecode
+batches, so the worker termination deadline is the enforced bound for a loop of
+few, very expensive operations. Outer worker and deployment limits are
+additional defenses, not a claim that total process RSS is capped at 32 MiB. Two workers, no queue; saturation returns 503. The independent 5-second
 deadline terminates a worker and returns 504. Generic failures return 502;
 worker replacement is bounded. A trusted route has none of this: no fresh
 heap/module reset, no fixed worker-pool ceiling (bounded instead by ordinary

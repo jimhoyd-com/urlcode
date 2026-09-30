@@ -209,3 +209,34 @@ test('guest timers fire through the pump and are bounded', async t => {
   assert.deepEqual([...result.order].sort(), ['a','b']);
   assert.equal(result.limit, 'Timer limit');
 });
+
+// #1092: QuickJS's own memory limit undercounts in this build, so the bound is
+// each worker's WebAssembly memory maximum. Before it, this guest grew each
+// worker's memory to about 2 GiB and the worker kept it.
+test('a guest allocating past its 32 MiB heap fails with 502 and the worker is replaced, releasing its memory', async t => {
+  const events: Record<string, unknown>[] = [];
+  const modules = {
+    '/hog.mjs': `export default () => { const a = []; try { for (;;) a.push(new ArrayBuffer(1e6)); } catch (e) { return new Response(a.length + ' ' + e); } }`,
+    '/strings.mjs': `export default () => { let s = ''; for (;;) s += 'x'.repeat(1e6); }`,
+    '/fits.mjs': `export default () => { const a = []; for (let i = 0; i < 28; i++) a.push(new ArrayBuffer(1e6)); return new Response(String(a.length)); }`,
+    '/ok.mjs': `export default () => new Response('ok')`,
+  };
+  const p = await pool(t, modules, { workers: 2, log: e => { events.push(e); } });
+  const run = (source: string) => p.execute(route(source), payload(), context(), undefined);
+  // A guest within its heap is unaffected, repeatedly on the same workers.
+  for (let i = 0; i < 3; i++) assert.deepEqual((await Promise.all([run('/fits.mjs'), run('/fits.mjs')])).map(body), ['28','28']);
+  assert.equal(p.restarts.size, 0);
+  const baseline = process.memoryUsage().rss;
+  for (const hog of ['/hog.mjs', '/strings.mjs']) {
+    await until(() => p.healthy);
+    const started = Date.now();
+    const results = await Promise.allSettled([run(hog), run(hog)]);
+    assert.deepEqual(results.map(r => r.status === 'rejected' ? status(r.reason) : r.status), [502, 502]);
+    assert.ok(Date.now() - started < 4000, 'the heap bound, not the deadline, stops the guest');
+    const grown = process.memoryUsage().rss - baseline;
+    assert.ok(grown < 256 * 1024 * 1024, `rss grew ${Math.round(grown / 1048576)} MiB`);
+  }
+  await until(() => p.healthy);
+  assert.ok(events.some(e => e['event'] === 'function_worker' && e['status'] === 'restarting'));
+  assert.deepEqual((await Promise.all([run('/ok.mjs'), run('/fits.mjs')])).map(body), ['ok','28']);
+});
