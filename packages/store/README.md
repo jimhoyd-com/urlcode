@@ -5,6 +5,12 @@ Operator-installed data store extension for URLCode. Declare collections in
 `extension: store`, and the extension serves a bounded JSON CRUD API backed by
 one operator-owned SQLite database. No handler code.
 
+It is the bundled default for declared data, not a requirement: an
+application may keep its data in any database it chooses from a trusted
+function route or an independent extension instead
+([owner choice][extensions-owner-choice]). The SQLite file, its lock and
+backups below are this package's properties.
+
 ## Record schema
 
 A collection's `schema` is a JSON Schema 2020-12 object schema in the same
@@ -461,6 +467,7 @@ version it describes; `npm run release:bump` moves them and scripts/check-local-
 [store-edit-and-delete-states]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#edit-and-delete-states
 [store-a-directory-by-a-unique-handle]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#a-directory-by-a-unique-handle
 [extensions-artifacts]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#artifacts
+[extensions-owner-choice]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#native-independent-integration-or-bundled-default
 <!-- urlcode-current-version:end -->
 
 <!-- extension-reference:start -->
