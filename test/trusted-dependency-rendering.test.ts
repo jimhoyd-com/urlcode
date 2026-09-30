@@ -22,16 +22,16 @@ test('HTML report shows opaque dependencies as attention and escapes inventory t
   const report=await buildProjectReport(root);
   assert.ok(report.attention.some(item=>item.message.includes('dependency inventory is incomplete')));
   // The renderer must escape every metadata string, including future collector fields.
-  report.review.trustedDependencies.opaque.push({source:'<script>secret</script>',reason:'<img onerror=alert(1)>'});
+  report.review.trustedDependencies.opaque.push({source:'<SCRIPT>secret</SCRIPT>',reason:'<img onerror=alert(1)>'});
   report.review.trustedDependencies.packageDeclarations.push({name:'<pkg>',lockfile:'<lock>',version:'<version>',integrity:'<integrity>'});
   const html=renderProjectReport(report);
   assert.match(html,/Static import inventory: incomplete/);
   assert.match(html,/Opaque dependencies/);
   assert.match(html,/package-implementation-not-inventoried/);
   assert.match(html,/does not prove full runtime dependency coverage/);
-  assert.match(html,/&lt;script&gt;secret&lt;\/script&gt;/);
+  assert.match(html,/&lt;SCRIPT&gt;secret&lt;\/SCRIPT&gt;/);
   assert.match(html,/&lt;lock&gt;/);
-  assert.doesNotMatch(html,/<script>|<img |Nothing needs attention/);
+  assert.doesNotMatch(html,/<(?:script|img)\b|Nothing needs attention/i);
 });
 
 test('HTML limits complete claim to static inventory',async t=>{
