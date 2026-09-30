@@ -143,7 +143,7 @@ test('racing overlapping bookings: exactly one commits, in one process and acros
   assert.equal(local.filter(answer => answer.status === 201).length, 1);
   assert.ok(local.every(answer => answer.status === 201 || code(answer) === 'interval_conflict'));
   await store.close();
-  // Four threads, each its own connection as a second process would have, book overlapping slots at once.
+  // Four connections of the serving process book overlapping slots at once.
   const racers = Array.from({ length: 4 }, (_, worker) => Array.from({ length: 3 }, (_, index) => ({ method: 'POST', path: '/api/desks', init: { who: `w${worker}`, body: { desk: 'cold', start: 10 * index + worker, end: 10 * index + worker + 15 } } })));
   const answers = (await race(t, store.database, config, store.activation, racers)).flat();
   assert.ok(answers.every(answer => answer.status === 201 || answer.status === 409), JSON.stringify(answers.map(answer => answer.status)));

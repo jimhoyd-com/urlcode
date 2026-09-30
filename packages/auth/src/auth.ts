@@ -9,9 +9,9 @@ import { betterAuth } from 'better-auth';
 import type { BetterAuthOptions } from 'better-auth';
 import { getMigrations } from 'better-auth/db/migration';
 import { mkdir } from 'node:fs/promises';
-import { clientKey, ExtensionHttpError, isSameOriginRequest, joinHostLease, jsonResponse, principalIdPattern, readBody, refuseNetworkFilesystem } from '@jimhoyd/urlcode/extensions';
+import { clientKey, ExtensionHttpError, holdServerLock, isSameOriginRequest, jsonResponse, principalIdPattern, readBody, refuseNetworkFilesystem } from '@jimhoyd/urlcode/extensions';
 import { maxRequestBodyBytes } from '@jimhoyd/urlcode/body-schema';
-import type { ExtensionAuthoringContract, ExtensionInstance, ExtensionRequest, HandlerResult, HostLease, HostProbe, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
+import type { ExtensionAuthoringContract, ExtensionInstance, ExtensionRequest, HandlerResult, HostProbe, RuntimeExtension, ServerLock } from '@jimhoyd/urlcode/extensions';
 
 /** The Better Auth paths a mount serves by default: sign-in, sign-out and the session endpoints. */
 export const defaultPaths: readonly string[] = Object.freeze(['/sign-in/email', '/sign-out', '/get-session', '/list-sessions', '/revoke-session', '/revoke-sessions', '/revoke-other-sessions', '/change-password', '/ok']);
@@ -84,11 +84,10 @@ class AuthDatabase extends DatabaseSync {
 }
 
 /**
- * Opens Better Auth's SQLite file for one process of several: creates it 0600 (its directory 0700) when absent and
- * refuses anything but a private regular file with one link, as the store and audit do; then WAL with FULL
- * synchronous commits and a busy timeout, so a serving process and `urlcode-auth create-user` (or a second serving
- * process) wait for each other's commits instead of failing with "database is locked". SQLite creates the `-wal` and
- * `-shm` files with the database file's permissions.
+ * Opens Better Auth's SQLite file: creates it 0600 (its directory 0700) when absent and refuses anything but a private
+ * regular file with one link, as the store and audit do; then WAL with FULL synchronous commits and a busy timeout, so
+ * the serving process and `urlcode-auth create-user` wait for each other's commits instead of failing with "database
+ * is locked". SQLite creates the `-wal` and `-shm` files with the database file's permissions.
  */
 export function openAuthDatabase(path: string): DatabaseSync {
   const requested = resolve(path);
@@ -107,8 +106,8 @@ export function openAuthDatabase(path: string): DatabaseSync {
 
 /**
  * Creates the auth database's directory (0700) when absent and refuses it on a network filesystem by its Linux `statfs`
- * type, the list the store and audit refuse (core's `refuseNetworkFilesystem`; skipped on macOS and Windows). Serving
- * and the operator commands run it before they open the database. `probe` is a test seam.
+ * type, the list the store and audit refuse (core's `refuseNetworkFilesystem`; skipped on macOS and Windows). The
+ * operator commands run it before they open the database; serving runs it through `holdServerLock`.
  */
 export async function refuseRemoteAuthDatabase(path: string, probe?: Partial<HostProbe>): Promise<void> {
   const directory = dirname(resolve(path));
@@ -150,8 +149,8 @@ export function betterAuthOptions(settings: AuthSettings, origin: string, basePa
     emailAndPassword: { ...extra.emailAndPassword, enabled: true, disableSignUp: !(bootstrap || settings.signUp === true) },
     // Better Auth enables its limiter only under NODE_ENV=production, and without an address every client shares one
     // bucket; here it is always on and keyed by the address the mount supplies. Its counters live in the auth database
-    // (the `rateLimit` table `urlcode-auth migrate` creates), so every process serving this database shares one limit;
-    // Better Auth's default keeps them in memory, per process.
+    // (the `rateLimit` table `urlcode-auth migrate` creates), so a restart does not reset the limit;
+    // Better Auth's default keeps them in memory.
     rateLimit: rateLimitFor({ window: 60, max: 100, customRules: { '/sign-in/email': { window: 60, max: 10 }, [signUpPath]: { window: 60, max: 5 } }, storage: 'database', ...extra.rateLimit, enabled: true }, settings.hermetic === true),
     advanced: { ...extra.advanced, ipAddress: { ...extra.advanced?.ipAddress, ipAddressHeaders: [clientAddressHeader] } },
     telemetry: { enabled: false },
@@ -217,22 +216,10 @@ function databaseOf(options: BetterAuthOptions): DatabaseSync | undefined {
 }
 
 /**
- * Checks the host lease inside every Better Auth write (#1010). Better Auth's statements cannot be wrapped in a
- * transaction of ours, and many run outside any transaction, so a TEMP trigger (this connection's only) before every
- * INSERT, UPDATE and DELETE on each of its tables calls `lease.verify()`. A trigger runs under its statement's write
- * lock, so the lease rows it reads cannot change before that statement (or the transaction around it) commits, and a
- * refusal fails the statement, which Better Auth answers with its 500 (the mount's 503). The lease's own table has no
- * trigger. Tables created after activation (a migration while serving) are not covered.
+ * The URLCode registration for one Better Auth instance, pinned to the reviewed project revision. Every activation
+ * holds the auth database's server lock (core's `holdServerLock`) until it closes, taken before anything opens the
+ * database: a second serving process is refused, and a dev reload's two activations in one process share the lock.
  */
-function guardWrites(database: DatabaseSync, lease: HostLease): void {
-  database.function('urlcode_auth_lease', () => { lease.verify(); return null; });
-  const tables = database.prepare("SELECT name FROM main.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' AND name <> 'auth_servers' ORDER BY name").all() as { name: string }[];
-  tables.forEach(({ name }, index) => {
-    for (const event of ['INSERT', 'UPDATE', 'DELETE']) database.exec(`CREATE TEMP TRIGGER urlcode_auth_lease_${index}_${event.toLowerCase()} BEFORE ${event} ON main."${name.replaceAll('"', '""')}" BEGIN SELECT urlcode_auth_lease(); END`);
-  });
-}
-
-/** The URLCode registration for one Better Auth instance, pinned to the reviewed project revision. */
 export function createAuthExtension(settings: AuthSettings & { projectSha256: string; /** A test seam; never set by an operator. */ probe?: Partial<HostProbe> | undefined }): RuntimeExtension {
   if (!/^[a-f0-9]{64}$/.test(settings.projectSha256)) throw new Error('auth extension requires an explicit operator revision pin');
   const served = new Set([...defaultPaths, ...(settings.signUp === true ? [signUpPath] : []), ...(settings.paths ?? [])]);
@@ -246,22 +233,18 @@ export function createAuthExtension(settings: AuthSettings & { projectSha256: st
     async activate(_config, activation): Promise<ExtensionInstance> {
       if (activation.mounts.length !== 1) throw new Error(`auth serves exactly one mount (a route with extension: auth); found ${activation.mounts.length}`);
       const [mount] = activation.mounts as [string];
-      await refuseRemoteAuthDatabase(settings.database, settings.probe);
-      const options = betterAuthOptions(settings, activation.origin, mount);
-      const database = databaseOf(options);
-      let lease: HostLease | undefined;
+      const lock: ServerLock = await holdServerLock(settings.database, 'auth', settings.probe);
+      let database: DatabaseSync | undefined;
       let auth: ReturnType<typeof betterAuth>;
       try {
+        const options = betterAuthOptions(settings, activation.origin, mount);
+        database = databaseOf(options);
+        // The multi-process release's host lease table; nothing reads it any more.
+        database?.exec('DROP TABLE IF EXISTS auth_servers');
         // A hermetic run starts from an empty database, so it creates the tables an operator creates with migrate.
         if (settings.hermetic === true) await migrate(options);
         const pending = await pendingMigrations(options);
         if (pending.length) throw new Error(`auth: Better Auth's tables are not initialized (${pending.join(', ')}); run npx urlcode-auth migrate`);
-        // The host lease (#941): `auth_servers` in the auth database, one row per activation. A live peer serving this
-        // database from another host refuses activation; processes on one host do not refuse each other.
-        if (database) {
-          lease = await joinHostLease(database, { table: 'auth_servers', what: 'auth', probe: settings.probe });
-          guardWrites(database, lease);
-        }
         auth = betterAuth(options);
         // Better Auth starts a schema check on construction without awaiting it (#1013). Awaited here, it has finished
         // before a short run (validate) closes the connection, which it would otherwise report as a failed check, and
@@ -269,18 +252,13 @@ export function createAuthExtension(settings: AuthSettings & { projectSha256: st
         await (await auth.$context).checkSchema?.();
         if (activation.seed !== undefined) await seedUsers(auth, activation.seed as AuthSeed);
       } catch (error) {
-        // Release the lease before its connection closes (#979): its row would block another host until it expired, and
-        // its heartbeat would keep firing against the closed connection.
-        lease?.close(); database?.close();
+        database?.close(); lock.release();
         throw error;
       }
       // The storage failure answer: Better Auth's own 500 or a throw carries no detail worth passing on, and nothing it
       // would set (a session cookie, a cleared one) is sent.
       const failed = (): HandlerResult => jsonResponse(503, { error: 'auth_unavailable' }, [['retry-after', '1']]);
-      // A process that lost the auth database's host lease to another host serves nothing until it holds it again (#978).
-      // Checked once per request before Better Auth runs (a quick 503, and the rejoin heartbeat); every Better Auth write
-      // is also verified under its own write lock (`guardWrites`), so a stall after this check writes nothing.
-      const serving = (): boolean => lease === undefined || lease.renew();
+      let closed = false;
       /**
        * Whether the session the request's cookie names is gone, read from the database (never the cookie cache) without
        * refreshing it: `true` when there is none, `false` when it is still valid, `undefined` when storage failed.
@@ -311,7 +289,6 @@ export function createAuthExtension(settings: AuthSettings & { projectSha256: st
               } catch { throw new ExtensionHttpError(400, 'invalid_encoding'); }
             }
           } catch (error) { if (error instanceof ExtensionHttpError) return jsonResponse(error.status, { error: error.code }); throw error; }
-          if (!serving()) return failed();
           const headers = new Headers(request.headers);
           headers.delete(clientAddressHeader);
           const address = clientKey(request.client ?? undefined);
@@ -337,7 +314,6 @@ export function createAuthExtension(settings: AuthSettings & { projectSha256: st
         // Identity only: what the signed-in user may do is the application's decision.
         async authorize(_requirement, request: ExtensionRequest): Promise<HandlerResult | undefined> {
           if (unsafe.has(request.method) && !isSameOriginRequest(request, activation, { whenAbsent: 'refuse' })) return jsonResponse(403, { error: 'cross_origin_refused' });
-          if (!serving()) return failed();
           let session;
           try { session = await auth.api.getSession({ headers: request.headers }); }
           catch (error) {
@@ -355,7 +331,7 @@ export function createAuthExtension(settings: AuthSettings & { projectSha256: st
           if (capability !== 'identity' || !invocation.principal) return undefined;
           return Object.freeze({ userId: invocation.principal.id });
         },
-        close() { lease?.close(); database?.close(); },
+        close() { if (!closed) { closed = true; database?.close(); lock.release(); } },
       };
     },
   };

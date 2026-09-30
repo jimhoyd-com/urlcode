@@ -12,11 +12,10 @@
   on and reads the client address only from a header the mount overwrites with
   the address URLCode admitted (see `--trusted-proxies`); the `betterAuth`
   option cannot turn it off or change that header. By default it keeps its
-  counters in the auth database's `rateLimit` table, so every process serving
-  that database on one host shares one limit; each check is one atomic SQL
-  update. The operator's `betterAuth.rateLimit` can replace its `storage`
-  (Better Auth's per-process `memory`, which gives each process its own
-  limit), `window`, `max` and `customRules` (which replaces the default
+  counters in the auth database's `rateLimit` table, so a restart does not
+  reset them; each check is one atomic SQL update. The operator's
+  `betterAuth.rateLimit` can replace its `storage` (Better Auth's in-memory
+  `memory`, which a restart resets), `window`, `max` and `customRules` (which replaces the default
   sign-in and sign-up rules rather than adding to them).
 - **Only a hermetic run raises the limits.** An instance activated for a
   hermetic run (`HostContext.hermetic`, set by the operator host for `test`,
@@ -50,15 +49,10 @@
   `503`. A `401` from the session endpoints (`/list-sessions`, the revoke
   endpoints, `/change-password`) is checked the same way, because Better Auth
   reads a storage failure there as "no session".
-- **One host serves the auth database.** A process that finds another host
-  holding the auth database's host lease answers `503 auth_unavailable` to
-  every auth request until that host is gone. The check runs once per request,
-  before Better Auth, and again inside every Better Auth insert, update and
-  delete (a temporary trigger on each of its tables, on auth's connection
-  only), under that statement's write lock, so a request that stalls after
-  the first check writes nothing once another host took over (#1010). The lease rows
-  are ordinary rows in `auth.sqlite`: they detect a misconfiguration, not an
-  adversary who can write the file.
+- **One process serves the auth database.** Each activation holds an OS lock
+  on `auth.sqlite.server-lock`, and a second serving process is refused
+  before it opens the database. The lock detects a misconfiguration, not an
+  adversary who can write the files.
 - **Route code never sees the cookie.** The route's own code never receives
   the session cookie or `Authorization` (core strips them), only the user id,
   which core stamps as the request principal. A client-supplied
@@ -73,8 +67,8 @@
   `Secure` cookies. Accounts are created with `urlcode-auth create-user` unless
   `signUp` is enabled.
 - **Not provided.** No brute-force lockout beyond the rate limiter, no account
-  recovery, no audit log of sign-ins and no multi-process session revocation
-  broadcast beyond the shared database.
+  recovery and no audit log of sign-ins. One process serves the auth database;
+  a second serving process is refused.
 
 Report vulnerabilities through the repository's private reporting path; see the
 root [security policy](https://github.com/jimhoyd-com/urlcode/security/policy).

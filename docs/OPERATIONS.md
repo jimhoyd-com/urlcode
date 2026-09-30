@@ -455,37 +455,21 @@ application commit, dependency locks and image digest in your deployment system.
 5. If checks or observed behavior fail, route traffic back to the retained previous
    instance/image and its compatible secret bindings.
 
-With the store extension the candidate and the previous instance share
-`data/store.sqlite` on the same host, which is supported
-([several serving processes](STORE.md#several-serving-processes-on-one-host)).
-This procedure relies on the store's declaration fence: once the candidate has
-activated, the previous instance's writes to every collection whose
-declaration changed (and to every collection, when the candidate's release
-migrated the store schema) answer `503 storage_unavailable` and write nothing,
-while its reads keep working. Switch traffic promptly after the candidate
-activates. Rolling back to the previous instance therefore means restarting
-it (its activation records its declaration again), not only routing traffic
-back to it; a candidate that migrated the schema can only be rolled back by
-restoring a backup taken before it started. The two instances must run on one
-host with the database on local disk: the store, auth and audit each refuse a
-live peer on another host and a database on a network filesystem.
-
-The host lease behind that refusal judges another host's row by whether its
-heartbeat advances, never by comparing clocks
-([store](STORE.md#several-serving-processes-on-one-host)). Two consequences
-for an operator:
-
-- A server that finds another host's lease row at startup waits up to the
-  lease's time to live watching it, and logs one line saying so. That row can come from a
-  host that crashed, or from this machine before a reboot, since a reboot
-  changes the Linux boot id. The row is deleted if it stays silent, and the
-  server starts. No manual clean-up is needed.
-- A serving process that finds another host serving the same database logs
-  `host lease is lost` naming that host. It then answers `503` to every write
-  (store `storage_unavailable`, every auth request `auth_unavailable`, and
-  audit stores nothing) until that host's row is gone. Treat that line as a
-  misconfiguration alarm: stop one of the two hosts. The survivor recovers by
-  itself.
+**With the store, auth or audit extension, one process serves the site's
+data.** Each SQLite database is served by one process: a candidate started on
+the same `data/` directory while the previous instance serves it is refused
+at startup ("Another process is already serving this store database"), before
+it writes anything ([store](STORE.md#one-serving-process-per-database)). For
+such a site, steps 3 and 4 become: check the candidate on a copy of the data
+(`urlcode-store backup` into a scratch directory, or `urlcode validate
+--local-review`, which uses a fresh one), then stop the previous instance and
+start the candidate on the real `data/`. Requests fail for that restart;
+the lock is released the moment the previous process exits, however it
+exits, so there is nothing to wait for. Rolling back is the same swap in
+reverse. A candidate whose release migrated the store schema can only be
+rolled back by restoring a backup taken before it started. Several servers on
+one database need a real database server, which URLCode does not provide. The
+database must be on local disk: a network filesystem is refused on Linux.
 
 This is an operator procedure, not an implemented deployment control plane.
 Rollback cannot undo a function's external side effects or migrate an app's

@@ -7,8 +7,8 @@ import { lstat, mkdir, open, realpath } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { SQLInputValue, StatementSync } from 'node:sqlite';
-import { refuseNetworkFilesystem } from './topology.ts';
-import type { HostProbe } from './topology.ts';
+import { refuseNetworkFilesystem } from '@jimhoyd/urlcode/extensions';
+import type { HostProbe } from '@jimhoyd/urlcode/extensions';
 
 /** PRAGMA application_id of a store database: "USTR". */
 export const STORE_APPLICATION_ID = 0x55535452;
@@ -63,6 +63,12 @@ const MIGRATIONS: readonly string[] = [
    INSERT INTO store_audit_drain_next(id, drained_at) SELECT id, drained_at FROM store_audit_drain;
    DROP TABLE store_audit_drain;
    ALTER TABLE store_audit_drain_next RENAME TO store_audit_drain;`,
+  // 5 -> 6. One serving process per database: an OS lock on `<database>.server-lock` (core's `holdServerLock`)
+  // replaces the host lease, and that one process is the only audit drainer. `store_servers` and the drain lease go;
+  // the drain marker keeps `drained_at`. `store_declarations` stays: the fence still guards a reload and the operator commands.
+  `DROP TABLE store_servers;
+   ALTER TABLE store_audit_drain DROP COLUMN holder;
+   ALTER TABLE store_audit_drain DROP COLUMN lease_until;`,
 ];
 export const STORE_SCHEMA_VERSION = MIGRATIONS.length;
 /**
@@ -111,12 +117,9 @@ export class StoreDatabase {
   private readonly statements = new Map<string, StatementSync>();
   private closed = false;
   private depth = 0;
-  /**
-   * Run first inside every write transaction (after `BEGIN IMMEDIATE`, under the write lock) when set: a serving process
-   * sets it to its host lease's `verify` (#978), so a process that lost the lease writes nothing. Its throw rolls back.
-   */
-  writeGuard: (() => void) | undefined;
-  constructor(db: DatabaseSync) { this.db = db; }
+  /** The database file (its directory's real path), whose server lock an operator command looks at. */
+  readonly path: string;
+  constructor(db: DatabaseSync, path: string) { this.db = db; this.path = path; }
   get open(): boolean { return !this.closed; }
   private statement(sql: string): StatementSync {
     if (this.closed) throw new Error('The store database is closed');
@@ -131,17 +134,13 @@ export class StoreDatabase {
    * Runs `work` inside BEGIN IMMEDIATE ... COMMIT: the write lock is taken before the first read, so everything
    * `work` reads is still true when it commits. `DEFERRED` is for reads: one consistent snapshot, no write lock. Any throw rolls the whole transaction back and is rethrown unchanged.
    * `work` is synchronous, so no other request of this process can run between its statements. Not reentrant.
-   * `guarded: false` skips `writeGuard` (the host lease's own heartbeat).
    */
-  transaction<T>(work: () => T, mode: 'IMMEDIATE' | 'DEFERRED' = 'IMMEDIATE', guarded = true): T {
+  transaction<T>(work: () => T, mode: 'IMMEDIATE' | 'DEFERRED' = 'IMMEDIATE'): T {
     if (this.closed) throw new Error('The store database is closed');
     if (this.depth) throw new Error('Store transactions do not nest');
     this.db.exec(`BEGIN ${mode}`);
     this.depth++;
-    try {
-      if (mode === 'IMMEDIATE' && guarded) this.writeGuard?.();
-      const result = work(); this.db.exec('COMMIT'); return result;
-    }
+    try { const result = work(); this.db.exec('COMMIT'); return result; }
     catch (error) { try { this.db.exec('ROLLBACK'); } catch { /* The original error wins. */ } throw error; }
     finally { this.depth--; }
   }
@@ -165,7 +164,7 @@ function versionOf(db: DatabaseSync): number {
  * BEGIN IMMEDIATE transaction together with the new `user_version`, so a crash mid-upgrade leaves the previous version.
  * Opening an up-to-date database changes nothing.
  */
-export async function openStoreDatabase(path: string, options: { create?: boolean; durability?: StoreDurability; probe?: Partial<HostProbe> } = {}): Promise<StoreDatabase> {
+export async function openStoreDatabase(path: string, options: { create?: boolean; durability?: StoreDurability; probe?: Partial<HostProbe> | undefined } = {}): Promise<StoreDatabase> {
   const synchronous = storeDurability(options.durability).toUpperCase();
   if (!patched(process.versions.sqlite || '')) throw new Error(`The store requires a patched SQLite (3.44.6, 3.50.7, 3.51.3 or newer); this Node has ${process.versions.sqlite || 'none'}`);
   const file = await privateFile(path, options.create !== false);
@@ -189,7 +188,7 @@ export async function openStoreDatabase(path: string, options: { create?: boolea
       version = versionOf(db);
     }
   } catch (error) { db.close(); throw error; }
-  return new StoreDatabase(db);
+  return new StoreDatabase(db, file);
 }
 
 /** Records that the audit drain kept up with the outbox at `now` (epoch ms): after an ack, or a peek that found it empty. */
@@ -197,41 +196,9 @@ export function markAuditDrained(db: StoreDatabase, now: number): void {
   db.run('INSERT INTO store_audit_drain(id, drained_at) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET drained_at = max(coalesce(drained_at, 0), excluded.drained_at)', now);
 }
 /**
- * How long the audit drain's lease lasts (#927). Its holder renews it once less than half is left, which its 1 second
- * poll does long before expiry; a peer takes the drain over only after the lease expired (or was released on close).
- */
-export const AUDIT_DRAIN_LEASE_MS = 10_000;
-/**
- * Whether `holder` (a serving process's lease instance) may drain the outbox now: it holds an unexpired lease, or it
- * takes one because nobody else holds an unexpired one. A renewal or take-over is one write transaction; a holder with
- * more than half its lease left and a process that sees another's unexpired lease only read.
- */
-export function holdsAuditDrain(db: StoreDatabase, holder: string, now: number): boolean {
-  type Lease = { holder: string | null; lease_until: number };
-  const other = (lease: Lease | undefined): boolean => lease !== undefined && lease.holder !== null && lease.holder !== holder && lease.lease_until > now;
-  const seen = db.get<Lease>('SELECT holder, lease_until FROM store_audit_drain WHERE id = 1');
-  if (seen?.holder === holder && seen.lease_until - now > AUDIT_DRAIN_LEASE_MS / 2) return true;
-  if (other(seen)) return false;
-  return db.transaction(() => {
-    // Re-read under the write lock: of two processes whose leases both look expired, one takes it.
-    if (other(db.get<Lease>('SELECT holder, lease_until FROM store_audit_drain WHERE id = 1'))) return false;
-    db.run('INSERT INTO store_audit_drain(id, holder, lease_until) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET holder = excluded.holder, lease_until = excluded.lease_until', holder, now + AUDIT_DRAIN_LEASE_MS);
-    return true;
-  });
-}
-/** Whether `holder` still holds the drain lease, read inside the caller's transaction (an ack deletes only then). */
-export function auditDrainHolder(db: StoreDatabase, holder: string): boolean {
-  return db.get<{ holder: string | null }>('SELECT holder FROM store_audit_drain WHERE id = 1')?.holder === holder;
-}
-/** Gives the drain lease up (a closing process), so a peer takes over at its next poll instead of after expiry. */
-export function releaseAuditDrain(db: StoreDatabase, holder: string): void {
-  db.run('UPDATE store_audit_drain SET lease_until = 0 WHERE id = 1 AND holder = ?', holder);
-}
-
-/**
  * The declaration fence (#927). An activation records, per collection, the fingerprint of the declaration it serves
- * and the schema version it was built for, replacing whatever an earlier activation (in this process or another)
- * recorded: the newest activation wins. `declarationOf` is the one indexed read a write makes under its write lock to
+ * and the schema version it was built for, replacing whatever an earlier activation recorded (the one a dev reload
+ * retires, or the previous server's): the newest activation wins. `declarationOf` is the one indexed read a write makes under its write lock to
  * compare its own with them and with the file's `user_version`. `check` runs first, under the same write lock: what it
  * reads cannot change before the declarations it guards are recorded, since every later write through another
  * declaration is refused by the fence. A throw from it records nothing.
@@ -247,10 +214,7 @@ export function recordDeclarations(db: StoreDatabase, fingerprints: ReadonlyMap<
 export function declarationOf(db: StoreDatabase, collection: string): { fingerprint: string; schema_version: number; version: number } | undefined {
   return db.get('SELECT fingerprint, schema_version, (SELECT user_version FROM pragma_user_version) AS version FROM store_declarations WHERE collection = ?', collection);
 }
-/** Whether any serving process holds an unexpired lease on the database (`store_servers`). */
-export function liveServer(db: StoreDatabase, now: number): boolean {
-  return db.get('SELECT 1 AS found FROM store_servers WHERE expires_at > ? LIMIT 1', now) !== undefined;
-}
+
 /** How old the last drain may be before an operator command warns that its events are not being delivered. */
 export const AUDIT_DRAIN_STALE_MS = 60_000;
 /**

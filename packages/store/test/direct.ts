@@ -58,22 +58,39 @@ export async function direct(t: TestContext, config: Record<string, unknown>, op
 }
 
 /**
- * Races request lists from several threads, each with its own store activation over `database` (so its own SQLite
- * connection, as a second process would have): every racer activates first, then all are released at once. Returns
- * each racer's answers in order. Workers are terminated by the test's cleanup before the directory goes.
+ * Races request lists, each racer with its own store registration over `database` (its own SQLite connection; they
+ * share this process's server lock, since one process serves a database): every racer activates first, then all run
+ * at once, their requests interleaved on the event loop. Returns each racer's answers in order. Every registration is
+ * closed by the test's cleanup before the directory goes.
  */
 export async function race(t: TestContext, database: string, config: Record<string, unknown>, activation: ExtensionActivation, racers: { method: string; path: string; init?: Call }[][]): Promise<{ status: number; replayed: string | null; body: Record<string, unknown> | undefined }[][]> {
-  const { Worker } = await import('node:worker_threads');
-  const gate = new SharedArrayBuffer(8), flag = new Int32Array(gate);
-  let failed: unknown;
-  const workers = racers.map(requests => new Worker(new URL('./race-worker.ts', import.meta.url), { workerData: { database, config, activation, requests: requests.map(request => ({ ...request, init: request.init ?? {} })), gate }, execArgv: ['--conditions=development'] }));
-  cleanup(t, () => Promise.all(workers.map(worker => worker.terminate())));
-  const answers = workers.map(worker => new Promise<{ status: number; replayed: string | null; body: Record<string, unknown> | undefined }[]>((resolve, reject) => {
-    worker.once('message', resolve);
-    worker.once('error', error => { failed = error; reject(error); });
+  const opened: { store: ReturnType<typeof createStore>; instance: Awaited<ReturnType<ReturnType<typeof createStore>['registration']['activate']>> }[] = [];
+  for (let index = 0; index < racers.length; index++) {
+    const store = createStore({ database, projectSha256: activation.projectSha256 });
+    const instance = await store.registration.activate(config, activation);
+    cleanup(t, async () => { await instance.close?.(); await store.close(); });
+    opened.push({ store, instance });
+  }
+  return Promise.all(racers.map(async (requests, index) => {
+    const { store, instance } = opened[index]!;
+    const results: { status: number; replayed: string | null; body: Record<string, unknown> | undefined }[] = [];
+    for (const request of requests) {
+      await new Promise(resolve => setImmediate(resolve));
+      const init = request.init ?? {};
+      if (request.method === 'TRANSACTION') {
+        // A host transaction (#902) instead of a request: `path` names the collection, the body the record and the key.
+        const { values, key, fingerprint } = init.body as { values: Record<string, string | number | boolean>; key: string; fingerprint?: string };
+        const principal = init.who ? { id: init.who } : null;
+        let ran = false;
+        try {
+          const id = store.exports.transaction(tx => { ran = true; return tx.records(request.path).create(principal, values).record.id; }, { idempotencyKey: key, ...(fingerprint === undefined ? {} : { fingerprint }) });
+          results.push({ status: 200, replayed: ran ? null : 'true', body: { id } });
+        } catch (error) { results.push({ status: (error as { status?: number }).status ?? 500, replayed: null, body: { error: { code: (error as { code?: string }).code } } }); }
+        continue;
+      }
+      const result = answer(await instance.handle!(requestFor(activation.mounts, request.method, request.path, init)));
+      results.push({ status: result.status, replayed: result.header('idempotency-replayed') ?? null, body: result.body });
+    }
+    return results;
   }));
-  for (const pending of answers) pending.catch(() => undefined);
-  while (Atomics.load(flag, 1) < workers.length) { if (failed) throw failed; await new Promise(resolve => setTimeout(resolve, 5)); }
-  Atomics.store(flag, 0, 1); Atomics.notify(flag, 0);
-  return Promise.all(answers);
 }

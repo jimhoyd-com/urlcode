@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+**Breaking: one serving process per database.** The first activation takes an exclusive OS-held lock on `audit.sqlite.server-lock` (core's `holdServerLock`), held until the audit host closes, and a second serving process is refused with `Another process is already serving this audit database`; the operating system releases the lock when the process exits or is killed. This replaces the host lease (#941, #978, #1010): `audit_servers` (dropped when the database opens), its heartbeat and the check inside each ingest are gone, and `AuditStore.lease()` is removed. `urlcode-audit list`, `backup` and `restore` never take the lock. The network filesystem refusal stays.
+
 `urlcode-audit` input is decoded as strict UTF-8 and refuses a string or key holding an unpaired UTF-16 surrogate escape (`"\ud800"` alone), exiting 1 (#1021). Neither could be stored, but a `database`, `backup` or `destination` path holding one named a different file, with U+FFFD in its name.
 
 The host lease's write check (`verify()`, core's `joinHostLease`) reads the lease table under the write lock on every write and no longer skips that read while the process's own clock says its last heartbeat is under 10 s old (#1010). A suspended VM's monotonic clock stops with it, so a holder paused just after a heartbeat could resume after another host took over and keep writing until its next heartbeat. The read costs about 2 µs per write.

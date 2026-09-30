@@ -34,7 +34,7 @@ up.
 `data/auth.sqlite` is created `0600` and must stay a private regular file. It
 runs in WAL mode with `synchronous=FULL`, so while any process has it open,
 recent commits are in `data/auth.sqlite-wal` (with `data/auth.sqlite-shm`
-beside it). To back it up, stop every process that serves it (the last one to
+beside it). To back it up, stop the process that serves it (the last one to
 close folds the log into `auth.sqlite`) and copy the file, or take an online
 copy with SQLite's backup API, for example `sqlite3 data/auth.sqlite ".backup
 /srv/backups/auth.sqlite"`. A plain copy of `auth.sqlite` alone while a server
@@ -170,9 +170,8 @@ auth({
 Better Auth's rate limiter on, keyed by the client address URLCode admitted,
 and telemetry off; the `betterAuth` option cannot change either. By default
 the limiter allows 10 sign-in attempts per client address a minute and counts
-in the auth database (`rateLimit.storage: 'database'`), so several server
-processes on one host serving the same `data/auth.sqlite` share one limit
-rather than each allowing 10. `betterAuth.rateLimit` can replace `storage`
+in the auth database (`rateLimit.storage: 'database'`), so a restart does
+not reset it. `betterAuth.rateLimit` can replace `storage`
 (Better Auth's per-process `memory`), `window`, `max` and `customRules`; a
 `customRules` replaces the default sign-in and sign-up rules rather than adding
 to them.
@@ -187,27 +186,20 @@ still reach the 429 past that bound. Only the operator host's hermetic flag
 raises it; nothing in `urlcode.yaml` or the environment can, and `serve` and
 `dev` always enforce the limits above.
 
-Several processes may open the database at once: a serving process,
-`urlcode-auth create-user` beside it, or more than one server behind a proxy on
-the same host and local disk. A statement that finds another process holding
-the write lock waits up to 2 seconds (blocking that process's event loop
-meanwhile) before failing, and Better Auth's transactions (sign-up, account
-creation) take the write lock when they begin, so one that reads and then
-writes cannot fail on a commit another process made in between. Network
-filesystems and several hosts are unsupported, and auth refuses both before it
-serves, with or without the store. Activation (and `urlcode-auth migrate`,
-`create-user` and `find-user`) refuses a database directory on a network
-filesystem by its Linux `statfs` type, the list the store refuses (not checked
-on macOS or Windows). Each activation also keeps a lease row in `auth_servers`
-in `auth.sqlite` and is refused while a live peer runs on another host;
-processes and containers on one host are accepted. A process that finds another
-host serving the database logs it and answers `503 auth_unavailable` to every
-auth request until that host is gone. The lease is checked once per request,
-before Better Auth runs, and again inside every Better Auth write under its
-write lock (a temporary trigger on each of its tables), so a request that
-stalls after the first check writes nothing once another host took over. How
-the lease judges a peer, and its timing, are in
-[several serving processes][store-several-processes].
+One process serves `data/auth.sqlite`. Each activation holds an OS lock on
+`auth.sqlite.server-lock`, taken before the database is opened, and a second
+serving process is refused with or without the store; the lock is released
+when the process exits or is killed, so a restart never waits. The operator
+commands (`urlcode-auth migrate`, `create-user` and `find-user`) do not take
+it and run beside the server. A statement that finds the other connection
+holding the write lock waits up to 2 seconds (blocking that process's event
+loop meanwhile) before failing, and Better Auth's transactions (sign-up,
+account creation) take the write lock when they begin, so one that reads and
+then writes cannot fail on a commit made in between. Activation and the
+operator commands refuse a database directory on a network filesystem by its
+Linux `statfs` type, the list the store refuses (not checked on macOS or
+Windows). Several servers need a real database server, which URLCode does not
+provide; see [one serving process per database][store-one-process].
 
 A storage failure answers `503 auth_unavailable`, never a false success or a
 false sign-out. Better Auth itself answers a sign-out whose session delete
@@ -270,5 +262,5 @@ Fast checks: `urlcode validate --project app`, `urlcode validate --local --proje
 [extensions-request-helpers]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#request-helpers
 [readiness-authenticated-routes]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#authenticated-routes-auth-true
 [readiness-seeds]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#test-data-and-seeds
-[store-several-processes]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#several-serving-processes-on-one-host
+[store-one-process]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#one-serving-process-per-database
 <!-- urlcode-current-version:end -->

@@ -303,7 +303,7 @@ export function workspaceIntegrationMatrix(event: string, paths: string[] | null
 export function gate(plan: string, results: Record<string, { result: string }>, workspaceIntegration = false, coreChecks = false, action = false, buildFidelity = false, container = false, packageFloorSmoke = false): void {
   if (!['docs', 'full'].includes(plan)) throw new Error('Missing or invalid CI plan');
   const always = ['plan', 'docs'];
-  const code = ['static', 'verify', 'checks', 'workspace-verify', 'workspace-integration', 'multiprocess', 'audit', 'action', 'build-fidelity', 'container', 'package-floor-smoke'];
+  const code = ['static', 'verify', 'checks', 'workspace-verify', 'workspace-integration', 'disk-full', 'audit', 'action', 'build-fidelity', 'container', 'package-floor-smoke'];
   for (const name of [...always, ...code]) {
     const skipped = (plan === 'docs' && code.includes(name)) ||
       (name === 'workspace-integration' && !workspaceIntegration) ||

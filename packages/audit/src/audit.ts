@@ -1,6 +1,7 @@
 // createAudit: the store, the drain loops and the runtime registration, sharing one `active` state. The extension's
 // host() calls it; tests and operator scripts may call it directly.
-import type { ExtensionAuthoringContract, ExtensionInstance, HandlerResult, HostLease, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
+import { holdServerLock } from '@jimhoyd/urlcode/extensions';
+import type { ExtensionAuthoringContract, ExtensionInstance, HandlerResult, RuntimeExtension, ServerLock } from '@jimhoyd/urlcode/extensions';
 import { AuditError } from './types.ts';
 import type { Audit, AuditExports, AuditOptions, AuditProducer } from './types.ts';
 import { MAX_BATCH, validateAuditEvent, validateAuditQuery } from './event.ts';
@@ -39,11 +40,10 @@ export async function createAudit(options: AuditOptions): Promise<Audit> {
   let activations = 0;
   const isActive = (): boolean => activations > 0;
   const store = await openAuditStore(options.database, options.onPruned, options.probe);
-  // The host lease (#941), joined by the first activation and held until close: a peer serving this database from
-  // another host refuses activation. A refused join is retried by the next activation. Once joined, every ingest checks
-  // it (store.ts), so a process that lost it to another host stores nothing until it holds it again.
-  let lease: Promise<HostLease> | undefined;
-  const joinLease = (): Promise<HostLease> => lease ??= store.lease(options.probe).catch((error: unknown) => { lease = undefined; throw error; });
+  // The database's server lock (core's `holdServerLock`), taken by the first activation and held until close: a second
+  // serving process is refused. A refused attempt is retried by the next activation.
+  let lock: Promise<ServerLock> | undefined;
+  const takeLock = (): Promise<ServerLock> => lock ??= holdServerLock(options.database, 'audit', options.probe).catch((error: unknown) => { lock = undefined; throw error; });
   const drain = createDrain({ ingest: events => { store.ingest(events, retention, now()); }, isActive, now, onDeliveryError: options.onDeliveryError });
   let closed = false;
 
@@ -76,9 +76,9 @@ export async function createAudit(options: AuditOptions): Promise<Audit> {
       if (closed) throw new Error('The audit host is closed');
       if (context.mounts.length > 0) throw new Error('audit serves no routes; remove every route with extension: audit');
       const nextRetention = config.retention === undefined ? baseRetention : retentionOf(config.retention);
-      const joined = await joinLease();
-      // Closed while joining: release the lease here too, whichever of the two ran first (#979).
-      if (closed) { joined.close(); throw new Error('The audit host is closed'); }
+      const held = await takeLock();
+      // Closed while taking it: release it here too, whichever of the two ran first (#979).
+      if (closed) { held.release(); throw new Error('The audit host is closed'); }
       // Every activation sets retention, so removing the key from urlcode.yaml returns to the host default.
       retention = nextRetention;
       activations++;
@@ -97,7 +97,7 @@ export async function createAudit(options: AuditOptions): Promise<Audit> {
       if (closed) return;
       closed = true;
       await drain.close();
-      if (lease) (await lease.catch(() => undefined))?.close();
+      if (lock) (await lock.catch(() => undefined))?.release();
       store.close();
     },
   };
