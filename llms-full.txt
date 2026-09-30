@@ -149,7 +149,12 @@ reads the verified user id from
 `context.capabilities.auth.identity.userId`
 ([request-bound capabilities](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#request-bound-capabilities)).
 Better Auth owns accounts and sessions; the application owns its business
-rules and authorization.
+rules and authorization. The
+[native-storage proof](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/native-storage/README.md) is such an
+application with no store or audit extension installed: its function routes
+call `node:sqlite` directly, behind `auth: true` through the independent
+Auth.js provider, and store declarations in its `urlcode.yaml` are refused
+rather than emulated.
 
 Stored short links are a collection declared through the `store` extension
 above (see [docs/STORE.md](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md)); core has no native `link` route.
@@ -5388,6 +5393,16 @@ token outlives sign-out until it expires). Its protected routes say
 handlers read `context.capabilities.authjs.identity`. An independent package
 may also name itself `auth` while the first-party `auth` is not installed
 ([a name is a role](#audit-log)).
+
+**Owner choice of storage.** The bundled store is a default, not a
+prerequisite. The [native-storage proof](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/native-storage/README.md)
+keeps its records with `node:sqlite`, called directly from trusted function
+routes that read `context.capabilities.authjs.identity.userId`, in the
+directory the operator grants as `URLCODE_DATA_DIR`. Neither store nor audit is
+installed. URLCode supplies the routing, the `auth: true` gate, review and the
+hermetic `urlcode test` and `audit` runs. The store's guarantees do not carry
+over, and `extensions.store` without the store extension is refused before
+serving (`Not registered by the host file: store`), not emulated.
 
 #### Request context: route env and request id
 

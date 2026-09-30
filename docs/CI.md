@@ -142,7 +142,11 @@ and by a Hono host side by side;
 and the same application with Auth.js as an independent provider package
 (`npm run test:proof:authjs`, [#841](https://github.com/jimhoyd-com/urlcode/issues/841),
 [`proofs/private-requests-authjs`](../proofs/private-requests-authjs/README.md)),
-which installs `@auth/core` from the registry the same way. A change under
+which installs `@auth/core` from the registry the same way; and the
+owner-choice storage proof (`npm run test:proof:native`,
+[#1052](https://github.com/jimhoyd-com/urlcode/issues/1052),
+[`proofs/native-storage`](../proofs/native-storage/README.md)), which
+installs the same provider with no store or audit extension. A change under
 `proofs/` or to any of these tests is high-impact and selects this job.
 
 `disk-full` runs on Linux/Node 24 in every full-lane run, extension-only

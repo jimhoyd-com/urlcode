@@ -97,7 +97,12 @@ reads the verified user id from
 `context.capabilities.auth.identity.userId`
 ([request-bound capabilities](EXTENSIONS.md#request-bound-capabilities)).
 Better Auth owns accounts and sessions; the application owns its business
-rules and authorization.
+rules and authorization. The
+[native-storage proof](../proofs/native-storage/README.md) is such an
+application with no store or audit extension installed: its function routes
+call `node:sqlite` directly, behind `auth: true` through the independent
+Auth.js provider, and store declarations in its `urlcode.yaml` are refused
+rather than emulated.
 
 Stored short links are a collection declared through the `store` extension
 above (see [docs/STORE.md](STORE.md)); core has no native `link` route.
