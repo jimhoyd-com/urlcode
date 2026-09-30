@@ -10,7 +10,8 @@
 // exports or bin name a file that is not there is refused before anything is packed (#960).
 //
 // The core tarball always carries the addons.json written beside it, never the build's development manifest with its
-// `file:` links into this checkout (#1002). Core is packed from a staged copy, so the checkout's dist/ is not touched.
+// `file:` links into this checkout (#1002). Every package is packed from a staged copy with its published package.json
+// (no `development` export conditions, #1056), so the checkout is not touched.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { access, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -31,7 +32,7 @@ const targets = (value: unknown): string[] => typeof value === 'string' ? [value
 
 /** The files a package's `exports` and `bin` name that are not in its directory: a package packed so would install but not load. */
 export async function missingEntryFiles(directory: string): Promise<string[]> {
-  const pkg = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8')) as { exports?: unknown; bin?: unknown };
+  const pkg = JSON.parse(publishedManifest(await readFile(join(directory, 'package.json'), 'utf8'))) as { exports?: unknown; bin?: unknown };
   const missing: string[] = [];
   for (const target of new Set([...targets(pkg.exports), ...targets(pkg.bin)])) {
     if (target.includes('*')) continue;
@@ -64,24 +65,29 @@ export function shippedManifestProblems(text: string): string[] {
 }
 
 /**
- * Packs the package in `directory` into `out` with `manifest` as its dist/addons.json and its published package.json,
- * from a staged copy of exactly the files npm would pack, so `directory` is never written. Returns the tarball path.
+ * Packs the package in `directory` into `out` from a staged copy of exactly the files npm would pack, with its
+ * published package.json (scripts/published-manifest.mjs) and each of `replace` (a packed path to its contents), so
+ * `directory` is never written. Returns the tarball path.
  */
-export async function packWithManifest(directory: string, out: string, manifest: string): Promise<string> {
-  const problems = shippedManifestProblems(manifest);
-  if (problems.length) throw new Error(`Refusing to pack core with an unpinned add-on manifest:\n- ${problems.join('\n- ')}`);
+export async function packPublished(directory: string, out: string, replace: Record<string, string> = {}): Promise<string> {
   const [listed] = parsePackJson<{ files: { path: string }[] }>(npm(['pack', '--dry-run', '--ignore-scripts', '--json'], directory));
-  const stage = await mkdtemp(join(tmpdir(), 'urlcode-pack-core-'));
+  const stage = await mkdtemp(join(tmpdir(), 'urlcode-pack-stage-'));
   try {
     for (const { path } of listed!.files) { await mkdir(dirname(join(stage, path)), { recursive: true }); await copyFile(join(directory, path), join(stage, path)); }
     await writeFile(join(stage, 'package.json'), publishedManifest(await readFile(join(directory, 'package.json'), 'utf8')));
-    await mkdir(join(stage, 'dist'), { recursive: true });
-    await writeFile(join(stage, 'dist', 'addons.json'), manifest);
+    for (const [path, text] of Object.entries(replace)) { await mkdir(dirname(join(stage, path)), { recursive: true }); await writeFile(join(stage, path), text); }
     const [packed] = parsePackJson<{ filename: string }>(npm(['pack', '--ignore-scripts', '--json', '--pack-destination', out], stage));
-    const file = join(out, packed!.filename);
-    if (shippedManifest(file) !== manifest) throw new Error(`${file} does not carry the add-on manifest it was packed with`);
-    return file;
+    return join(out, packed!.filename);
   } finally { await rm(stage, { recursive: true, force: true }); }
+}
+
+/** Packs core (in `directory`) into `out` with `manifest` as its dist/addons.json and its published package.json. Returns the tarball path. */
+export async function packWithManifest(directory: string, out: string, manifest: string): Promise<string> {
+  const problems = shippedManifestProblems(manifest);
+  if (problems.length) throw new Error(`Refusing to pack core with an unpinned add-on manifest:\n- ${problems.join('\n- ')}`);
+  const file = await packPublished(directory, out, { 'dist/addons.json': manifest });
+  if (shippedManifest(file) !== manifest) throw new Error(`${file} does not carry the add-on manifest it was packed with`);
+  return file;
 }
 
 /**
@@ -93,19 +99,19 @@ export async function packAddons(out: string, { urlBase }: { urlBase?: string } 
   const all = await addons();
   await assertBuilt([{ packageName: '@jimhoyd/urlcode', directory: repositoryRoot, build: 'npm run build' }, ...all.map(addon => ({ packageName: addon.packageName, directory: addon.directory, build: 'node scripts/workspaces.ts run build' }))]);
   await mkdir(out, { recursive: true });
-  const pack = (dir: string): string => join(out, (JSON.parse(npm(['pack', '--ignore-scripts', '--json', '--pack-destination', out], dir)) as { filename: string }[])[0]!.filename);
   const version = (JSON.parse(await readFile(join(repositoryRoot, 'package.json'), 'utf8')) as { version: string }).version;
   const tarballs: Record<string, string> = {}, entries: Record<string, unknown> = {};
   for (const addon of all) {
     if (addon.version !== version) throw new Error(`${addon.packageName} is ${addon.version}; every add-on must share core's version ${version}`);
-    const file = tarballs[addon.name] = pack(addon.directory);
+    // An add-on packs through its published manifest too: its `development` conditions name src/, which never ships.
+    const file = tarballs[addon.name] = await packPublished(addon.directory, out);
     const name = file.slice(out.length + 1);
     entries[addon.name] = { kind: addon.kind, package: addon.packageName, description: addon.description, requires: addon.requires, ...(addon.uses.length ? { uses: addon.uses } : {}), url: urlBase ? `${urlBase}/${name}` : `file:${file}`, integrity: integrity(await readFile(file)) };
   }
   const manifest = join(out, 'addons.json');
   const text = JSON.stringify({ format: 1, version, addons: entries }, null, 2) + '\n';
   await writeFile(manifest, text);
-  // Core's published manifest drops its development-only `prepare` build hook.
+  // Core's published manifest drops its development-only `prepare` build hook and `development` export conditions.
   return { core: await packWithManifest(repositoryRoot, out, text), tarballs, manifest };
 }
 

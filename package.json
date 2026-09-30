@@ -23,67 +23,83 @@
   },
   "exports": {
     ".": {
+      "development": "./packages/core/src/index.ts",
       "types": "./dist/types/index.d.ts",
       "default": "./dist/index.js"
     },
     "./agent-context": {
+      "development": "./packages/core/src/agent-context.ts",
       "types": "./dist/types/agent-context.d.ts",
       "default": "./dist/agent-context.js"
     },
     "./aws": {
+      "development": "./packages/core/src/aws.ts",
       "types": "./dist/types/aws.d.ts",
       "default": "./dist/aws.js"
     },
     "./cloudflare": {
+      "development": "./packages/core/src/cloudflare.ts",
       "types": "./dist/types/cloudflare.d.ts",
       "default": "./dist/cloudflare.js"
     },
     "./prerender": {
+      "development": "./packages/core/src/prerender.ts",
       "types": "./dist/types/prerender.d.ts",
       "default": "./dist/prerender.js"
     },
     "./schema": "./schemas/urlcode.schema.json",
     "./vercel": {
+      "development": "./packages/core/src/vercel.ts",
       "types": "./dist/types/vercel.d.ts",
       "default": "./dist/vercel.js"
     },
     "./plugins": {
+      "development": "./packages/core/src/plugins.ts",
       "types": "./dist/types/plugins.d.ts",
       "default": "./dist/plugins.js"
     },
     "./policies": {
+      "development": "./packages/core/src/policies.ts",
       "types": "./dist/types/policies.d.ts",
       "default": "./dist/policies.js"
     },
     "./compliance": {
+      "development": "./packages/core/src/compliance.ts",
       "types": "./dist/types/compliance.d.ts",
       "default": "./dist/compliance.js"
     },
     "./observability": {
+      "development": "./packages/core/src/observability.ts",
       "types": "./dist/types/observability.d.ts",
       "default": "./dist/observability.js"
     },
     "./extensions": {
+      "development": "./packages/core/src/extensions.ts",
       "types": "./dist/types/extensions.d.ts",
       "default": "./dist/extensions.js"
     },
     "./host": {
+      "development": "./packages/core/src/host.ts",
       "types": "./dist/types/host.d.ts",
       "default": "./dist/host.js"
     },
     "./sqlite": {
+      "development": "./packages/core/src/sqlite.ts",
       "types": "./dist/types/sqlite.d.ts",
       "default": "./dist/sqlite.js"
     },
     "./sandbox": {
+      "development": "./packages/core/src/sandbox.ts",
       "types": "./dist/types/sandbox.d.ts",
       "default": "./dist/sandbox.js"
     },
     "./body-schema": {
+      "development": "./packages/core/src/body-schema.ts",
       "types": "./dist/types/body-schema.d.ts",
       "default": "./dist/body-schema.js"
     },
     "./skills": {
+      "development": "./packages/core/src/skills.ts",
       "types": "./dist/types/skills.d.ts",
       "default": "./dist/skills.js"
     },

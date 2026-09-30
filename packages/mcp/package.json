@@ -19,10 +19,12 @@
   },
   "exports": {
     ".": {
+      "development": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
     "./extension": {
+      "development": "./src/extension.ts",
       "types": "./dist/extension.d.ts",
       "default": "./dist/extension.js"
     }

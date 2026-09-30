@@ -44,8 +44,9 @@ The integration test asserts this.
 - **Serving.** The operator sets `URLCODE_DATA_DIR` to an absolute directory
   and grants it in the reviewed policy (`urlcode permissions` proposes the
   grant for both notes routes). `notes.sqlite` is created there. Without the
-  variable, `validate` and `serve` refuse before serving (`Missing required
-  environment binding`), and the function refuses a relative path.
+  variable, `validate` and `serve` refuse before serving (`Environment binding
+  DATA_DIR reads URLCODE_DATA_DIR, which is not set`), and the function refuses
+  a relative path.
 - **Tests and audit.** Each run creates an empty temporary directory, offers it
   as `URLCODE_DATA_DIR` and removes it when the run ends. The first signed-in
   fixture step expects zero notes, so a second run passes only because it

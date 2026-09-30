@@ -1355,7 +1355,7 @@ A failed command prints one JSON line, `{"event":"error","message":...}`, with
 structured fields where they apply: `code` (for example `unknown-key`,
 `multiple-handlers`, `no-handler`, `missing-key`, `invalid-value`,
 `invalid-yaml`, `invalid-unicode`, `express-parameter`, `undeclared-parameter`, `missing-file`,
-`invalid-file-reference`, `binding-denied`, `sandbox-import`, `invalid-fixture`, `no-test-cases`,
+`invalid-file-reference`, `binding-denied`, `missing-binding`, `sandbox-import`, `invalid-fixture`, `no-test-cases`,
 `unknown-option`, `extension-activation`, `extension-registration`,
 `extension-host`, `host-load`), `file`,
 `line` and `column`, `route` (the pattern as written), `pointer` (an RFC 6901
