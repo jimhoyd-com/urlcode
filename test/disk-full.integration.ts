@@ -1,8 +1,8 @@
 // A really full filesystem under a real `urlcode serve` process (#902): the site and its data directory (store.sqlite,
-// auth.sqlite, audit.sqlite) live on a small filesystem of their own, which a filler file then fills to ENOSPC. The
-// server keeps running; every write answers a documented refusal or commits whole; once the filler is removed the same
-// Idempotency-Keys run for the first time, the audit drain delivers every event once, and `PRAGMA integrity_check` is
-// ok on all three files. `test/disk-full.test.ts` is the deterministic, every-OS version (a capped database).
+// with its audit log, and auth.sqlite) live on a small filesystem of their own, which a filler file then fills to
+// ENOSPC. The server keeps running; every write answers a documented refusal or commits whole with its audit events;
+// once the filler is removed the same Idempotency-Keys run for the first time, and `PRAGMA integrity_check` is ok on
+// both files. `test/disk-full.test.ts` is the deterministic, every-OS version (a capped database).
 //
 // URLCODE_DISK_FULL_DIR names the filesystem, which must be at most 64 MiB (so this can never fill a real disk). CI
 // mounts a tmpfs on Linux: `sudo mount -t tmpfs -o size=16m,mode=1777 tmpfs <dir>`; on macOS a disk image works:
@@ -31,7 +31,6 @@ const user = { email: 'filler@example.test', password: 'disk full harness passph
 const project = {
   version: '1',
   extensions: {
-    audit: { version: '1', config: {} },
     auth: { version: '1', config: {} },
     store: { version: '1', config: { collections: {
       notes: { mount: '/api/notes', audit: true, idempotency: { maxKeys: 1000 }, maxRecords: 10000, schema: { type: 'object', additionalProperties: false, required: ['title'], properties: { title: { type: 'string', maxLength: 2000 } } } },
@@ -51,10 +50,9 @@ const project = {
 // Sign-in's limit is raised (an operator option) so the sign-in loop below meets the full disk, not the limiter.
 const host = [
   "import { composeHost } from '@jimhoyd/urlcode/host';",
-  "import audit from '@jimhoyd/urlcode-audit/extension';",
   "import auth from '@jimhoyd/urlcode-auth/extension';",
   "import store from '@jimhoyd/urlcode-store/extension';",
-  "export default await composeHost(import.meta.url, [audit(), auth({ betterAuth: { rateLimit: { customRules: { '/sign-in/email': { window: 60, max: 100000 } } } } }), store()]);",
+  "export default await composeHost(import.meta.url, [auth({ betterAuth: { rateLimit: { customRules: { '/sign-in/email': { window: 60, max: 100000 } } } } }), store()]);",
   '',
 ].join('\n');
 
@@ -62,10 +60,6 @@ interface Answer { status: number; body: Record<string, unknown> | undefined; re
 const code = (answer: Answer): string | undefined => (answer.body?.error as { code?: string } | undefined)?.code ?? (typeof answer.body?.error === 'string' ? answer.body.error : undefined);
 const show = (answers: readonly Answer[]): string => JSON.stringify(answers.map(answer => answer.error ?? `${answer.status}${code(answer) ? ` ${code(answer)}` : ''}`));
 const unavailable = (answer: Answer): boolean => answer.status === 503 && code(answer) === 'storage_unavailable';
-const until = async (what: string, check: () => boolean, ms: number): Promise<void> => {
-  const deadline = Date.now() + ms;
-  while (!check()) { if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`); await new Promise(resolve => setTimeout(resolve, 100)); }
-};
 function withDatabase<T>(path: string, work: (db: DatabaseSync) => T): T {
   const db = new DatabaseSync(path);
   try { db.exec('PRAGMA busy_timeout=5000'); return work(db); } finally { db.close(); }
@@ -108,7 +102,7 @@ test('a full filesystem under urlcode serve: documented refusals, nothing partia
   await writeFile(join(site, 'package.json'), JSON.stringify({ name: 'disk-full-site', private: true, type: 'module' }));
   await symlink(join(repositoryRoot, 'node_modules'), join(site, 'node_modules'), 'dir');
   const env = { ...process.env, PROJECT_SHA256: await inspectExtensionRevision(app), BETTER_AUTH_SECRET: randomBytes(32).toString('base64url') };
-  const files = { store: join(data, 'store.sqlite'), auth: join(data, 'auth.sqlite'), audit: join(data, 'audit.sqlite') };
+  const files = { store: join(data, 'store.sqlite'), auth: join(data, 'auth.sqlite') };
 
   for (const [args, input] of [[['migrate'], ''], [['create-user'], JSON.stringify(user)]] as const) {
     const run = spawnSync(process.execPath, [authCli, ...args, '--site', site], { env, input, encoding: 'utf8', timeout: 60_000 });
@@ -179,30 +173,30 @@ test('a full filesystem under urlcode serve: documented refusals, nothing partia
   assert.ok(running(), 'the server kept running on the full disk');
   t.diagnostic(`full: ${refused} creates, ${moved} transfers and ${signIns.length - 1} sign-ins committed before the first refusal of each`);
 
-  // Nothing partial: rows, claims and balances are exactly the committed changes.
+  // Nothing partial: rows, claims, balances and audit events are exactly the committed changes.
   const facts = () => ({
+    events: count(files.store, "SELECT count(*) AS n FROM store_audit_events WHERE json_extract(metadata, '$.collection') = 'notes'"),
     notes: count(files.store, "SELECT count(*) AS n FROM store_records WHERE collection = 'notes'"),
     noteClaims: count(files.store, "SELECT count(*) AS n FROM store_idempotency WHERE collection = 'notes'"),
     transferClaims: count(files.store, "SELECT count(*) AS n FROM store_idempotency WHERE collection = 'accounts'"),
     sum: count(files.store, "SELECT sum(json_extract(data, '$.balance')) AS n FROM store_records WHERE collection = 'accounts'"),
   });
-  assert.deepEqual(facts(), { notes: refused, noteClaims: refused, transferClaims: 2 + moved, sum: 0 });
+  assert.deepEqual(facts(), { events: refused, notes: refused, noteClaims: refused, transferClaims: 2 + moved, sum: 0 });
 
-  // Space frees up: the refused keys run for the first time, sign-in works, and the audit drain catches up.
+  // Space frees up: the refused keys run for the first time and sign-in works.
   await unlink(filler);
   const retried = await call('POST', '/api/notes', { body: { title: title(refused) }, key: `note-${refused}` });
   assert.deepEqual([retried.status, retried.replayed], [201, false], show([retried]));
   const retriedMove = await call('POST', '/api/accounts/transfers/move', { body: { from: ids[moved % 2 ? 'a' : 'b'], to: ids[moved % 2 ? 'b' : 'a'], amount: 1 }, key: `move-${moved}` });
   assert.deepEqual([retriedMove.status, retriedMove.replayed], [200, false], show([retriedMove]));
   assert.equal((await signIn()).status, 200);
-  assert.deepEqual(facts(), { notes: refused + 1, noteClaims: refused + 1, transferClaims: 3 + moved, sum: 0 });
-  await until('the audit outbox to drain', () => count(files.store, 'SELECT count(*) AS n FROM store_audit_outbox') === 0, 60_000);
+  assert.deepEqual(facts(), { events: refused + 1, notes: refused + 1, noteClaims: refused + 1, transferClaims: 3 + moved, sum: 0 });
 
   proc.kill('SIGTERM'); await exited;
   for (const file of Object.values(files)) assert.equal(withDatabase(file, db => (db.prepare('PRAGMA integrity_check').get() as { integrity_check: string }).integrity_check), 'ok', file);
-  const events = (action: string, collection: string) => count(files.audit, `SELECT count(*) AS n FROM audit_events WHERE action = '${action}' AND json_extract(metadata, '$.collection') = '${collection}'`);
+  const events = (action: string, collection: string) => count(files.store, `SELECT count(*) AS n FROM store_audit_events WHERE action = '${action}' AND json_extract(metadata, '$.collection') = '${collection}'`);
   assert.equal(events('store.record.created', 'notes'), refused + 1);
   assert.equal(events('store.record.created', 'accounts'), 3);
   assert.equal(events('store.record.transferred', 'accounts'), 2 * (3 + moved));
-  assert.equal(count(files.audit, 'SELECT count(*) - count(DISTINCT id) AS n FROM audit_events'), 0, 'no event stored twice');
+  assert.equal(count(files.store, 'SELECT count(*) - count(DISTINCT id) AS n FROM store_audit_events'), 0, 'no event stored twice');
 });

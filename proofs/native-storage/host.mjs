@@ -1,5 +1,5 @@
 // Trusted operator host: keep it outside app/ and review it like any other code you deploy. It composes one
-// extension, the independent Auth.js provider, for `auth: true`. There is no store and no audit extension: the
+// extension, the independent Auth.js provider, for `auth: true`. There is no store extension: the
 // application keeps its own data with node:sqlite in app/functions/notes.mjs, in the directory the operator grants
 // as URLCODE_DATA_DIR.
 import { fileURLToPath } from 'node:url';

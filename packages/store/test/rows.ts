@@ -3,7 +3,7 @@
 // remove an open database file). The server's connection may be open meanwhile: WAL readers never block it.
 import { DatabaseSync } from 'node:sqlite';
 import { openStoreDatabase } from '../src/database.ts';
-import type { AuditEvent } from '@jimhoyd/urlcode-audit';
+import type { AuditEvent } from '@jimhoyd/urlcode/extensions';
 
 type Row = Record<string, unknown>;
 function withDatabase<T>(path: string, work: (db: DatabaseSync) => T): T {
@@ -30,34 +30,21 @@ export function records(path: string, collection: string): Row[] {
     .map(row => ({ id: row.id, createdAt: row.created_at, updatedAt: row.updated_at, ...(row.owner === null ? {} : { _owner: row.owner }), ...JSON.parse(String(row.data)) as Row })));
 }
 
-/** Undelivered audit events, oldest first; all collections unless one is named. */
-export function outbox(path: string, collection?: string): AuditEvent[] {
+/** The audit log's events, oldest first, as recorded; all collections unless one is named. */
+export function auditEvents(path: string, collection?: string): AuditEvent[] {
   return withDatabase(path, db => (collection === undefined
-    ? db.prepare('SELECT event FROM store_audit_outbox ORDER BY seq').all()
-    : db.prepare('SELECT event FROM store_audit_outbox WHERE collection = ? ORDER BY seq').all(collection)).map(row => JSON.parse(String(row.event)) as AuditEvent));
-}
-
-/** Leaves events in the outbox as a run killed before its drain would have. */
-export async function seedOutbox(path: string, collection: string, events: readonly AuditEvent[]): Promise<void> {
-  await initialize(path);
-  withDatabase(path, db => {
-    const insert = db.prepare('INSERT INTO store_audit_outbox(id, collection, at, event) VALUES (?, ?, ?, ?)');
-    for (const event of events) insert.run(event.id, collection, event.at, JSON.stringify(event));
-  });
+    ? db.prepare('SELECT id, source, action, actor, subject, at, reason, metadata FROM store_audit_events ORDER BY seq').all()
+    : db.prepare("SELECT id, source, action, actor, subject, at, reason, metadata FROM store_audit_events WHERE json_extract(metadata, '$.collection') = ? ORDER BY seq").all(collection))
+    .map(({ reason, metadata, ...event }) => ({ ...event, ...(reason ? { reason } : {}), ...(metadata === null ? {} : { metadata: JSON.parse(String(metadata)) }) }) as unknown as AuditEvent));
 }
 
 /** Runs raw SQL (a fault-injection trigger, a hand edit) against the database. */
 export function execute(path: string, sql: string): void { withDatabase(path, db => { db.exec(sql); }); }
-/** When the audit drain last kept up with the outbox (epoch ms), or undefined when no drain has marked it. */
-export function lastDrain(path: string): number | undefined {
-  return withDatabase(path, db => db.prepare('SELECT drained_at FROM store_audit_drain WHERE id = 1').get()?.drained_at as number | undefined);
-}
-
 /** Row counts of the three tables, for "nothing was written" assertions. */
-export function counts(path: string): { records: number; idempotency: number; outbox: number } {
+export function counts(path: string): { records: number; idempotency: number; audit: number } {
   return withDatabase(path, db => ({
     records: Number(db.prepare('SELECT count(*) AS n FROM store_records').get()!.n),
     idempotency: Number(db.prepare('SELECT count(*) AS n FROM store_idempotency').get()!.n),
-    outbox: Number(db.prepare('SELECT count(*) AS n FROM store_audit_outbox').get()!.n),
+    audit: Number(db.prepare('SELECT count(*) AS n FROM store_audit_events').get()!.n),
   }));
 }

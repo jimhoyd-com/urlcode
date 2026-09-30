@@ -175,7 +175,7 @@ health) are recorded by the server directly. Counters are per process;
 aggregation across replicas is the scraper's job. Scrape each process's own
 port, because a scrape through a proxy reaches whichever process it picks.
 Their `throttle` and `cache` counters describe that process's own budgets and
-cache. A site with the store, auth or audit extension has one serving process
+cache. A site with the store or auth extension has one serving process
 ([one serving process per database](CAPACITY.md#one-serving-process-per-database)).
 
 ## Prometheus exposition

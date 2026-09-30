@@ -258,11 +258,10 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run build
-      # `store` imports `audit`. The matrix carries each package's
-      # transitive dependencies in build order (empty for `audit`, `auth`
-      # and `mcp`, which have none) so this job's own
-      # typecheck/build can resolve them, the way the removed serial script
-      # did by ordering.
+      # The matrix carries each package's transitive workspace dependencies
+      # in build order (empty today: `auth`, `store` and `mcp` only peer on
+      # core) so this job's own typecheck/build can resolve them, the way the
+      # removed serial script did by ordering.
       - if: matrix.deps != ''
         shell: bash
         run: |
@@ -308,13 +307,13 @@ jobs:
       - run: npm run test:ecosystem
       # The same application with Auth.js, an independent provider package, in place of Better Auth (#841).
       - run: npm run test:proof:authjs
-      # Owner choice (#1052): node:sqlite called directly from trusted routes, auth: true through Auth.js, no store or audit.
+      # Owner choice (#1052): node:sqlite called directly from trusted routes, auth: true through Auth.js, no store.
       - run: npm run test:proof:native
   # A really full filesystem (#902): `urlcode serve` with its data directory
-  # (store, auth and audit) on a 16 MiB tmpfs that the harness fills to
+  # (store, its audit log included, and auth) on a 16 MiB tmpfs that the harness fills to
   # ENOSPC, then frees. Linux only: it mounts a tmpfs with sudo, and PR CI is
   # Linux anyway. It runs in the full lane whatever changed, extension-only
-  # diffs included, because store, auth, audit and core serving all meet here.
+  # diffs included, because store, auth and core serving all meet here.
   # The harness refuses a filesystem larger than 64 MiB.
   disk-full:
     needs: plan
@@ -331,7 +330,7 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run build
-      # Every add-on, in dependency order: the site's host.mjs imports audit, auth and store from their dist/.
+      # Every add-on, in dependency order: the site's host.mjs imports auth and store from their dist/.
       - run: node scripts/workspaces.ts run build
       - run: sudo mkdir -p /mnt/urlcode-disk-full && sudo mount -t tmpfs -o size=16m,mode=1777 tmpfs /mnt/urlcode-disk-full
       - run: npm run test:disk-full

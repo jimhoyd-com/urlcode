@@ -28,7 +28,7 @@ export const signUpPath = '/sign-up/email';
 export const clientAddressHeader = 'x-urlcode-client-address';
 /** The mount Better Auth serves when the operator's tooling needs one before activation (the CLI). */
 export const defaultBasePath = '/api/auth';
-/** How long one statement waits for a lock another process holds before failing: the store's and audit's bound. */
+/** How long one statement waits for a lock another process holds before failing: the store's bound too. */
 const BUSY_TIMEOUT_MS = 2000;
 const unsafe = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 /**
@@ -95,7 +95,7 @@ class AuthDatabase extends DatabaseSync {
 
 /**
  * Opens Better Auth's SQLite file: creates it 0600 (its directory 0700) when absent and refuses anything but a private
- * regular file with one link, as the store and audit do; then WAL with FULL synchronous commits and a busy timeout, so
+ * regular file with one link, as the store does; then WAL with FULL synchronous commits and a busy timeout, so
  * the serving process and `urlcode-auth create-user` wait for each other's commits instead of failing with "database
  * is locked". SQLite creates the `-wal` and `-shm` files with the database file's permissions.
  */
@@ -116,7 +116,7 @@ export function openAuthDatabase(path: string): DatabaseSync {
 
 /**
  * Creates the auth database's directory (0700) when absent and refuses it on a network filesystem by its Linux `statfs`
- * type, the list the store and audit refuse (core's `refuseNetworkFilesystem`; skipped on macOS and Windows). The
+ * type, the list the store refuses (core's `refuseNetworkFilesystem`; skipped on macOS and Windows). The
  * operator commands run it before they open the database; serving runs it through `holdServerLock`.
  */
 export async function refuseRemoteAuthDatabase(path: string, probe?: Partial<HostProbe>): Promise<void> {

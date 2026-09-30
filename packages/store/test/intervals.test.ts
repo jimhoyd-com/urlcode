@@ -129,7 +129,7 @@ test('a failure after the check rolls everything back and the slot stays free', 
   execute(store.database, "CREATE TRIGGER fail_insert BEFORE INSERT ON store_records WHEN NEW.collection = 'rooms' BEGIN SELECT RAISE(ABORT, 'injected'); END;");
   const failed = await store.call('POST', '/api/rooms', { body: { room: 'a', start: hour(9), end: hour(10) }, headers: { 'idempotency-key': 'once' } });
   assert.equal(failed.status, 503);
-  assert.deepEqual(counts(store.database), { records: 0, idempotency: 0, outbox: 0 });
+  assert.deepEqual(counts(store.database), { records: 0, idempotency: 0, audit: 0 });
   execute(store.database, 'DROP TRIGGER fail_insert');
   assert.equal((await store.call('POST', '/api/rooms', { body: { room: 'a', start: hour(9), end: hour(10) }, headers: { 'idempotency-key': 'once' } })).status, 201, 'the retry finds the slot free');
   // A host transaction that books and then fails leaves nothing behind either.

@@ -41,18 +41,11 @@
   ],
   "devDependencies": {
     "@jimhoyd/urlcode": "file:../..",
-    "@jimhoyd/urlcode-audit": "file:../audit",
     "@types/node": "26.6.3",
     "typescript": "6.0.3"
   },
   "peerDependencies": {
-    "@jimhoyd/urlcode": "0.6.5",
-    "@jimhoyd/urlcode-audit": "0.6.5"
-  },
-  "peerDependenciesMeta": {
-    "@jimhoyd/urlcode-audit": {
-      "optional": true
-    }
+    "@jimhoyd/urlcode": "0.6.5"
   },
   "bin": {
     "urlcode-store": "./dist/cli.js"

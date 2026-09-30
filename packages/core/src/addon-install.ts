@@ -573,6 +573,9 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
       throw new ConfigError(pin ? `${name} is an ${pin.kind}; use \`urlcode ${kindNoun(pin.kind)} add ${name}\`` : `Unknown ${kind} ${name}; this core (${manifest.version}) has: ${valid.join(', ') || 'none'}`);
     }
   }
+  // An independent package installed in a first-party role (#1052) keeps it until it is removed.
+  const standIns = names.length ? [...(await installedProviders(site.site, manifest)).providers.values()].filter(provider => !provider.catalog && names.includes(provider.name)) : [];
+  if (standIns.length) throw new ConfigError(`Refusing ${standIns.map(provider => provider.name).join(', ')}: ${standIns.map(provider => `${provider.package} provides ${provider.name}`).join('; ')}; remove it first (\`urlcode ${kindNoun(kind)} remove ${standIns[0]!.name}\`)`);
   const pkg = await readJson<PackageJson>(site.packageFile);
   const before = new Set(managedNames(manifest, pkg));
   const wanted = withRequirements(manifest, names);
@@ -636,7 +639,9 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
         catch (error) { throw new ConfigError(`Refusing ${dependency}: it carries no valid urlcode.json ${kind} descriptor (${error instanceof Error ? error.message : String(error)})`); }
         assert(descriptor.kind === kind, `Refusing ${dependency}: its descriptor declares an ${descriptor.kind}; add it with \`urlcode ${kindNoun(descriptor.kind)} add\``);
         assert(!dependency.startsWith('@jimhoyd/urlcode'), `Refusing ${dependency}: first-party packages install from core's pins with \`urlcode ${kindNoun(kind)} add ${descriptor.name}\``);
-        assert(!manifest.addons[descriptor.name], `Refusing ${dependency}: it names itself ${descriptor.name}, which is a first-party ${manifest.addons[descriptor.name]?.kind} released with this core`);
+        // The name is the role (#1052): an independent package may take a first-party name, standing in for it, only
+        // while the first-party package is not installed; two providers of one name are refused below as well.
+        assert(!before.has(descriptor.name), `Refusing ${dependency}: it names itself ${descriptor.name}, and the first-party ${descriptor.name} is installed; remove it first (\`urlcode ${kindNoun(kind)} remove ${descriptor.name}\`)`);
         // Its declared contract is read from the descriptor before anything is imported (#844).
         const incompatible = contractProblem(descriptor.contract, `${dependency}@${locked[`node_modules/${dependency}`]?.version ?? '(unknown)'}`);
         if (incompatible) throw new ConfigError(`Refusing ${dependency}: ${incompatible}`);

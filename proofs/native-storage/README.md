@@ -8,7 +8,7 @@ built-in [`node:sqlite`](https://nodejs.org/api/sqlite.html), used through its
 own API: `DatabaseSync`, prepared statements and an explicit transaction, in
 [`app/functions/notes.mjs`](app/functions/notes.mjs). Nothing sits between
 the route and the database: no URLCode store, adapter, descriptor or catalog
-entry. The bundled store and audit extensions are not installed. It is a
+entry. The bundled store extension is not installed. It is a
 proof, not a supported storage integration or a release claim.
 
 ## Who does what

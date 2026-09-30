@@ -455,7 +455,7 @@ application commit, dependency locks and image digest in your deployment system.
 5. If checks or observed behavior fail, route traffic back to the retained previous
    instance/image and its compatible secret bindings.
 
-**With the store, auth or audit extension, one process serves the site's
+**With the store or auth extension, one process serves the site's
 data.** Each SQLite database is served by one process: a candidate started on
 the same `data/` directory while the previous instance serves it is refused
 at startup ("Another process is already serving this store database"), before
@@ -478,15 +478,15 @@ back up any app-owned persistent state separately. YAML routes require no databa
 
 ## Capacity and incident planning
 
-**A full disk.** The store, auth and audit extensions keep their SQLite files
-in the site's `data/` directory. When that filesystem fills, a write that
-needs space is refused and writes nothing: a store write answers
-`503 storage_unavailable`, a sign-in `503 auth_unavailable` with no session,
-and an audit delivery waits in the store's outbox. Reads, and routes behind
-an existing session, keep answering. The process keeps running and needs no
-restart: free space (or grow the volume), and writes, sign-ins and audit
-delivery resume; a client's retry with the same `Idempotency-Key` then runs
-for the first time. Check the three files afterwards with
+**A full disk.** The store and auth extensions keep their SQLite files in
+the site's `data/` directory; the store's audit log is part of
+`store.sqlite`. When that filesystem fills, a write that needs space is
+refused and writes nothing: a store write answers `503 storage_unavailable`
+with no record and no audit event, and a sign-in `503 auth_unavailable` with
+no session. Reads, and routes behind an existing session, keep answering. The
+process keeps running and needs no restart: free space (or grow the volume),
+and writes and sign-ins resume; a client's retry with the same
+`Idempotency-Key` then runs for the first time. Check both files afterwards with
 `PRAGMA integrity_check` (`urlcode-store backup` also refuses a copy of
 `store.sqlite` that does not pass it). Watch free space on the data volume and alert well before it
 runs out, because the tests do not cover restarting on a full disk. What is

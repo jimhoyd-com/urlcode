@@ -208,9 +208,8 @@ test('an independent extension package installs by spec, is found by its descrip
     await writeFile(join(target, 'urlcode.json'), JSON.stringify(descriptor));
     return target;
   };
-  // Refused before anything is wired: a first-party name, an artifact descriptor, and no descriptor at all.
+  // Refused before anything is wired: an artifact descriptor, and no descriptor at all.
   const before = await readFile(join(dir, 'package.json'), 'utf8');
-  await assert.rejects(addAddons(dir, 'extension', [await copy(descriptor => { descriptor.name = 'alpha'; })], { manifest: m }), /names itself alpha, which is a first-party extension released with this core/);
   await assert.rejects(addAddons(dir, 'extension', [await copy(descriptor => { descriptor.kind = 'artifact'; delete descriptor.schema; delete descriptor.targets; })], { manifest: m }), /its descriptor declares an artifact; add it with `urlcode artifacts add`/);
   const bare = await copy(() => undefined); await rm(join(bare, 'urlcode.json'));
   await assert.rejects(addAddons(dir, 'extension', [bare], { manifest: m }), /carries no valid urlcode\.json extension descriptor/);
@@ -244,6 +243,33 @@ test('an independent extension package installs by spec, is found by its descrip
   assert.equal((JSON.parse(await readFile(join(dir, 'package.json'), 'utf8')) as { dependencies: Record<string, string> }).dependencies['@example/urlcode-greeting'], undefined);
   assert.match((await validateDeclaredExtensions(join(dir, 'app'))).join('\n'), /^$/);
   assert.ok((await readFile(log, 'utf8')).split('\n').filter(Boolean).every(line => JSON.parse(line).includes('--ignore-scripts')), 'npm never runs lifecycle scripts');
+});
+
+test('the name is the role: an independent package takes a first-party name only while the first-party one is not installed (#1052)', async t => {
+  const m = manifest();
+  process.env.FAKE_NPM_LOG = join(await site(t), 'npm.log');
+  t.after(() => { delete process.env.FAKE_NPM_LOG; });
+  // The greeting fixture renamed alpha throughout: its descriptor, its definition and its route.
+  const standIn = await mkdtemp(join(tmpdir(), 'urlcode-stand-in-')); t.after(() => rm(standIn, { recursive: true, force: true }));
+  await cp(join(fixtures, 'greeting'), standIn, { recursive: true });
+  for (const file of ['extension.js', 'urlcode.json']) await writeFile(join(standIn, file), (await readFile(join(standIn, file), 'utf8')).replaceAll('greeting', 'alpha'));
+  await writeFile(join(standIn, 'package.json'), JSON.stringify({ name: '@example/urlcode-alpha-stand-in', version: '1.0.0', type: 'module', exports: { './extension': './extension.js' } }));
+
+  const official = await site(t);
+  await addAddons(official, 'extension', ['alpha'], { manifest: m });
+  const before = await readFile(join(official, 'package.json'), 'utf8');
+  await assert.rejects(addAddons(official, 'extension', [standIn], { manifest: m }), /names itself alpha, and the first-party alpha is installed; remove it first \(`urlcode extensions remove alpha`\)/);
+  assert.equal(await readFile(join(official, 'package.json'), 'utf8'), before, 'the refusal rolls package.json back');
+
+  const own = await site(t);
+  const added = await addAddons(own, 'extension', [standIn], { manifest: m });
+  assert.deepEqual(added.added, ['alpha']);
+  assert.match(await readFile(join(own, 'host.mjs'), 'utf8'), /import alpha from '@example\/urlcode-alpha-stand-in\/extension';/);
+  const report = await listAddons(own, 'extension', { manifest: m });
+  assert.deepEqual(report.problems, []);
+  assert.deepEqual(report.addons.map(item => [item.name, item.package, item.independent]), [['alpha', '@example/urlcode-alpha-stand-in', true]]);
+  await assert.rejects(addAddons(own, 'extension', ['alpha'], { manifest: m }), /Refusing alpha: @example\/urlcode-alpha-stand-in provides alpha; remove it first/);
+  assert.equal((await removeAddon(own, 'extension', 'alpha', { manifest: m })).removed, 'alpha');
 });
 
 // #1052 S6: a scaffold learns which installed extensions provide the request principal from their descriptors, so an

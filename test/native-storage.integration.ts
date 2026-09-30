@@ -1,6 +1,6 @@
 // Owner choice (#1052, slice S7): proofs/native-storage end to end with real npm. The application keeps its data with
 // Node's built-in node:sqlite, called directly from trusted function routes, and signs users in with `auth: true`
-// through the independent Auth.js provider (proofs/authjs-provider). Neither the bundled store nor audit is installed.
+// through the independent Auth.js provider (proofs/authjs-provider). The bundled store is not installed.
 // Core is packed as a release packs it and the provider as a local tarball; installing @auth/core needs the npm
 // registry, nothing after it does. Run after `npm run build` (npm run test:proof:native).
 import test from 'node:test';
@@ -19,7 +19,7 @@ import { npmCommand } from '../scripts/npm-command.ts';
 import { repositoryRoot } from '../scripts/workspaces.ts';
 
 const proof = join(repositoryRoot, 'proofs', 'native-storage'), provider = join(repositoryRoot, 'proofs', 'authjs-provider');
-const bundledStorage = /(?:from|import\(|require\()\s*['"]@jimhoyd\/urlcode-(?:store|audit)\b/;
+const bundledStorage = /(?:from|import\(|require\()\s*['"]@jimhoyd\/urlcode-store\b/;
 
 interface Run { status: number | null; stdout: string; stderr: string }
 function run(t: TestContext, cwd: string, command: string, args: string[], env: Record<string, string> = {}): Run {
@@ -67,7 +67,7 @@ async function signIn(client: ReturnType<typeof browser>, email: string, passwor
   assert.equal(new URL((answer.json as { url: string }).url).searchParams.has('error'), false, `sign-in as ${email}`);
 }
 
-test('native storage: the owner\'s own database library behind auth: true, with no store or audit extension', { timeout: 1200000 }, async t => {
+test('native storage: the owner\'s own database library behind auth: true, with no store extension', { timeout: 1200000 }, async t => {
   const root = await mkdtemp(join(tmpdir(), 'urlcode-native-storage-'));
   const closers: (() => unknown)[] = [];
   t.after(async () => {
@@ -108,7 +108,7 @@ test('native storage: the owner\'s own database library behind auth: true, with 
   await writeFile(manifestFile, JSON.stringify(pkg, null, 2) + '\n');
   const installed = npm(t, site, ['install', '--no-audit', '--no-fund']);
   assert.equal(installed.status, 0, installed.stderr);
-  for (const name of ['urlcode-store', 'urlcode-audit', 'urlcode-auth']) assert.equal(existsSync(join(site, 'node_modules', '@jimhoyd', name)), false, name);
+  for (const name of ['urlcode-store', 'urlcode-auth']) assert.equal(existsSync(join(site, 'node_modules', '@jimhoyd', name)), false, name);
 
   const cli = join(site, 'node_modules', '@jimhoyd', 'urlcode', 'dist', 'cli.js');
   const urlcode = (args: string[], env: Record<string, string> = {}): Run => run(t, site, process.execPath, [cli, ...args], env);

@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { principalIdPattern } from '@jimhoyd/urlcode/extensions';
 import { bodyIssues, bodySchemaDialect, compileBodySchema } from '@jimhoyd/urlcode/body-schema';
 import type { BodySchema, BodySchemaIssue, CompiledBodySchema } from '@jimhoyd/urlcode/body-schema';
-import type { AuditEvent } from '@jimhoyd/urlcode-audit';
+import { AUDIT_RETENTION, recordAuditEvent } from './audit.ts';
 import { QUERY_LIMITS, parseListQuery, queryableString, runList } from './query.ts';
 import { serverLockHeld } from '@jimhoyd/urlcode/sqlite';
 import { STORE_SCHEMA_VERSION, declarationOf } from './database.ts';
@@ -23,12 +23,7 @@ export const OWNER_FIELD = '_owner';
 export type Ownership = 'shared' | 'owner';
 export const LIMITS = { properties: 64, records: 10_000, recordBytes: 65_536, pageSize: 200 } as const;
 const IDEMPOTENCY_LIMITS = { keys: 1_000, keyLength: 128 } as const;
-/**
- * Undelivered audit events one collection may hold in the outbox table (audit's `auditOutboxLimits.perCollection`).
- * At the cap a write on an audited collection is refused with 503 `audit_backlog` and nothing is written.
- */
-export const AUDIT_BACKLOG = 1_000;
-/** Audit metadata stays under audit's 4096-byte bound: the property list is cut here and marked truncated. */
+/** Audit metadata stays under core's 4096-byte bound (`auditLimits.metadataBytes`): the property list is cut here and marked truncated. */
 const AUDIT_FIELDS_BYTES = 3_584;
 
 /** The value type of one record property: a record holds scalars only. */
@@ -179,8 +174,8 @@ export interface CollectionSpec {
    */
   maxRecordsPerOwner?: number;
   /**
-   * Record every write in the audit log (the audit extension): the event is inserted into the store database's outbox
-   * table in the same transaction as the record, and audit drains it from there. Property names only, never values.
+   * Record every write in the store's audit log: the event is a row of the store database, written in the same
+   * transaction as the record. Property names only, never values.
    * On a membership collection an added or removed member is `store.membership.added`/`removed`, naming the member.
    */
   audit?: boolean;
@@ -292,8 +287,7 @@ export class StoreError extends Error {
 /**
  * Refuses deleting a record that still holds a transfer balance (#928): on a collection declaring `transfers`, the sum
  * of each amount property never changes, so a record leaves only at 0. 409 `balance_not_zero`, naming no amount; every
- * delete path (HTTP DELETE, a host transaction's `remove`, the operator's ownerless-delete) calls it
- * before writing anything.
+ * delete path (HTTP DELETE, a host transaction's `remove`) calls it before writing anything.
  */
 export function refuseBalance(spec: Pick<NormalizedSpec, 'transfers'>, record: Readonly<StoredRecord>): void {
   for (const transfer of Object.values(spec.transfers)) {
@@ -346,7 +340,7 @@ export const collectionSchema = {
     filterable: { type: 'array', maxItems: QUERY_LIMITS.declared, uniqueItems: true, items: { type: 'string', pattern: FIELD_NAME }, description: 'Declared properties a list request may filter by equality (<property>=<value>); a value the property\'s schema refuses answers 400 invalid_query. limit, cursor and sort cannot be filterable.' },
     ownership: { enum: ['shared', 'owner'], description: 'shared (default): every caller who reaches the mount sees every record. owner: each record belongs to the principal that created it, and every read and write is scoped to it; the mount must carry a principal-providing policy such as auth: true.' },
     maxRecordsPerOwner: { type: 'integer', minimum: 1, maximum: LIMITS.records, description: 'With ownership: owner only: records one principal may hold, at most maxRecords; beyond it a create answers 409 owner_quota_exceeded.' },
-    audit: { type: 'boolean', description: 'true: every write is recorded in the audit log (property names and the principal, never values), in the same transaction as the write. On a membership collection, adding or removing a member (from any path, the operator CLI included) records store.membership.added or store.membership.removed with the member\'s principal id in the subject. Needs the audit extension; writes answer 503 audit_backlog while 1000 events wait to drain.' },
+    audit: { type: 'boolean', description: 'true: every write is recorded in the audit log (property names and the principal, never values), in the same transaction as the write. On a membership collection, adding or removing a member (from any path, the operator CLI included) records store.membership.added or store.membership.removed with the member\'s principal id in the subject. The event is a row of the store database, kept among the newest auditRetention events; urlcode-store audit reads them, and a sink forwards them through StoreExports.audit.' },
     transitions: { description: 'Declared conditional state changes by name: POST <mount>/<id>/<name> moves one record from the from values to the set (and stamp) values in one transaction, honouring If-Match and Idempotency-Key; a record not in the from state answers 409 transition_conflict and nothing is written. Not an expression language.', type: 'object', maxProperties: TRANSITION_LIMITS.transitions, propertyNames: { pattern: '^[a-z][a-z0-9_-]{0,63}$' }, additionalProperties: {
       type: 'object', additionalProperties: false, required: ['from', 'set'],
       properties: {
@@ -827,10 +821,10 @@ const bound = (value: Scalar | undefined): string | number | null => value === u
  * The first pair of constrained records in one scope whose intervals overlap, or `undefined`: one pass in index order
  * (scope, then start), keeping the latest end seen in the current scope. Records with no owner are nobody's under
  * `scope: owner` and are skipped there, as the write check never matches them. With `moving` (an operator command about
- * to give `from`'s records to `to`, or with `from` null the ownerless ones), only the two principals' records are
+ * to give `from`'s records to `to`), only the two principals' records are
  * judged, as if the move had happened, before anything is written.
  */
-export function overlapping(db: StoreDatabase, intervals: NormalizedIntervals, moving?: { from: string | null; to: string }): [string, string] | undefined {
+export function overlapping(db: StoreDatabase, intervals: NormalizedIntervals, moving?: { from: string; to: string }): [string, string] | undefined {
   type Row = { id: string; group: string; since: number | null; until: number | null };
   let rows: Row[] = db.all<Record<string, string | number | null>>(intervals.scan).flatMap(row => {
     let owner = intervals.scope === 'owner' ? row.owner as string | null : null;
@@ -862,23 +856,12 @@ export function redirectable(value: unknown): boolean {
 }
 
 /**
- * Inserts one store event into the outbox inside the caller's open transaction, after audit's own validator accepted
- * it. At the collection's backlog cap it refuses with 503 `audit_backlog`, which rolls the caller's write back too.
- */
-export function writeAuditEvent(db: StoreDatabase, collection: string, validate: (value: unknown) => AuditEvent, body: { action: string; actor: string; subject: string; metadata: Record<string, unknown> }): void {
-  if (db.get<{ n: number }>('SELECT count(*) AS n FROM store_audit_outbox WHERE collection = ?', collection)!.n >= AUDIT_BACKLOG) throw new StoreError(503, 'audit_backlog', 'The audit log is behind; try again later');
-  const event = validate({ id: randomUUID(), source: 'store', at: Date.now(), ...body });
-  db.run('INSERT INTO store_audit_outbox(id, collection, at, event) VALUES (?, ?, ?, ?)', event.id, collection, event.at, JSON.stringify(event));
-}
-/**
  * The event for one membership change (#866): the member's principal id is the subject, because who was granted or
  * lost the right is the evidence. It is an opaque id the principal provider set, never an email or a name.
  */
 export const membershipEvent = (collection: string, change: 'added' | 'removed', member: string, actor: string) =>
   ({ action: `store.membership.${change}`, actor, subject: `${collection}/${member}`, metadata: { collection } });
 
-/** What an audited collection needs from the audit extension: its pure event validator, and a wake-up for the drain after a commit that wrote an event. */
-export interface CollectionAuditor { validate(value: unknown): AuditEvent; notify(): void }
 type AuditAction = 'created' | 'replaced' | 'updated' | 'deleted' | 'incremented' | 'transitioned' | 'transferred';
 /**
  * An `Idempotency-Key` a write carries (#835): `key`, the header value hashed with the caller's scope (the principal,
@@ -902,8 +885,8 @@ export interface Transferred { status: number; from: StoredRecord | undefined; t
 export interface Viewer { principal: string | undefined }
 /** One list page; `may` is present when the page was read for a `Viewer`. */
 export interface Page { items: StoredRecord[]; total: number; next?: string | number; may?: Record<string, string[]> }
-/** What one write step inside a transaction produced: the record it left and whether it inserted an audit event. */
-export interface Step { record: StoredRecord | undefined; audited: boolean }
+/** What one write step inside a transaction produced: the record it left. */
+export interface Step { record: StoredRecord | undefined }
 /** A transfer step: `record` is the debited record, `to` the credited one as the write left it. */
 export interface TransferStep extends Step { record: StoredRecord; to: StoredRecord }
 /**
@@ -982,14 +965,15 @@ function fieldsOf(record: StoredRecord): StoredRecord {
 /**
  * One collection: a view of its rows in the store database (`store_records` where `collection` is its name). Nothing
  * is cached in memory: every read queries the database and every write is one BEGIN IMMEDIATE transaction that reads
- * what it checks (the ETag, the key, the quotas, the declared intervals, the retained Idempotency-Keys, the audit backlog) and writes the
+ * what it checks (the ETag, the key, the quotas, the declared intervals, the retained Idempotency-Keys) and writes the
  * record, the key claim and the audit event together, or rolls all of it back. Statements are synchronous, so within
  * this process no other request runs between a transaction's check and its write.
  */
 export class Collection {
   readonly name: string; readonly spec: NormalizedSpec;
   private db: StoreDatabase | undefined;
-  private readonly auditor: CollectionAuditor | undefined;
+  /** How many of the newest audit events the store keeps (`auditRetention`): each audited write prunes to it. */
+  private readonly auditRetention: number;
   private get owned(): boolean { return this.spec.ownership === 'owner'; }
   /** Properties a short link redirects to (store.ts): every write also requires `redirectable` values there. */
   private readonly destinations: readonly string[];
@@ -1001,7 +985,7 @@ export class Collection {
    * nothing. `operator` (the default, for the operator commands): `operatorFence`.
    */
   fence: 'serving' | 'operator' = 'operator';
-  constructor(name: string, spec: CollectionSpec, auditor?: CollectionAuditor, destinations: readonly string[] = [], schemas: Readonly<Record<string, unknown>> = {}) { this.name = name; this.spec = normalize(name, spec, schemas); this.fingerprint = declarationFingerprint(this.spec); this.auditor = auditor; this.destinations = destinations; }
+  constructor(name: string, spec: CollectionSpec, destinations: readonly string[] = [], schemas: Readonly<Record<string, unknown>> = {}, auditRetention: number = AUDIT_RETENTION.default) { this.name = name; this.spec = normalize(name, spec, schemas); this.fingerprint = declarationFingerprint(this.spec); this.auditRetention = auditRetention; this.destinations = destinations; }
   /**
    * The declaration fence, first inside every write transaction, under the write lock: one indexed read of the recorded
    * declaration and the file's `user_version`. A newer activation (a dev reload) recorded its own, or a newer release
@@ -1142,27 +1126,21 @@ export class Collection {
     }
   }
   /**
-   * One write transaction, fenced first (`fenced`). `work` returns its answer and whether it inserted an audit event; the audit drain is woken
-   * only after the commit. A StoreError from `work` rolls back and is rethrown; anything else (a full disk, a lock
+   * One write transaction, fenced first (`fenced`); `work` writes the change and its audit event together. A StoreError from `work` rolls back and is rethrown; anything else (a full disk, a lock
    * another process held past the busy timeout) rolls back and is a 503 with no detail.
    */
-  private write(work: (db: StoreDatabase) => { result: Written; audited: boolean }, viewer?: Viewer): Written {
+  private write(work: (db: StoreDatabase) => Written, viewer?: Viewer): Written {
     const db = this.database();
-    let outcome: { result: Written; audited: boolean };
     try {
-      outcome = db.transaction(() => {
+      return db.transaction(() => {
         this.fenced(db);
-        const done = work(db), record = done.result.record;
+        const done = work(db), record = done.record;
         // Computed after the write, in its transaction: what the viewer may run on the record as it now stands.
-        if (viewer && record) done.result.may = this.mayIn(db, [record], viewer.principal)[record.id as string]!;
+        if (viewer && record) done.may = this.mayIn(db, [record], viewer.principal)[record.id as string]!;
         return done;
       });
     } catch (error) { return storageFailure(error, false); }
-    if (outcome.audited) this.notifyAudit();
-    return outcome.result;
   }
-  /** Wakes the audit drain after a commit that inserted one of this collection's events. */
-  notifyAudit(): void { this.auditor?.notify(); }
 
   /**
    * The properties a create, PUT or PATCH body names. A body that is not an object gets the schema's own type issue;
@@ -1247,24 +1225,21 @@ export class Collection {
     }
   }
   /**
-   * Inserts the outbox event for one write, inside the write's transaction: unchanged on an unaudited collection. At
-   * the backlog cap the write is refused (and rolled back). The event names the changed fields, never their values; a
-   * list too long for audit's metadata bound is cut and marked `truncated`. Returns whether an event was inserted.
+   * Records the audit event for one write, inside the write's transaction: nothing on an unaudited collection. The
+   * event names the changed fields, never their values; a list too long for core's metadata bound is cut and marked
+   * `truncated`.
    */
-  private audited(db: StoreDatabase, action: AuditAction, id: string, fields: readonly string[], actor: string | undefined, extra: Record<string, string> = {}, record?: StoredRecord): boolean {
-    if (!this.spec.audit) return false;
+  private audited(db: StoreDatabase, action: AuditAction, id: string, fields: readonly string[], actor: string | undefined, extra: Record<string, string> = {}, record?: StoredRecord): void {
+    if (!this.spec.audit) return;
     const who = this.actorOf(actor);
-    // Activation refuses an audited collection without an active audit, so this is a wiring error, never a request's.
-    if (!this.auditor) throw new StoreError(503, 'audit_unavailable', 'The audit log is unavailable');
     // A membership collection records who gained or lost the right; any other write to it is an ordinary record event.
     if (this.spec.membership && record !== undefined && (action === 'created' || action === 'deleted')) {
-      writeAuditEvent(db, this.name, this.auditor.validate, membershipEvent(this.name, action === 'created' ? 'added' : 'removed', record[this.spec.key!] as string, who));
-      return true;
+      recordAuditEvent(db, membershipEvent(this.name, action === 'created' ? 'added' : 'removed', record[this.spec.key!] as string, who), this.auditRetention);
+      return;
     }
     const names = [...fields]; let truncated = false;
     while (Buffer.byteLength(JSON.stringify(names)) > AUDIT_FIELDS_BYTES) { names.pop(); truncated = true; }
-    writeAuditEvent(db, this.name, this.auditor.validate, { action: `store.record.${action}`, actor: who, subject: `${this.name}/${id}`, metadata: { collection: this.name, ...extra, fields: names, ...(truncated ? { truncated: true } : {}) } });
-    return true;
+    recordAuditEvent(db, { action: `store.record.${action}`, actor: who, subject: `${this.name}/${id}`, metadata: { collection: this.name, ...extra, fields: names, ...(truncated ? { truncated: true } : {}) } }, this.auditRetention);
   }
   /** Declared properties whose value differs between two versions of a record (a removed one counts), in declaration order. */
   private changed(before: StoredRecord | undefined, after: StoredRecord | undefined): string[] { return Object.keys(this.spec.records.properties).filter(field => before?.[field] !== after?.[field]); }
@@ -1277,18 +1252,18 @@ export class Collection {
    * claim, with its result, is inserted in the same transaction; the newest `maxKeys` claims of the collection stay.
    * A refused or failed write rolls back and retains nothing, so its retry is evaluated again.
    */
-  private idempotent(db: StoreDatabase, retry: Retry | undefined, status: number, reread: (id: string) => StoredRecord, work: () => Step): { result: Written; audited: boolean } {
-    if (retry === undefined) { const step = work(); return { result: { status, record: step.record, replayed: false }, audited: step.audited }; }
+  private idempotent(db: StoreDatabase, retry: Retry | undefined, status: number, reread: (id: string) => StoredRecord, work: () => Step): Written {
+    if (retry === undefined) return { status, record: work().record, replayed: false };
     const config = this.idempotencyConfig(retry.key)!;
     const claimed = db.get<{ fingerprint: string; status: number; record_id: string | null }>('SELECT fingerprint, status, record_id FROM store_idempotency WHERE collection = ? AND key = ?', this.name, retry.key);
     if (claimed) {
       if (claimed.fingerprint !== retry.fingerprint) throw new StoreError(422, 'idempotency_key_reused', 'This Idempotency-Key was already used for a different request');
-      return { result: { status: claimed.status, record: claimed.status === 204 || claimed.record_id === null ? undefined : reread(claimed.record_id), replayed: true }, audited: false };
+      return { status: claimed.status, record: claimed.status === 204 || claimed.record_id === null ? undefined : reread(claimed.record_id), replayed: true };
     }
     const step = work();
     db.run('INSERT INTO store_idempotency(collection, key, fingerprint, status, record_id, claimed_at) VALUES (?, ?, ?, ?, ?, ?)', this.name, retry.key, retry.fingerprint, status, (step.record?.id as string | undefined) ?? null, Date.now());
     db.run('DELETE FROM store_idempotency WHERE collection = ? AND seq <= (SELECT seq FROM store_idempotency WHERE collection = ? ORDER BY seq DESC LIMIT 1 OFFSET ?)', this.name, this.name, config.maxKeys);
-    return { result: { status, record: step.record, replayed: false }, audited: step.audited };
+    return { status, record: step.record, replayed: false };
   }
   /** The collection's idempotency settings when `key` is given; a key on a collection that did not enable them is a 400. */
   idempotencyConfig(key: string | undefined): IdempotencySpec | undefined {
@@ -1508,7 +1483,8 @@ export class Collection {
     this.writable();
     return this.write(db => this.idempotent(db, retry, 200, found => this.current(db, found, scope), () => {
       const record = this.incremented(db, id, field, scope, true);
-      return { record, audited: this.audited(db, 'incremented', id, [field], actor) };
+      this.audited(db, 'incremented', id, [field], actor);
+      return { record };
     }), viewer);
   }
   /**
@@ -1546,17 +1522,14 @@ export class Collection {
     const transfer = this.transferNamed(name), caller = this.transferCaller(transfer, principal);
     this.writable();
     const body = transferBody(input), db = this.database();
-    let outcome: { result: Transferred; audited: boolean };
     try {
-      outcome = db.transaction(() => {
+      return db.transaction(() => {
         this.fenced(db);
         if (caller !== undefined) this.admit(db, transfer.members, caller);
         const done = this.idempotent(db, retry, 200, id => this.current(db, id, this.transferScope(caller)), () => this.transferIn(db, name, body, expectedEtag, principal, actor));
-        return { result: { status: done.result.status, from: done.result.record, to: this.readable(db, body.to, caller), replayed: done.result.replayed }, audited: done.audited };
+        return { status: done.status, from: done.record, to: this.readable(db, body.to, caller), replayed: done.replayed };
       });
     } catch (error) { return storageFailure(error, false); }
-    if (outcome.audited) this.notifyAudit();
-    return outcome.result;
   }
   private transferNamed(name: string): NormalizedTransfer {
     const transfer = hasOwn(this.spec.transfers, name) ? this.spec.transfers[name]! : undefined;
@@ -1582,10 +1555,10 @@ export class Collection {
     // from the public record API. Per the #552 triage decision, this is the one write a `readOnly` collection still
     // accepts: `readOnly` closes the public create/update/delete/increment surface, not the redirect's own click
     // count. It skips `writable()` and takes no Idempotency-Key. It is never audited: anyone can drive it without
-    // credentials or a budget, and audit's retention is shared with every producer's events, which a flood of clicks
-    // would prune. Short links need a key, which an owned collection refuses; this stays unreachable for owned records.
+    // credentials or a budget, and the audit log's retention is shared by every audited collection, which a flood of
+    // clicks would prune. Short links need a key, which an owned collection refuses; this stays unreachable for owned records.
     if (this.owned) throw new StoreError(404, 'not_found', 'No such record');
-    return this.write(db => ({ result: { status: 200, record: this.incremented(db, id, field, undefined, false), replayed: false }, audited: false })).record!;
+    return this.write(db => ({ status: 200, record: this.incremented(db, id, field, undefined, false), replayed: false })).record!;
   }
 
   // The write steps. Each runs inside a transaction its caller opened (`write` above, or a host transaction in
@@ -1618,7 +1591,8 @@ export class Collection {
     this.uniqueIn(db, record);
     this.fits(db, record, scope);
     this.insert(db, record);
-    return { record, audited: this.audited(db, 'created', record.id as string, this.changed(undefined, record), actor, {}, record) };
+    this.audited(db, 'created', record.id as string, this.changed(undefined, record), actor, {}, record);
+    return { record };
   }
   /** Creates for `principal` inside an open transaction (a host transaction's `create`). */
   createFor(db: StoreDatabase, input: unknown, principal: string | undefined, actor: string | undefined): Step { return this.createIn(db, input, principal, actor); }
@@ -1656,7 +1630,8 @@ export class Collection {
     this.uniqueIn(db, record, current);
     this.fits(db, record, scope);
     this.replaceRow(db, record);
-    return { record, audited: this.audited(db, replace ? 'replaced' : 'updated', id, this.changed(current, record), actor) };
+    this.audited(db, replace ? 'replaced' : 'updated', id, this.changed(current, record), actor);
+    return { record };
   }
   /** A partial update in the owner's scope inside an open transaction (a host transaction's `update`). */
   updateFor(db: StoreDatabase, id: string, patch: unknown, expectedEtag: string | undefined, owner: string | undefined, actor: string | undefined): Step { return this.updateIn(db, id, patch, false, expectedEtag, this.scope(owner), actor); }
@@ -1667,7 +1642,8 @@ export class Collection {
     refuseLocked(this.spec, 'deletable', current);
     refuseBalance(this.spec, current);
     db.run('DELETE FROM store_records WHERE collection = ? AND id = ?', this.name, id);
-    return { record: undefined, audited: this.audited(db, 'deleted', id, this.changed(current, undefined), actor, {}, current) };
+    this.audited(db, 'deleted', id, this.changed(current, undefined), actor, {}, current);
+    return { record: undefined };
   }
   /** Deletes in the owner's scope inside an open transaction (a host transaction's `remove`). */
   removeFor(db: StoreDatabase, id: string, expectedEtag: string | undefined, owner: string | undefined, actor: string | undefined): Step { return this.removeIn(db, id, expectedEtag, this.scope(owner), actor); }
@@ -1700,7 +1676,8 @@ export class Collection {
       this.fits(db, record, caller);
     }
     this.replaceRow(db, record);
-    return { record, audited: this.audited(db, 'transitioned', id, this.changed(current, record), actor, { transition: name }) };
+    this.audited(db, 'transitioned', id, this.changed(current, record), actor, { transition: name });
+    return { record };
   }
   /**
    * The transfer step (#902), inside an open transaction (the HTTP API's, or a host transaction's). In order: with
@@ -1736,9 +1713,9 @@ export class Collection {
     const credit: StoredRecord = { ...to, updatedAt: stamp(to.updatedAt as string), [field]: credited };
     if (!Number.isSafeInteger(credited) || propertyIssue(this.spec.records, field, credited) || this.oversized(credit)) throw new StoreError(409, 'transfer_conflict', 'The credited record cannot take this transfer');
     this.replaceRow(db, debit); this.replaceRow(db, credit);
-    const audited = this.audited(db, 'transferred', debit.id as string, [field], actor, { transfer: name, side: 'from', counterpart: credit.id as string });
+    this.audited(db, 'transferred', debit.id as string, [field], actor, { transfer: name, side: 'from', counterpart: credit.id as string });
     this.audited(db, 'transferred', credit.id as string, [field], actor, { transfer: name, side: 'to', counterpart: debit.id as string });
-    return { record: debit, to: credit, audited };
+    return { record: debit, to: credit };
   }
   /**
    * Raises `field` by one. `locked`: the public increment, which `editable` gates like a PATCH (#989), so a record

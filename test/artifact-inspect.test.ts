@@ -292,7 +292,6 @@ test('an independent artifact installs by spec, lists, refuses inspection while 
   await assert.rejects(addAddons(site, 'artifact', [await variant(({ pkg }) => { pkg.scripts = { preinstall: 'node -e "process.exit(1)"' }; })], { manifest }), /Refusing @example\/urlcode-petstore-docs: Artifact petstore-docs package\.json declares scripts/);
   await assert.rejects(addAddons(site, 'artifact', [join(fixtures, 'greeting')], { manifest }), /its descriptor declares an extension; add it with `urlcode extensions add`/);
   await assert.rejects(addAddons(site, 'extension', [petstore], { manifest }), /its descriptor declares an artifact; add it with `urlcode artifacts add`/);
-  await assert.rejects(addAddons(site, 'artifact', [await variant(({ descriptor }) => { descriptor.name = 'notes'; })], { manifest }), /names itself notes, which is a first-party artifact/);
   await assert.rejects(addAddons(site, 'artifact', [await variant(({ descriptor }) => { descriptor.documents = [{ path: 'openapi/gone.yaml', mediaType: 'application/vnd.oai.openapi' }]; })], { manifest }), /lists document openapi\/gone\.yaml, which the package does not contain/);
   assert.equal(await readFile(join(site, 'package.json'), 'utf8'), before, 'every refusal rolls package.json back');
 

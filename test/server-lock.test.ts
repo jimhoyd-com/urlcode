@@ -7,8 +7,8 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { holdServerLock, NETWORK_FILESYSTEMS, refuseNetworkFilesystem, serverLockHeld, serverLockPath } from '../packages/core/src/server-lock.ts';
 
-// One serving process per database: the server lock every SQLite-backed extension (store, auth, audit) takes before it
-// serves. The store, auth and audit tests exercise it through each extension's activation; these pin the lock itself
+// One serving process per database: the server lock every SQLite-backed extension (store, auth) takes before it
+// serves. The store and auth tests exercise it through each extension's activation; these pin the lock itself
 // against a real second process, including one killed with SIGKILL (TerminateProcess on Windows).
 //
 // Every wait on a child is bounded (`within`), so a platform difference fails with the child's stderr instead of

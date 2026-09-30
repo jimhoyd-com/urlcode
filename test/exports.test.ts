@@ -23,7 +23,7 @@ const expected: Record<string, string[]> = {
   './policies': ['registry','targets','builtinProfiles','effectivePolicies','compilePolicies','compileErrorPolicy','errorHeaders','closePolicies','policyRequest'],
   './compliance': ['severities','builtinProfiles','profileNames','validateRules','resolveRules','loadComplianceRules','runCompliance'],
   './observability': ['events','validateObservers','createMetrics','createObserverSink','renderPrometheus','SNAPSHOT_VERSION'],
-  './extensions': ['inspectExtensionRevision','effectiveExtensionPolicies','hasExtensionPolicy','prepareExtensions','extensionResponse','defineExtension','clientKey','clientKeyIpv6Prefix','ExtensionHttpError','readBody','jsonResponse','isSameOriginRequest'],
+  './extensions': ['inspectExtensionRevision','effectiveExtensionPolicies','hasExtensionPolicy','prepareExtensions','extensionResponse','defineExtension','clientKey','clientKeyIpv6Prefix','ExtensionHttpError','readBody','jsonResponse','isSameOriginRequest','AuditError','auditLimits','validateAuditEvent','validateAuditQuery'],
   './sqlite': ['holdServerLock','hostProbe','NETWORK_FILESYSTEMS','refuseNetworkFilesystem','serverLockHeld','serverLockPath'],
   './host': ['composeHost'],
   './sandbox': ['SandboxPool','functionFile'],
@@ -60,11 +60,11 @@ process.stdout.write(JSON.stringify(sqlite || process.moduleLoadList.includes('N
   assert.equal(loads('sqlite'), true, 'the probe sees node:sqlite when an entry loads it');
 });
 
-// A workspace package resolves core, and a sibling add-on, to source under `development` (#1056), so a change to a core
+// A workspace package resolves core (and a sibling add-on, should one ever peer on another) to source under `development` (#1056), so a change to a core
 // export reaches every add-on's typecheck and tests with no `npm run build`. Without it they read dist/, which goes
 // stale after every merge until someone rebuilds.
 const repository = realpathSync(fileURLToPath(new URL('..', import.meta.url)));
-const manifests = ['package.json', 'packages/audit/package.json', 'packages/auth/package.json', 'packages/mcp/package.json', 'packages/store/package.json'];
+const manifests = ['package.json', 'packages/auth/package.json', 'packages/mcp/package.json', 'packages/store/package.json'];
 
 test('every JavaScript export of core and each add-on names its source first under development, and packing drops it', async () => {
   for (const file of manifests) {
@@ -85,15 +85,14 @@ test('every JavaScript export of core and each add-on names its source first und
   }
 });
 
-test('a workspace package resolves core and a sibling add-on to source under development, in Node and in tsc', () => {
+test('a workspace package resolves core to source under development, in Node and in tsc', () => {
   const store = join(repository, 'packages', 'store');
-  const code = "process.stdout.write(JSON.stringify(['@jimhoyd/urlcode/sqlite','@jimhoyd/urlcode/extensions','@jimhoyd/urlcode-audit'].map(s => import.meta.resolve(s))))";
+  const code = "process.stdout.write(JSON.stringify(['@jimhoyd/urlcode/sqlite','@jimhoyd/urlcode/extensions'].map(s => import.meta.resolve(s))))";
   const run = spawnSync(process.execPath, ['--conditions=development', '--input-type=module', '-e', code], { cwd: store, encoding: 'utf8' });
   assert.equal(run.status, 0, run.stderr);
-  const [sqlite, extensions, audit] = (JSON.parse(run.stdout) as string[]).map(url => relative(repository, realpathSync(fileURLToPath(url))).split(sep).join('/'));
+  const [sqlite, extensions] = (JSON.parse(run.stdout) as string[]).map(url => relative(repository, realpathSync(fileURLToPath(url))).split(sep).join('/'));
   assert.equal(sqlite, 'packages/core/src/sqlite.ts');
   assert.equal(extensions, 'packages/core/src/extensions.ts');
-  assert.equal(audit, 'packages/audit/src/index.ts');
 
   const resolveFrom = (config: string, specifier: string): string => {
     const parsed = ts.getParsedCommandLineOfConfigFile(join(store, config), {}, { ...ts.sys, onUnRecoverableConfigFileDiagnostic: diagnostic => assert.fail(ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n')) });
@@ -105,7 +104,7 @@ test('a workspace package resolves core and a sibling add-on to source under dev
   // The typecheck (and every test run) reads source; the emitting build reads core's built declarations, since its
   // rootDir is the add-on's own src/.
   assert.equal(resolveFrom('tsconfig.json', '@jimhoyd/urlcode/sqlite'), 'packages/core/src/sqlite.ts');
-  assert.equal(resolveFrom('tsconfig.json', '@jimhoyd/urlcode-audit'), 'packages/audit/src/index.ts');
+  assert.equal(resolveFrom('tsconfig.json', '@jimhoyd/urlcode/extensions'), 'packages/core/src/extensions.ts');
   const parsedBuild = ts.getParsedCommandLineOfConfigFile(join(store, 'tsconfig.build.json'), {}, { ...ts.sys, onUnRecoverableConfigFileDiagnostic: () => {} });
   assert.deepEqual(parsedBuild?.options.customConditions, [], 'the add-on build resolves built declarations, not source outside its rootDir');
 });

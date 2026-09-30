@@ -129,9 +129,8 @@ rules an AI agent must follow are in [the framework][docs/FRAMEWORK.md].
 | Component | Adds | Distribution |
 |---|---|---|
 | [urlcode](https://github.com/jimhoyd-com/urlcode) (this repository) | Runtime, CLI, policies, provider adapters, extension contract | [npm](https://www.npmjs.com/package/@jimhoyd/urlcode), [GitHub Releases](https://github.com/jimhoyd-com/urlcode/releases), Homebrew |
-| [audit][packages/audit] extension | The durable audit log audited store collections record their writes in, through a transactional outbox | add-on on core's GitHub Release |
 | [auth][packages/auth] extension | Accounts and sessions from [Better Auth](https://better-auth.com/) on one mount; `auth: true` routes receive the signed-in user id | add-on on core's GitHub Release |
-| [store][packages/store] extension | Durable bounded JSON collections exposed as a typed CRUD API, with optional audited writes | add-on on core's GitHub Release |
+| [store][packages/store] extension | Durable bounded JSON collections exposed as a typed CRUD API, with an optional audit log kept in the same database and a tap to forward it | add-on on core's GitHub Release |
 | [mcp][packages/mcp] extension | Declarative MCP tool server over a project-declared tool map | add-on on core's GitHub Release |
 | [store-schema][artifacts/store-schema] artifact | Inert store configuration schema and example, for tooling | add-on on core's GitHub Release |
 
@@ -204,7 +203,7 @@ for the vocabulary these two paragraphs use.
 ## Status
 
 <!-- urlcode-current-version:start -->
-This checkout prepares the `0.6.5` core release. The audit, auth, store
+This checkout prepares the `0.6.5` core release. The auth, store
 and mcp extensions and the store-schema artifact are workspace packages
 released as add-on tarballs with core, not npm packages. Package availability
 remains a live registry fact: see the GitHub Releases page or
@@ -340,7 +339,6 @@ permitted. See [contributing][CONTRIBUTING.md], [security](SECURITY.md),
 [docs/RESILIENCE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RESILIENCE.md
 [docs/TYPESCRIPT.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TYPESCRIPT.md
 [ROADMAP.md#history]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/ROADMAP.md#history
-[packages/audit]: https://github.com/jimhoyd-com/urlcode/tree/v0.6.5/packages/audit
 [packages/auth]: https://github.com/jimhoyd-com/urlcode/tree/v0.6.5/packages/auth
 [packages/store]: https://github.com/jimhoyd-com/urlcode/tree/v0.6.5/packages/store
 [packages/mcp]: https://github.com/jimhoyd-com/urlcode/tree/v0.6.5/packages/mcp

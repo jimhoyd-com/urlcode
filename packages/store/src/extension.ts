@@ -1,7 +1,6 @@
 import { join } from 'node:path';
 import { defineExtension } from '@jimhoyd/urlcode/extensions';
 import type { ScaffoldRequest, ScaffoldResult } from '@jimhoyd/urlcode/extensions';
-import type { AuditExports } from '@jimhoyd/urlcode-audit';
 import { createStore, storeConfigSchema } from './store.ts';
 import { storeAuthoring } from './authoring.ts';
 
@@ -45,11 +44,12 @@ function scaffold(): ScaffoldResult {
  * protected by it and the collection is per-user (`ownership: owner`, #331): each signed-in user sees and changes
  * only their own todos. One provider is named with `auth: true`; with several, the mount names the first by
  * `policies.extensions.<name>`, since `auth: true` needs exactly one. Without a provider it stays a shared collection
- * and needs `--ack store:public-write`. When audit is installed, every write to the collection is recorded in the
- * audit log (`audit: true`). The example is API only: a frontend calls the JSON mount.
+ * and needs `--ack store:public-write`. With a provider, every write to the collection is also recorded in the
+ * store's audit log (`audit: true`, which needs a principal on the mount). The example is API only: a frontend calls
+ * the JSON mount.
  */
 function example(request: ScaffoldRequest): ScaffoldResult {
-  const provider = request.principalProviders[0], withAuth = provider !== undefined, withAudit = request.installed.includes('audit');
+  const provider = request.principalProviders[0], withAuth = provider !== undefined;
   if (!withAuth && !request.acknowledgements.includes(publicWrite)) throw Object.assign(new Error('the store example serves POST, PUT, PATCH and DELETE on /api/todos, and no installed extension protects them, so anyone could write. Add a sign-in provider first (the bundled one: urlcode extensions add auth), or acknowledge a public writable endpoint if that is really intended (that is not rate limiting, abuse protection or multi-tenant isolation)'), { acknowledgement: publicWrite });
   const protection = !withAuth ? {} : request.principalProviders.length === 1 ? { auth: true } : { policies: { extensions: { [provider]: {} } } };
   return {
@@ -60,8 +60,7 @@ function example(request: ScaffoldRequest): ScaffoldResult {
         properties: { title: { type: 'string', minLength: 1, maxLength: 200 }, done: { type: 'boolean' } },
       }, defaults: { done: false },
       maxRecords: 1000, maxRecordBytes: 4096,
-      ...(withAuth ? { ownership: 'owner' } : {}),
-      ...(withAudit ? { audit: true } : {}),
+      ...(withAuth ? { ownership: 'owner', audit: true } : {}),
     } } },
     routes: {
       '/api/todos/*': { extension: 'store', methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'], ...protection },
@@ -70,7 +69,7 @@ function example(request: ScaffoldRequest): ScaffoldResult {
     notes: [
       withAuth ? `store serves /api/todos to signed-in callers only (${'auth' in protection ? 'auth: true' : `policies.extensions.${provider}`} on the mount: ${provider} decides who is signed in and how writes are admitted), and each user sees and changes only their own todos (ownership: owner).` : 'store serves /api/todos with public write: anyone who can reach the server can change records. Add a sign-in provider (the bundled one: urlcode extensions add auth) and `auth: true` on the mount to protect it.',
       'Records live in the SQLite database data/store.sqlite, outside app/; back up data/ like any operator data (urlcode-store backup; see the store README, node_modules/@jimhoyd/urlcode-store/README.md). Try it: curl -X POST -H "Content-Type: application/json" -d \'{"title":"first"}\' <origin>/api/todos',
-      ...(withAudit ? ['Every create, change and delete on the todos collection is recorded in the audit log (audit: true): field names and the signed-in user, never values. When the audit log falls 1000 events behind, writes answer 503 until it catches up.'] : []),
+      ...(withAuth ? ['Every create, change and delete on the todos collection is recorded in the store\'s audit log (audit: true), in the same transaction: field names and the signed-in user, never values. Read it with `npx urlcode-store audit --database <abs>/data/store.sqlite`.'] : []),
     ],
   };
 }
@@ -81,9 +80,6 @@ export default defineExtension<StoreHostOptions>({
   description: 'SQLite-backed collections served as a bounded CRUD API, declared in YAML with no handler code',
   contract: 2,
   requires: [],
-  // Optional: a collection that declares `audit: true` records its writes through the audit extension, and refuses
-  // to activate when audit is not installed. Without such a collection the store never touches audit.
-  uses: ['audit'],
   schema: storeConfigSchema,
   authoring: storeAuthoring,
   agent: {description: 'Local, revision-pinned references for agents configuring the store extension.', references: [{name: 'store extension guide', description: 'Configuration and data-model guidance for the store extension; ends with the generated field reference for every configuration key.', path: 'README.md'}]},
@@ -93,9 +89,9 @@ export default defineExtension<StoreHostOptions>({
     // A hermetic run (test, audit, benchmark) uses a fresh database in the run's data directory, never the site's, and
     // accepts the project's test seed (memberships).
     const database = context.hermetic ? join(context.data, 'store.sqlite') : options.database ?? process.env.STORE_DATABASE ?? join(context.data, 'store.sqlite');
-    // `exports` is the StoreExports records API (version 1) an extension that requires store reads with ctx.get('store').
-    // With audit installed the store attaches as its `store` producer here; the host's close detaches it.
+    // `exports` is the StoreExports records API (version 1) an extension that requires store reads with ctx.get('store'),
+    // its audit log tap included.
     const durability = (options.durability ?? process.env.STORE_DURABILITY) as StoreHostOptions['durability'];
-    return createStore({ database, durability, projectSha256: context.projectSha256, audit: context.get<AuditExports | undefined>('audit'), hermetic: context.hermetic });
+    return createStore({ database, durability, projectSha256: context.projectSha256, hermetic: context.hermetic });
   },
 });

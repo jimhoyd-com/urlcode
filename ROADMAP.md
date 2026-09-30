@@ -14,7 +14,7 @@ before promising a deployment. Stored short links have no dedicated package;
 a project declares a collection through the `store` extension instead (see
 [docs/STORE.md](docs/STORE.md)).
 
-Auth, audit, store and MCP are optional packages, developed in this
+Auth, store and MCP are optional packages, developed in this
 repository under `packages/` and released independently. Middleware is not a
 package: per-route `middleware:` is native to core. Auth is a thin adapter
 over [Better Auth](https://better-auth.com/) (#841); URLCode's own account

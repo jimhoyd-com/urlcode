@@ -175,11 +175,11 @@ cannot do here (no server-side revocation) and where core keys on the name
   (their `run_tests`, like `npm test`, uses a fresh database of its own).
 - Reviewer membership is maintained by the operator (`addMember` in
   `scripts/setup.mjs`; `urlcode-store members add|remove|list` is the same
-  operation from the command line). The proof does not install the audit
-  extension, so neither membership changes nor approvals leave an audit event
-  (with audit installed, `audit: true` on `reviewers` records
-  `store.membership.added`/`removed`, and on `requests`
-  `store.record.transitioned` with the reviewer as actor).
+  operation from the command line). The proof declares no `audit: true`, so
+  neither membership changes nor approvals leave an audit event (`audit: true`
+  on `reviewers` would record `store.membership.added`/`removed` in the
+  store's audit log, and on `requests` `store.record.transitioned` with the
+  reviewer as actor).
 - The review queue (`readers.review`) does not declare `showOwner`, so a reviewer sees
   what was requested but not by whom; with it, each record carries the
   owner's opaque user id as `_owner` on the review mount only.

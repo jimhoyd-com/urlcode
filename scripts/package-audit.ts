@@ -41,7 +41,7 @@ export interface Budget {
 // packs about 800 bytes larger. When a PR hits a limit and the growth is
 // intended, re-measure every package and reset all of them by this policy
 // rather than raising one by the overshoot, and say why in the PR.
-// Baseline (#1040): 1091445/4290711/550 core, 28239/91233/26 audit, 24813/77224/14 auth, 34016/139480/12 mcp, 12735/50583/7 store-schema, 162759/634321/36 store
+// Baseline (#1040): 1091445/4290711/550 core, 24813/77224/14 auth, 34016/139480/12 mcp, 12735/50583/7 store-schema, 162759/634321/36 store
 // (packed/unpacked bytes/entries), sizes rounded up to a KiB.
 export const budgets: Record<string, Budget> = {
   '@jimhoyd/urlcode': {
@@ -50,12 +50,6 @@ export const budgets: Record<string, Budget> = {
     entries: 561,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
-  },
-  '@jimhoyd/urlcode-audit': {
-    packed: 34 * 1024,
-    unpacked: 114 * 1024,
-    entries: 28,
-    roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
   '@jimhoyd/urlcode-auth': {
     // S5 on top of #1054: 28462 packed / 91743 unpacked bytes, 14 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.

@@ -8,13 +8,16 @@
  *
  * `transaction(work)` (#835) runs several of those operations, across the declared collections, as one database
  * transaction: trusted host code only (never sandboxed, never a route function), synchronous, one database.
+ *
+ * `audit` (#1052) is the store's audit log as core's `AuditLog`: the tap (`peek`, `ack`) a sink forwards events
+ * through, and `query`.
  */
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { principalIdPattern } from '@jimhoyd/urlcode/extensions';
-import type { ExtensionPrincipal } from '@jimhoyd/urlcode/extensions';
+import type { AuditLog, ExtensionPrincipal } from '@jimhoyd/urlcode/extensions';
 import { OWNER_FIELD, StoreError, etagOf, storageFailure } from './collection.ts';
-import type { Collection, Ownership, RecordSchema, Scalar, Step, StoredRecord } from './collection.ts';
+import type { Collection, Ownership, RecordSchema, Scalar, StoredRecord } from './collection.ts';
 import type { StoreDatabase } from './database.ts';
 
 /** Export contract version 1. */
@@ -41,6 +44,12 @@ export interface StoreExports {
    * throws keeps nothing, so its retry runs again. Keys are store-wide: prefix them with the caller's own scope.
    */
   transaction<T>(work: (tx: StoreTransaction) => T, options?: StoreTransactionOptions): T;
+  /**
+   * The audit log of the collections that declare `audit: true` (core's `AuditLog`): `peek`/`ack` is the tap a sink
+   * forwards events through, at least once and in record order; `query` pages it. Every call rejects with a 503
+   * `AuditError` (`audit_inactive`) while the store is not active.
+   */
+  readonly audit: AuditLog;
 }
 /** Makes a host transaction retry-safe (`StoreExports.transaction`). */
 export interface StoreTransactionOptions {
@@ -188,8 +197,7 @@ function kept(value: unknown): string | null {
 
 /**
  * One host transaction over the activation's collections. Every operation is a write step from collection.ts run on
- * the one open database, the first write to each collection after its declaration fence; audited collections are
- * woken after the commit. `open` turns false when `work` returns, so a
+ * the one open database, the first write to each collection after its declaration fence. `open` turns false when `work` returns, so a
  * handle kept past the transaction (for example across an `await`) refuses instead of writing outside it.
  */
 function runTransaction<T>(byName: Map<string, Collection>, work: (tx: StoreTransaction) => T, options?: StoreTransactionOptions): T {
@@ -198,10 +206,8 @@ function runTransaction<T>(byName: Map<string, Collection>, work: (tx: StoreTran
   const first = byName.values().next().value as Collection | undefined;
   if (!first) throw new Error('store declares no collections');
   const db: StoreDatabase = first.database();
-  const audited = new Set<Collection>();
   let open = true;
   const live = (): void => { if (!open) throw new Error('This store transaction has ended; use tx only inside the transaction function'); };
-  const step = (collection: Collection, done: Step): StoredRecord | undefined => { if (done.audited) audited.add(collection); return done.record; };
   // The declaration fence (#927), once per collection this transaction writes, before its first write step: a
   // transaction that only reads a collection is not refused for it.
   const fenced = new Set<Collection>();
@@ -216,15 +222,14 @@ function runTransaction<T>(byName: Map<string, Collection>, work: (tx: StoreTran
       if (!handle) {
         handle = Object.freeze({
           name,
-          create(principal: StorePrincipal, values: Readonly<Record<string, Scalar>>) { writing(collection); return result(step(collection, collection.createFor(db, { ...values }, ownerOf(principal), actorOf(principal)))!); },
+          create(principal: StorePrincipal, values: Readonly<Record<string, Scalar>>) { writing(collection); return result(collection.createFor(db, { ...values }, ownerOf(principal), actorOf(principal)).record!); },
           get(principal: StorePrincipal, id: string) { live(); return result(collection.getIn(db, known(id), ownerOf(principal))); },
-          update(principal: StorePrincipal, id: string, patch: Readonly<Record<string, Scalar | null>>, options: { ifMatch?: string } = {}) { writing(collection); return result(step(collection, collection.updateFor(db, known(id), { ...patch }, matchOf(options), ownerOf(principal), actorOf(principal)))!); },
-          remove(principal: StorePrincipal, id: string, options: { ifMatch?: string } = {}) { writing(collection); step(collection, collection.removeFor(db, known(id), matchOf(options), ownerOf(principal), actorOf(principal))); },
-          transition(principal: StorePrincipal, id: string, transition: string, options: { ifMatch?: string } = {}) { writing(collection); return result(step(collection, collection.transitionIn(db, known(id), String(transition), matchOf(options), ownerOf(principal), actorOf(principal)))!); },
+          update(principal: StorePrincipal, id: string, patch: Readonly<Record<string, Scalar | null>>, options: { ifMatch?: string } = {}) { writing(collection); return result(collection.updateFor(db, known(id), { ...patch }, matchOf(options), ownerOf(principal), actorOf(principal)).record!); },
+          remove(principal: StorePrincipal, id: string, options: { ifMatch?: string } = {}) { writing(collection); collection.removeFor(db, known(id), matchOf(options), ownerOf(principal), actorOf(principal)); },
+          transition(principal: StorePrincipal, id: string, transition: string, options: { ifMatch?: string } = {}) { writing(collection); return result(collection.transitionIn(db, known(id), String(transition), matchOf(options), ownerOf(principal), actorOf(principal)).record!); },
           transfer(principal: StorePrincipal, transfer: string, request: StoreTransferRequest, options: { ifMatch?: string } = {}) {
             writing(collection);
             const done = collection.transferIn(db, String(transfer), plain(request), matchOf(options), ownerOf(principal), actorOf(principal));
-            step(collection, done);
             return transferResult(done.record, collection.visible(done.to, ownerOf(principal)) ? done.to : undefined);
           },
           list(principal: StorePrincipal, options: { limit?: number; cursor?: string } = {}) { live(); return pageOf(collection, options, collection.listPageIn(db, pageParams(options), ownerOf(principal))); },
@@ -258,7 +263,6 @@ function runTransaction<T>(byName: Map<string, Collection>, work: (tx: StoreTran
       return returned;
     });
   } catch (error) { return storageFailure(error, true); }
-  for (const collection of audited) collection.notifyAudit();
   return value;
 }
 
@@ -285,12 +289,12 @@ function records(collection: Collection): StoreRecords {
 }
 
 /**
- * The export object and the two calls the registration makes: `attach` when an activation has loaded its
+ * The export object (with `audit`, the log over the serving database) and the two calls the registration makes: `attach` when an activation has loaded its
  * collections, and `detach` (with the token `attach` returned) when that activation closes. The newest live
  * activation is the one served: a newer activation's collections are never detached by an older one's close, and
  * when a failed reload closes the newest, the activation still serving is current again (RIM-EXT-HANDOFF-001).
  */
-export function storeExports(): { exports: StoreExports; attach(collections: readonly Collection[]): symbol; detach(token: symbol): void } {
+export function storeExports(audit: AuditLog): { exports: StoreExports; attach(collections: readonly Collection[]): symbol; detach(token: symbol): void } {
   type Attached = { token: symbol; byName: Map<string, StoreRecords>; collections: Map<string, Collection> };
   const attached: Attached[] = [];
   let current: Attached | undefined;
@@ -307,6 +311,7 @@ export function storeExports(): { exports: StoreExports; attach(collections: rea
       if (!current) throw new Error('store is not active yet: run transactions from activate or a request, not from host()');
       return runTransaction(current.collections, work, options);
     },
+    audit,
   });
   return {
     exports,
