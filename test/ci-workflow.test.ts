@@ -84,8 +84,8 @@ test('workflow command bodies call the tested CI scripts', async () => {
   const { scripts } = JSON.parse(await readFile('package.json', 'utf8'));
   assert.equal(scripts['ci:build-fidelity'], 'node scripts/ci-build-fidelity.ts');
   assert.equal(scripts['ci:container-smoke'], 'node scripts/ci-container-smoke.ts');
-  assert.equal(scripts['test:multiprocess'], 'node --test test/multiprocess.integration.ts');
-  assert.equal(scripts['test:disk-full'], 'node --test test/disk-full.integration.ts');
+  assert.equal(scripts['test:multiprocess'], 'node --import ./test/scratch-tmpdir.ts --test test/multiprocess.integration.ts');
+  assert.equal(scripts['test:disk-full'], 'node --import ./test/scratch-tmpdir.ts --test test/disk-full.integration.ts');
   const smoke = containerSmokeScript();
   for (const expected of ['recipes add typescript', 'build-typescript', '/_urlcode/ready', 'starters/default', 'examples/assets', 'trap \'docker logs urlcode; docker rm -f urlcode\' EXIT']) assert.match(smoke, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 });

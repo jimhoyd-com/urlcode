@@ -44,7 +44,7 @@ test('workerd-parity.yml is manually dispatched only, read-only, pins Wrangler a
 
 test('npm run test:workerd builds dist/ before it compares (#868: a stale build once passed every case)', async () => {
   const { scripts } = JSON.parse(await readFile('package.json', 'utf8')) as { scripts: Record<string, string> };
-  assert.match(scripts['test:workerd']!, /^npm run build && node scripts\/workerd-parity\.ts$/);
+  assert.match(scripts['test:workerd']!, /^npm run build && node --import \.\/test\/scratch-tmpdir\.ts scripts\/workerd-parity\.ts$/);
 });
 
 // A direct `node scripts/workerd-parity.ts` (no npm_execpath) compares nothing: it must say SKIP with the reason, and
