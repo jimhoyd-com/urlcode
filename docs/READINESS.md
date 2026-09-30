@@ -437,7 +437,11 @@ ends: every first-party extension keeps its database there (whatever
 `database` option or `STORE_DATABASE` the host names), auth creates Better
 Auth's tables itself and signs sessions with a secret that lives only as long
 as the run, so no `urlcode-auth migrate`, `data/auth.secret` or cleanup is
-needed, and a rerun starts from nothing. `validate` and `routes` run the same
+needed, and a rerun starts from nothing. When the host gives auth the owner's
+own Better Auth database, the run serves the isolated database the host's
+`testDatabase` returns instead, and is refused without one; it never falls
+back to live accounts ([your own database](../packages/auth/README.md#your-own-database)).
+`validate` and `routes` run the same
 way under `--local-review` with no operator pin, as the generated npm scripts
 do. `dev`, `serve`, and `validate` and `routes` with the reviewed pin, use the
 site's own `data/`: the pinned `validate` checks what `serve` will use,

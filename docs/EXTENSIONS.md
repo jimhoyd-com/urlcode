@@ -1000,7 +1000,10 @@ A hermetic host keeps every file under `ctx.data`, whatever the operator's
 options or environment name for serving (a `database` path, an environment
 variable), creates what serving expects an operator to have created (a schema,
 a signing secret that lives only as long as the host) and starts from nothing
-on every run. Only such a registration declares `seedSchema`. Core reads the
+on every run. A database the extension does not own, such as the owner's own
+Better Auth database given to auth, stays out of reach: the run serves an
+isolated one the host supplies (auth's `testDatabase`) or refuses, never
+the live one. Only such a registration declares `seedSchema`. Core reads the
 project's `tests/seed.json` (an object keyed by extension name, at most 1 MiB),
 validates each entry against the named registration's `seedSchema` and passes
 it as `context.seed` to that extension's first activation of the run only:

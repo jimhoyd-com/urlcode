@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path';
 import { betterAuth } from 'better-auth';
 import { holdsIllFormedString } from '@jimhoyd/urlcode/body-schema';
 import { betterAuthOptions, defaultBasePath, migrate, refuseRemoteAuthDatabase } from './auth.ts';
-import { DATABASE, readSecret } from './extension.ts';
+import { DATABASE, OWNER_DATABASE_MARKER, readSecret } from './extension.ts';
 
 const usage = 'Usage: urlcode-auth migrate [--site DIR]\n       urlcode-auth create-user [--site DIR]   (reads {"email","password","name"} as JSON on stdin)\n       urlcode-auth find-user --email <email> [--site DIR]   (prints the user id, e.g. for urlcode-store members add --principal)\n';
 /** The value after `flag`, or undefined when the flag is absent or has no value. */
@@ -16,6 +16,12 @@ async function main(argv: string[]): Promise<number> {
   const [command, ...rest] = argv;
   const site = resolve(option(rest, '--site') ?? '.');
   if (command !== 'migrate' && command !== 'create-user' && command !== 'find-user') { process.stderr.write(usage); return 2; }
+  // These commands manage only the bundled SQLite file. host.mjs leaves the marker while it gives Better Auth the
+  // owner's own database, whose schema and accounts are the owner's tooling's (Better Auth's CLI, for one).
+  if (existsSync(join(site, OWNER_DATABASE_MARKER))) {
+    process.stderr.write(`urlcode-auth ${command} manages only the bundled ${DATABASE}, and this site's host.mjs gives Better Auth the owner's own database (${OWNER_DATABASE_MARKER}). Migrate it and create accounts with that database's own tooling, such as Better Auth's CLI or its server API.\n`);
+    return 2;
+  }
   if (command === 'find-user') return findUser(site, option(rest, '--email'));
   await refuseRemoteAuthDatabase(join(site, DATABASE));
   // The origin only matters to browsers; the server API used here never builds a URL from it.
