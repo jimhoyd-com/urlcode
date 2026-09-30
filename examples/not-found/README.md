@@ -11,6 +11,6 @@ urlcode test --project .
 urlcode build --target static --project .   # writes 404.html
 ```
 
-<!-- x-release-please-start-version -->
+<!-- urlcode-current-version:start -->
 [docs/SITE.md#notfound--404html]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SITE.md#notfound--404html
-<!-- x-release-please-end -->
+<!-- urlcode-current-version:end -->

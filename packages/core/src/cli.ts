@@ -40,8 +40,9 @@ import { cliInvocation, shellWord } from './context.ts';
 import { SignalRecorder } from './signal-recorder.ts';
 import { CORE_VERSION, docsUrl } from './release.ts';
 
-// The release pull request moves CORE_VERSION with every other version declaration, and the version check asserts
-// that literal, not a read of package.json, equals the core version.
+// Stamped by scripts/release-bump.ts alongside every other runtime version declaration (mcp.ts's serverInfo,
+// the starter's schema pin and CI action); `release-bump.ts --check` asserts this literal, not a read of
+// package.json, equals the core version, so keep it a plain string literal here.
 const VERSION = CORE_VERSION;
 async function defaultProject(): Promise<string> {
   const has = (path: string): Promise<boolean> => access(path).then(() => true, () => false);

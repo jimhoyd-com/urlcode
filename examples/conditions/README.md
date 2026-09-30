@@ -12,6 +12,6 @@ duplicate rejection, HEAD and trusted-origin matching. All data is synthetic.
 Conditions compare request inputs; they do not authorize users or grant guest
 capabilities. See [the condition contract][docs/CONDITIONS.md].
 
-<!-- x-release-please-start-version -->
+<!-- urlcode-current-version:start -->
 [docs/CONDITIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CONDITIONS.md
-<!-- x-release-please-end -->
+<!-- urlcode-current-version:end -->

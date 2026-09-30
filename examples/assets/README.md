@@ -18,6 +18,6 @@ To start your own small app, use `urlcode init ../my-links`. It creates one
 function route and one regular redirect. Add asset routes when you need them.
 URLCode is licensed under the Apache License 2.0.
 
-<!-- x-release-please-start-version -->
+<!-- urlcode-current-version:start -->
 [docs/ASSETS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/ASSETS.md
-<!-- x-release-please-end -->
+<!-- urlcode-current-version:end -->

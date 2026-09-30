@@ -81,11 +81,11 @@ recipe, and the end-to-end application in
 Edit `functions/profile.mjs` to return real data. Cloudflare refuses extensions;
 functions need the self-hosted runtime.
 
-<!-- x-release-please-start-version -->
+<!-- urlcode-current-version:start -->
 [packages/auth/README.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth/README.md
 [docs/EXTENSIONS.md#the-local-review-loop]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-local-review-loop
 [docs/READINESS.md#authenticated-routes-auth-true]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#authenticated-routes-auth-true
 [docs/EXTENSIONS.md#the-revision-pin]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-revision-pin
 [docs/EXTENSIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md
 [proofs/private-requests/README.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/private-requests/README.md
-<!-- x-release-please-end -->
+<!-- urlcode-current-version:end -->

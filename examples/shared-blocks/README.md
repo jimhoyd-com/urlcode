@@ -12,6 +12,6 @@ one with `use`. `/orders/preview` overrides `request` and keeps the shared
 headers; `/health` overrides `response` and drops the shared headers. `routes`
 prints the resolved result. See [the specification][docs/SPECIFICATION.md].
 
-<!-- x-release-please-start-version -->
+<!-- urlcode-current-version:start -->
 [docs/SPECIFICATION.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SPECIFICATION.md
-<!-- x-release-please-end -->
+<!-- urlcode-current-version:end -->

@@ -14,7 +14,7 @@ import { basename, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { packAddons } from './pack-addons.ts';
 import { buildTriage } from './supply-chain-triage.ts';
-import { check } from './release-versions.ts';
+import { check } from './release-bump.ts';
 import { npmCommand } from './npm-command.ts';
 import { addons, repositoryRoot } from './workspaces.ts';
 import { buildAddonCatalog, parseAddonCatalog } from '../packages/core/src/addon-manifest.ts';

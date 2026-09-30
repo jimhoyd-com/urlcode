@@ -202,17 +202,15 @@ for the vocabulary these two paragraphs use.
 
 ## Status
 
-<!-- x-release-please-start-version -->
+<!-- urlcode-current-version:start -->
 This checkout prepares the `0.6.5` core release. The auth, store
 and mcp extensions and the store-schema artifact are workspace packages
 released as add-on tarballs with core, not npm packages. Package availability
 remains a live registry fact: see the GitHub Releases page or
 `npm view @jimhoyd/urlcode dist-tags`. A stable core
 version does not close the review and deployment evidence gaps
-below.
-<!-- x-release-please-end -->
-
-`0.4.0-alpha.1` added the extension contract, capabilities and provider conformance, strict
+below. `0.4.0-alpha.1`
+added the extension contract, capabilities and provider conformance, strict
 redirect interchange (since removed), bulk import, recipes and search, TypeScript guest
 authoring, conditions, bounded proxy and signals, and the MCP read and
 authoring modes. `0.4.0-alpha.2` then made `function` and `middleware` routes
@@ -221,7 +219,7 @@ opt-in, and removed the native `link:`/`dynamicLinks:` YAML shape. That is a
 behaviour change for existing projects with no YAML edit; read
 [the roadmap entry][ROADMAP.md] before upgrading. Use the schema and docs from
 the runtime revision you run.
-
+<!-- urlcode-current-version:end -->
 The [roadmap][ROADMAP.md] separates implemented from planned, and
 [production readiness][docs/RELEASE-OPERATIONS.md#production-readiness] records what is proven and
 what is not: provider deployments, soak and independent security review
@@ -325,7 +323,7 @@ Apache-2.0. Commercial use, modification, redistribution and self-hosting are
 permitted. See [contributing][CONTRIBUTING.md], [security](SECURITY.md),
 [governance][GOVERNANCE.md] and the [roadmap][ROADMAP.md].
 
-<!-- x-release-please-start-version -->
+<!-- urlcode-current-version:start -->
 [docs/CONCEPTS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CONCEPTS.md
 [docs/FRAMEWORK.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/FRAMEWORK.md
 [docs/STARTERS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STARTERS.md
@@ -372,4 +370,4 @@ permitted. See [contributing][CONTRIBUTING.md], [security](SECURITY.md),
 [proofs/private-requests/client/main.js]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/private-requests/client/main.js
 [docs/OPEN-DECISIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OPEN-DECISIONS.md
 [GOVERNANCE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/GOVERNANCE.md
-<!-- x-release-please-end -->
+<!-- urlcode-current-version:end -->

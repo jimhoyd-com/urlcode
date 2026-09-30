@@ -1,4 +1,4 @@
-<!-- x-release-please-start-version -->
+<!-- urlcode-current-version:start -->
 # URLCode
 
 > A portable runtime for programmable URL behavior, and the framework that grows
@@ -8,7 +8,7 @@
 > routes are trusted by default with `sandbox: true` as the per-route opt-in. The
 > auth, store and mcp extensions are add-ons released with core and pinned by
 > it; a site adds them with `urlcode extensions add <name>`. Only core is published to npm.
-<!-- x-release-please-end -->
+<!-- urlcode-current-version:end -->
 
 Use the schema and docs from the runtime revision you run. Do not assume Node,
 fetch or database access inside a `sandbox: true` function, regex routes,
@@ -145,7 +145,7 @@ never publish or comment without the user's approval.
 - Tooling: [tooling and MCP][docs/TOOLING.md], [TypeScript][docs/TYPESCRIPT.md], [capabilities][docs/CAPABILITIES.md], [plugins][docs/PLUGINS.md], [bulk import][docs/BULK.md].
 - Operations: [operations][docs/OPERATIONS.md], [hosting inside another framework][docs/OPERATIONS.md#hosting-urlcode-inside-another-framework] (`createEmbeddedHandler`), [install][docs/INSTALL.md], [deployment checks][docs/DEPLOYMENT-CHECKS.md], [readiness][docs/READINESS.md], [capacity][docs/CAPACITY.md], [resilience][docs/RESILIENCE.md], [observability][docs/OBSERVABILITY.md], [Vercel][docs/VERCEL.md], [AWS][docs/AWS.md], [Cloudflare][docs/CLOUDFLARE.md], [static hosting][docs/STATIC.md], [production readiness][docs/RELEASE-OPERATIONS.md#production-readiness], [roadmap][ROADMAP.md].
 
-<!-- x-release-please-start-version -->
+<!-- urlcode-current-version:start -->
 [docs/TOOLING.md#local-agent-bootstrap]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TOOLING.md#local-agent-bootstrap
 [docs/TOOLING.md#registering-the-server]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TOOLING.md#registering-the-server
 [docs/TOOLING.md#optional-hosted-ai-mcp]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TOOLING.md#optional-hosted-ai-mcp
@@ -228,4 +228,4 @@ never publish or comment without the user's approval.
 [ROADMAP.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/ROADMAP.md
 [docs/EXTENSIONS.md#the-local-review-loop]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-local-review-loop
 [docs/EXTENSIONS.md#hermetic-runs-and-test-seeds]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#hermetic-runs-and-test-seeds
-<!-- x-release-please-end -->
+<!-- urlcode-current-version:end -->

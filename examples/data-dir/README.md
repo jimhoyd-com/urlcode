@@ -40,6 +40,6 @@ production `serve` reads only the process environment. See
 [bindings][docs/yaml/organization.md#12-environment-and-secret-references]
 and [policy setup](../../docs/FUNCTION-SECURITY.md).
 
-<!-- x-release-please-start-version -->
+<!-- urlcode-current-version:start -->
 [docs/yaml/organization.md#12-environment-and-secret-references]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/organization.md#12-environment-and-secret-references
-<!-- x-release-please-end -->
+<!-- urlcode-current-version:end -->

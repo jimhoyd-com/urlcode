@@ -20,6 +20,6 @@ redirect, or a host/scheme-based redirect — run
 {"task":"redirects"}`) for the exact supported alternative and the exact
 validation error, or see [docs/OPEN-DECISIONS.md][docs/OPEN-DECISIONS.md].
 
-<!-- x-release-please-start-version -->
+<!-- urlcode-current-version:start -->
 [docs/OPEN-DECISIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OPEN-DECISIONS.md
-<!-- x-release-please-end -->
+<!-- urlcode-current-version:end -->

@@ -185,9 +185,10 @@ and the opt-in sandbox are separate execution modes, not a portable
 cross-language guest-code guarantee.
 
 If live documentation names the current release version, wrap its complete
-paragraph or fenced example in the version block markers documented in the
+paragraph or fenced example in the `urlcode-current-version:start` and
+`urlcode-current-version:end` HTML comments documented in the
 [development pipeline](docs/DEVELOPMENT-PIPELINE.md#current-version-references-in-documentation).
-The release pull request updates every tracked marked block. Keep
+`npm run release:bump` discovers and updates every tracked marked block. Keep
 changelogs and archived plans unmarked.
 
 `urlcode-docs` was deleted on 2026-09-19. It held its own copy of most of these
@@ -215,11 +216,8 @@ deletion are blocked; squash merging keeps a linear history. Administrators have
 no configured ruleset bypass. Automation cannot approve pull requests.
 
 Pull request titles become the lines of the GitHub-generated release notes, so
-write them for readers, and in the
-[conventional commit](https://www.conventionalcommits.org/) form (`feat:`,
-`fix:`, `docs:`) the squash merge keeps: release-please chooses the next
-version from them. A release is the pull request release-please keeps open,
-containing only version changes; merging it publishes that version (see
+write them for readers. A release is a pull request containing only
+`npm run release:bump -- <version>`; merging it publishes that version (see
 [release operations](docs/RELEASE-OPERATIONS.md)).
 
 The project currently has one maintainer, @jimhoyd. CODEOWNERS identifies the

@@ -17,6 +17,6 @@ artifact, not the YAML.
 precompiled schema validators use Web standards only, so nothing here needs a
 Node compatibility layer.
 
-<!-- x-release-please-start-version -->
+<!-- urlcode-current-version:start -->
 [docs/CLOUDFLARE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CLOUDFLARE.md
-<!-- x-release-please-end -->
+<!-- urlcode-current-version:end -->

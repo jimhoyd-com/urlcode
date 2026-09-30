@@ -1,75 +1,57 @@
-# Keeps the release pull request open. release-please (release-please-config.json) reads the conventional commits
-# merged since the last release, chooses the next version and opens or updates the pull request that moves every
-# version declaration it can; the follow-up step moves the rest (npm's lockfile entries for the add-ons, and
-# scripts/release-versions.ts sync). It never touches main and never tags: only `release-pr` runs, and merging the
-# pull request releases the version through publish.yml, which creates the tag and the GitHub Release itself.
-#
-# release-please is its npm CLI, installed from .github/release-please/package-lock.json (every package pinned by
-# integrity), not a third-party action: the repository's Actions policy allows only GitHub's and jimhoyd-com's.
-#
-# It runs after each Publish release run on main. release-please opens no new pull request while a merged one is
-# still labelled `autorelease: pending`, so once main's version is released the first step labels it tagged.
-name: Release pull request
+# Starts a release: bumps every version declaration to the requested version and pushes the change as the
+# `release/v<version>` branch. It never touches main (main only changes through a reviewed pull request); open the
+# pull request from the branch, and merging it publishes the release (publish.yml). A pull request opened by a person
+# runs CI normally, which one opened with this workflow's token would not.
+name: Create release
+run-name: Create release ${{ inputs.version }}
 on:
-  workflow_run:
-    workflows: [Publish release]
-    types: [completed]
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release, X.Y.Z or X.Y.Z-alpha.N, newer than the current one
+        required: true
+        type: string
 permissions:
   contents: read
 concurrency:
-  group: release-please
+  group: release-bump
   cancel-in-progress: false
 jobs:
-  release-pr:
-    name: Open or update the release pull request
+  bump:
+    name: Bump every version and push the release branch
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: write
-      pull-requests: write
     env:
-      # A pull request opened or pushed with the workflow's own token starts no workflow, so the release pull
-      # request's checks run only with this secret (a token that can write contents and pull requests).
-      GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
-      # release-please's branch for the root component on main.
-      BRANCH: release-please--branches--main--components--urlcode
+      VERSION: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: main
-          token: ${{ env.GH_TOKEN }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .node-version
-      - name: Install the pinned release-please CLI
-        working-directory: .github/release-please
-        run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Label the merged release pull request tagged once its version is released
+      - run: npm ci --ignore-scripts
+      - name: Refuse a version that already has a branch or a release
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |-
           set -euo pipefail
-          version=$(jq -r .version package.json)
-          if [ "$(gh release view "v$version" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null || true)" = false ]; then
-            gh pr list --repo "$GITHUB_REPOSITORY" --state merged --label 'autorelease: pending' --json number --jq '.[].number' |
-              while read -r number; do gh pr edit "$number" --repo "$GITHUB_REPOSITORY" --remove-label 'autorelease: pending' --add-label 'autorelease: tagged'; done
-          fi
-      - name: Open or update the release pull request
-        run: >-
-          .github/release-please/node_modules/.bin/release-please release-pr
-          --token="$GH_TOKEN" --repo-url="$GITHUB_REPOSITORY" --target-branch=main
-          --config-file=release-please-config.json --manifest-file=.release-please-manifest.json
-      # No dependency is installed and no package script runs: npm only rewrites the lockfile's workspace entries.
-      - name: Move what release-please cannot
+          if git ls-remote --exit-code --heads origin "release/v$VERSION" >/dev/null; then echo "::error::release/v$VERSION already exists; open its pull request or delete the branch"; exit 1; fi
+          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then echo "::error::v$VERSION is already released"; exit 1; fi
+      - name: Bump every version declaration
         run: |-
           set -euo pipefail
-          if [ -z "$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then echo 'No open release pull request'; exit 0; fi
-          git fetch --depth 1 origin "$BRANCH"
-          git switch -C "$BRANCH" FETCH_HEAD
-          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-          node scripts/release-versions.ts sync
-          node scripts/release-versions.ts check
-          git add -A
-          git diff --cached --quiet && exit 0
-          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'chore: move the release version into the lockfile, pinned links and llms-full.txt'
-          git push origin "HEAD:$BRANCH"
+          node scripts/release-bump.ts "$VERSION"
+          # npm's own lockfile normalization (for example peer key order), so the pull request's install is a no-op.
+          npm install --ignore-scripts --no-audit --no-fund
+          node scripts/release-bump.ts --check
+      - name: Push release/v${{ inputs.version }}
+        run: |-
+          set -euo pipefail
+          git switch -c "release/v$VERSION"
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -am "release: v$VERSION"
+          git push origin "release/v$VERSION"
+          url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/compare/main...release/v$VERSION?expand=1&title=release:+v$VERSION"
+          echo "::notice::Open the release pull request: $url"
+          printf '### Release v%s is ready for review\n\n[Open the pull request](%s). Merging it publishes v%s through the Publish release workflow.\n' "$VERSION" "$url" "$VERSION" >> "$GITHUB_STEP_SUMMARY"

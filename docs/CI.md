@@ -226,13 +226,9 @@ reference in a workflow or `action/action.yml` from another owner, or one that
 is not a 40-character SHA followed by `# vX.Y.Z`. `test/action.test.ts` checks
 that the project Action and the starter's workflow pin theirs to a commit.
 
-Third-party tools run as npm packages instead, pinned by a lockfile's
-integrity hashes. The path classification is `scripts/ci-changes.ts` with
-picomatch from the root lockfile. release-please (`release.yml`) is its npm CLI
-from `.github/release-please/package-lock.json`, a lockfile of its own, so its
-dependencies stay out of every other install. Dependabot watches that
-directory too. The job that runs it holds contents and pull-requests write, and
-installs with `--ignore-scripts`.
+Anything else a workflow needs runs as an npm package from the root lockfile,
+pinned by its integrity hash: the path classification is
+`scripts/ci-changes.ts` with picomatch, not a path-filter action.
 
 ### Diagnostic workflows
 

@@ -62,7 +62,7 @@ declare `ownership: owner` on the collection and keep `auth: true` on its mount
 targets refuse extensions, and the store keeps a local SQLite file, so run it on
 the self-hosted runtime with a persistent disk.
 
-<!-- x-release-please-start-version -->
+<!-- urlcode-current-version:start -->
 [docs/STORE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md
 [docs/STORE.md#per-record-ownership]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#per-record-ownership
-<!-- x-release-please-end -->
+<!-- urlcode-current-version:end -->

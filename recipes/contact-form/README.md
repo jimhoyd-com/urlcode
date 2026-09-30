@@ -85,7 +85,7 @@ export default async function contact(request, {secrets}) {
 Add the package to the site's `package.json`, and declare `sandboxReason` to
 say why the route is trusted (the `webhook-receiver` recipe shows the shape).
 
-<!-- x-release-please-start-version -->
+<!-- urlcode-current-version:start -->
 [docs/HTTP.md#body-schema-and-input-patterns]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#body-schema-and-input-patterns
 [docs/EGRESS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EGRESS.md
 [docs/EGRESS.md#checking-signals-locally]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EGRESS.md#checking-signals-locally
@@ -93,4 +93,4 @@ say why the route is trusted (the `webhook-receiver` recipe shows the shape).
 [docs/OBSERVABILITY.md#privacy-guarantees]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OBSERVABILITY.md#privacy-guarantees
 [packages/store/README.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/store/README.md
 [docs/STORE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md
-<!-- x-release-please-end -->
+<!-- urlcode-current-version:end -->

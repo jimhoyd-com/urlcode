@@ -102,7 +102,7 @@ in the guides above and the [specification][docs/SPECIFICATION.md].
 Examples are educational unless backed by runnable fixtures. Infrastructure
 limits are deployment settings, not fields to invent in route YAML.
 
-<!-- x-release-please-start-version -->
+<!-- urlcode-current-version:start -->
 [docs/CONCEPTS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CONCEPTS.md
 [docs/FRAMEWORK.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/FRAMEWORK.md
 [docs/INSTALL.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/INSTALL.md
@@ -171,4 +171,4 @@ limits are deployment settings, not fields to invent in route YAML.
 [docs/RESILIENCE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RESILIENCE.md
 [docs/OPEN-DECISIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OPEN-DECISIONS.md
 [docs/RELEASE-SECURITY.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RELEASE-SECURITY.md
-<!-- x-release-please-end -->
+<!-- urlcode-current-version:end -->

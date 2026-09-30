@@ -55,7 +55,7 @@ reviewed compressed, unpacked or file-count budgets. It also reads every packed
 Markdown file and `llms.txt` and fails on a relative link whose target the
 archive does not contain: an installed copy has only the packed files. Ship the
 target, or link this repository's `blob/v<current version>/...` as a reference
-definition inside a version block (below), which
+definition inside a `urlcode-current-version` block (below), which
 `check-local-links` checks against the checkout. A new extension fails until
 its reviewed policy is added. Each size limit is a measurement plus a fixed
 margin (the policy is the comment above the budgets table in
@@ -85,26 +85,19 @@ packed beside the add-ons instead of the registry release of the same version.
 
 When reader-facing Markdown must name the current core version, wrap the
 smallest complete paragraph or fenced example containing it with
-release-please's version block: an HTML comment line `<!-- x-release-please-` +
-`start-version -->` before it and `<!-- x-release-please-` + `end -->` after it. They are
-written split here because release-please reads this page too. These are
-[release-please's generic markers](https://github.com/googleapis/release-please/blob/main/docs/customizing.md#updating-arbitrary-files):
-its configuration reads every tracked Markdown file (`**/*.md`) and `llms.txt`,
-so a newly added guide needs no central file-list update. Inside a fenced
-example where an HTML comment would show, end the one line that names the
-version with a shell comment `# x-release-please-` + `version` instead. The release pull
-request then regenerates `llms-full.txt` from its sources: it keeps the source
-markers, and its `Source:` lines and rewritten relative links name the release
-tag (`blob/v<version>/`), read from `package.json` by
+`urlcode-current-version:start` and `urlcode-current-version:end` HTML comments
+on their own lines. `npm run release:bump` discovers these markers in every
+tracked Markdown file and `llms.txt`, so a newly added guide needs no
+central file-list update. It replaces the old core version only inside marked
+blocks. The bump then regenerates `llms-full.txt` from its sources: it keeps the
+source markers, and its `Source:` lines and rewritten relative links name the
+release tag (`blob/v<version>/`), read from `package.json` by
 `scripts/build-llms-full.ts`.
 
-release-please replaces only the **first** version-looking token on each
-marked line, so keep anything else that looks like one (`127.0.0.1`, a Node
-version, a historical release) off those lines.
-`node scripts/release-versions.ts check` fails when a block is unclosed, a
-marked line's first such token is not the manifest's current version or names
-it twice, a tracked Markdown file or `llms.txt` mentions that version outside a
-marker, or `llms-full.txt` differs from a fresh build. Add markers in the same
+`node scripts/release-bump.ts --check` fails when markers are unbalanced, a
+marked block does not contain the manifest's current version, a tracked
+Markdown file or `llms.txt` mentions that version outside a marker, or
+`llms-full.txt` differs from a fresh build. Add markers in the same
 pull request as a new current-version reference. Changelogs are not scanned.
 
 A link to this repository from a file the package ships, `llms.txt` and
@@ -119,7 +112,7 @@ capability reasons, compliance references and exported OpenAPI descriptions
 link a page as `docsUrl('HTTP.md#error-format')` from
 `packages/core/src/release.ts`, which builds this release's
 `blob/v<version>/docs/...` URL from `CORE_VERSION`, the one version literal in
-core's source, which the release pull request rewrites. The package audit parses every packed
+core's source that the bump rewrites. The package audit parses every packed
 script and fails when a string or template literal (not a comment) names a
 `docs/*.md` page the package does not ship (#938).
 
@@ -128,11 +121,9 @@ shows on hover, comments in example and starter YAML, the llms indexes and every
 other packed file that is neither Markdown nor code. They have no marker blocks,
 so they carry this release's full URL,
 `https://github.com/jimhoyd-com/urlcode/blob/v<version>/docs/...`, and
-the release pull request's `node scripts/release-versions.ts sync` rewrites
-every such link in tracked non-Markdown text (JSON, YAML, TXT, TOML, HTML, CSS;
-not this repository's tests, scripts or workflows), along with the starter's
-raw schema URL and `action@v<version>` ref; `check` fails when one names
-another version. `npm run docs:reference` turns
+`release:bump` rewrites every such link in tracked non-Markdown text (JSON,
+YAML, TXT, TOML, HTML, CSS; not this repository's tests, scripts or workflows);
+`--check` fails when one names another version. `npm run docs:reference` turns
 a schema description's pinned URL into a reference link labelled by its
 `docs/` path, defined in the page's marker block, so `YAML-REFERENCE.md` names
 the version once. `scripts/build-llms-full.ts` links a bare `docs/X.md`

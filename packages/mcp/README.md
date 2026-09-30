@@ -420,8 +420,8 @@ than oversights; see the package's tracked follow-up issues for status.
 Requires the matching `@jimhoyd/urlcode` core as a peer. Apache-2.0.
 
 <!-- The links below are pinned to this release, so an installed copy of this README reads the docs of the
-version it describes; the release pull request moves them and scripts/check-local-links.ts checks their targets. -->
-<!-- x-release-please-start-version -->
+version it describes; `npm run release:bump` moves them and scripts/check-local-links.ts checks their targets. -->
+<!-- urlcode-current-version:start -->
 [add-ons]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#add-ons-extensions-and-artifacts
 [extensions]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md
 [http-body-schema-and-input-patterns]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#body-schema-and-input-patterns
@@ -429,7 +429,7 @@ version it describes; the release pull request moves them and scripts/check-loca
 [operations-streamed-responses]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OPERATIONS.md#streamed-responses
 [extensions-site-origins-and-same-origin-checks]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#site-origins-and-same-origin-checks
 [http-named-schemas]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#named-schemas
-<!-- x-release-please-end -->
+<!-- urlcode-current-version:end -->
 
 <!-- extension-reference:start -->
 <!-- Generated from urlcode.json by scripts/generate-extension-reference.ts (npm run docs:extensions). Do not edit between these markers; change the extension's schema descriptions instead. -->

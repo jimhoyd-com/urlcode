@@ -123,13 +123,14 @@ channel tag (`latest` or `alpha`); the image is built from the release commit
 in the release workflow's publish job. To build the same image yourself from a
 release tag:
 
+<!-- urlcode-current-version:start -->
 ```sh
-version=0.6.5 # x-release-please-version
-git clone --branch "v$version" https://github.com/jimhoyd-com/urlcode.git
-docker build -f urlcode/packaging/container/Dockerfile -t "urlcode:$version" urlcode
-docker run --rm -p 127.0.0.1:3000:3000 -v "$PWD:/project:ro" "urlcode:$version" \
+git clone --branch v0.6.5 https://github.com/jimhoyd-com/urlcode.git
+docker build -f urlcode/packaging/container/Dockerfile -t urlcode:0.6.5 urlcode
+docker run --rm -p 127.0.0.1:3000:3000 -v "$PWD:/project:ro" urlcode:0.6.5 \
   serve --project /project --host 0.0.0.0
 ```
+<!-- urlcode-current-version:end -->
 
 The image runs the same built runtime, `node /opt/urlcode/dist/cli.js`, as its
 entry point. Pin the digest rather than a tag for a deployment, and give the

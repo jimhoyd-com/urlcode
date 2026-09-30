@@ -6,7 +6,7 @@ import { parse } from 'yaml';
 import { spawnSync } from 'node:child_process';
 import { comparisonVerdict, skipVerdict } from '../scripts/workerd-parity-verdict.ts';
 
-// The shape of the workflows a release depends on: release.yml keeps the release pull request open, Publish
+// The shape of the workflows a release depends on: Release (release.yml) prepares the bump branch, Publish
 // (publish.yml) ships what reaches main. ci-workflow.test.ts covers ci.yml's jobs and plan.
 interface Step { name?: string; uses?: string; run?: string; with?: Record<string, unknown>; env?: Record<string, string> }
 interface Job { needs?: string | string[]; if?: string; uses?: string; with?: Record<string, unknown>; environment?: string; permissions?: Record<string, string>; steps?: Step[] }
@@ -78,30 +78,23 @@ test('v8-jit-repro.yml is manually dispatched only, read-only and never masks a 
   assert.doesNotMatch(text, /continue-on-error|\|\| *true|retry/i);
 });
 
-test('release.yml keeps the release pull request open with release-please; it never tags, publishes or writes main', async () => {
+test('release.yml only bumps versions on a release/v<version> branch; it never writes main or publishes', async () => {
   const release = await load('release.yml');
-  assert.deepEqual(Object.keys(release.on).sort(), ['workflow_dispatch', 'workflow_run']);
-  assert.deepEqual(release.on.workflow_run, { workflows: ['Publish release'], types: ['completed'], branches: ['main'] });
+  assert.deepEqual(Object.keys(release.on), ['workflow_dispatch']);
+  const inputs = (release.on.workflow_dispatch as { inputs: Record<string, { required: boolean; type: string }> }).inputs;
+  assert.deepEqual(Object.keys(inputs), ['version']);
+  assert.equal(inputs.version!.required, true);
   assert.deepEqual(release.permissions, { contents: 'read' });
-  assert.deepEqual(Object.keys(release.jobs), ['release-pr']);
-  const pr = job(release, 'release-pr');
-  assert.deepEqual(pr.permissions, { contents: 'write', 'pull-requests': 'write' });
-  assert.equal(pr.environment, undefined, 'the release pull request never runs in the publishing environment');
-  assert.equal((pr as Job & { env?: Record<string, string> }).env?.GH_TOKEN, '${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}');
-  // The CLI comes from its own lockfile, installed without scripts, and only ever opens pull requests (no github-release).
-  const steps = pr.steps ?? [];
-  assert(steps.some(step => step.run === 'npm ci --ignore-scripts --no-audit --no-fund' && (step as Step & { 'working-directory'?: string })['working-directory'] === '.github/release-please'));
-  const tooling = JSON.parse(await readFile('.github/release-please/package.json', 'utf8')) as { dependencies: Record<string, string> };
-  assert.match(tooling.dependencies['release-please']!, /^\d+\.\d+\.\d+$/, 'an exact release-please version');
-  const lock = JSON.parse(await readFile('.github/release-please/package-lock.json', 'utf8')) as { packages: Record<string, { integrity?: string }> };
-  for (const [path, entry] of Object.entries(lock.packages)) if (path) assert.match(entry.integrity ?? '', /^sha512-/, path);
-  const runs = steps.map(step => step.run ?? '').join('\n');
-  assert.match(runs, /\.github\/release-please\/node_modules\/\.bin\/release-please release-pr\s+--token="\$GH_TOKEN" --repo-url="\$GITHUB_REPOSITORY" --target-branch=main\s+--config-file=release-please-config\.json --manifest-file=\.release-please-manifest\.json/);
-  assert.doesNotMatch(runs, /github-release|npx/);
-  assert.match(runs, /npm install --package-lock-only --ignore-scripts/);
-  assert.match(runs, /release-versions\.ts sync\n\s*node scripts\/release-versions\.ts check/);
-  assert.match(runs, /git push origin "HEAD:\$BRANCH"/);
-  assert.doesNotMatch(runs, /push origin (?:HEAD:)?main|npm publish|release-publish|gh release create/);
+  assert.deepEqual(Object.keys(release.jobs), ['bump']);
+  const bump = job(release, 'bump');
+  assert.equal(bump.if, "github.ref == 'refs/heads/main'");
+  assert.deepEqual(bump.permissions, { contents: 'write' }, 'only contents, to push the branch');
+  assert.equal(bump.environment, undefined, 'the bump never runs in the publishing environment');
+  const runs = (bump.steps ?? []).map(step => step.run ?? '').join('\n');
+  assert.match(runs, /release-bump\.ts "\$VERSION"/);
+  assert.match(runs, /release-bump\.ts --check/);
+  assert.match(runs, /git push origin "release\/v\$VERSION"/);
+  assert.doesNotMatch(runs, /push origin (?:HEAD:)?main|npm publish|release-publish|gh release create|gh pr create/);
 });
 
 test('ci.yml is callable with a release input and is not triggered by pushes itself', async () => {
@@ -177,10 +170,9 @@ test('each publish.yml job holds only the permissions it needs', async () => {
   assert((build.steps ?? []).some(step => step.uses?.startsWith('actions/attest@') && step.with?.['subject-path'] === 'release/*'));
 });
 
-// docs/CI.md#third-party-actions: a tag can be moved to other code, a commit cannot; the comment names the release
-// the SHA was taken from, so a reviewer and Dependabot can see which version it is.
-// The repository's Actions policy runs only actions GitHub created or jimhoyd-com owns, pinned to a full SHA; any
-// other action ends the whole run in startup_failure before a job starts. The project Action runs inside ci.yml.
+// docs/CI.md#actions-and-the-actions-policy: the repository's Actions policy runs only actions GitHub created or
+// jimhoyd-com owns, pinned to a full SHA; any other action ends the whole run in startup_failure before a job starts.
+// The comment names the release the SHA was taken from, for a reviewer and Dependabot. The project Action runs inside ci.yml.
 test('every action is GitHub-created or jimhoyd-com-owned, pinned to a full commit SHA with its release in a comment', async () => {
   let pinned = 0;
   const files = [...(await readdir(directory)).map(name => join(directory, name)), 'action/action.yml'];

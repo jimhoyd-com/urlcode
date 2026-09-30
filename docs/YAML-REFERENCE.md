@@ -648,7 +648,7 @@ See [YAML guide][docs/YAML-GUIDE.md] for examples.
 | `schemas` | object | no | maxProperties: 64 | Named JSON Schema 2020-12 documents in the request body profile, each written inline or loaded from a project file with {file: <path>}. A route's request.body.<METHOD>.schema and an extension such as mcp (a tool's inputSchema or outputSchema) name one by its key instead of repeating it, so HTTP and MCP validate against the same document with the same diagnostics; the OpenAPI export emits each named schema once as a component. A schema carries only the shape of a JSON value: authorization, query/path parameter coercion, display metadata and stored defaults stay with the route, the parameters, the page and the store ([docs/HTTP.md#named-schemas]). Names are a letter then letters, digits or _ (Urlcode... is reserved). Entry urlcode.yaml only. Each schema is admitted against the same profile, limits and diagnostics as an inline body schema, and its content (and every schema file's sha256) is part of the project revision. |
 | `schemas.*` | object | no | — | A JSON Schema 2020-12 document in the request body profile (see request.body.<METHOD>.schema), or {file: <path>}: a project-relative .json, .yaml or .yml file holding one. A file is read offline: its relative $refs to other project files are followed and bundled into /$defs (a whole file as <stem>, one of its /$defs entries as <stem>.<name>); a remote reference, a path that leaves the project, a symlink, a missing target and more than 256 KiB per file, 2 MiB or 64 files in all are refused before serving. An object whose only key is file is a file reference. |
 
-<!-- x-release-please-start-version -->
+<!-- urlcode-current-version:start -->
 [docs/YAML-GUIDE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/YAML-GUIDE.md
 [docs/SPECIFICATION.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SPECIFICATION.md
 [docs/yaml/organization.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/organization.md
@@ -672,4 +672,4 @@ See [YAML guide][docs/YAML-GUIDE.md] for examples.
 [docs/CONDITIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CONDITIONS.md
 [docs/MIDDLEWARE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/MIDDLEWARE.md
 [docs/HTTP.md#named-schemas]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#named-schemas
-<!-- x-release-please-end -->
+<!-- urlcode-current-version:end -->

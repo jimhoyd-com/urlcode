@@ -7,6 +7,6 @@ A waiver is honored only when the route has another passing normal-response
 fixture (here `GET`). See
 [readiness][docs/READINESS.md#waive-a-method-covered-elsewhere].
 
-<!-- x-release-please-start-version -->
+<!-- urlcode-current-version:start -->
 [docs/READINESS.md#waive-a-method-covered-elsewhere]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#waive-a-method-covered-elsewhere
-<!-- x-release-please-end -->
+<!-- urlcode-current-version:end -->

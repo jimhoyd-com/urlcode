@@ -125,7 +125,7 @@ that step.
 
 ## Extended sites
 
-<!-- x-release-please-start-version -->
+<!-- urlcode-current-version:start -->
 Add-ons are released with core `0.6.5` and pinned by it (see [package and
 channel alignment](VERSION-ALIGNMENT.md)). Add extensions to a site with
 `urlcode extensions add <name>`, or name them at creation: `urlcode init
@@ -138,7 +138,7 @@ each extension brings what it requires. A writable `store` without `auth`
 refuses unless you pass `--ack store:public-write`, which the refusal prints for
 you (see [store](STORE.md)). The contract each extension fulfils is in
 [add-ons](EXTENSIONS.md#add-ons-extensions-and-artifacts).
-<!-- x-release-please-end -->
+<!-- urlcode-current-version:end -->
 
 Both paths carry an `AGENTS.md` for repository-aware assistants. `urlcode init`
 generates it from the installed runtime's capability catalog (the same source as

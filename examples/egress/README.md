@@ -23,6 +23,6 @@ See [egress contract][docs/EGRESS.md]. Integration tests execute this example
 with trusted fake transport and public-address fixtures, never by allowing private
 network destinations in production.
 
-<!-- x-release-please-start-version -->
+<!-- urlcode-current-version:start -->
 [docs/EGRESS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EGRESS.md
-<!-- x-release-please-end -->
+<!-- urlcode-current-version:end -->

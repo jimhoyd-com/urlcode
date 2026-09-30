@@ -108,7 +108,7 @@ const MAIN_BRANCH = /https:\/\/github\.com\/jimhoyd-com\/urlcode\/(?:blob|tree)\
  * Relative link targets in one packed document (`path`, its `source`) that name nothing in the packed file list
  * (#931). An installed copy holds only what `npm pack` ships, so a link that resolves in this checkout but not in
  * the tarball is dead there: ship the target, or link this repository's `blob/v<current version>/...` inside a
- * x-release-please-start-version block. Absolute, protocol-relative, mail and bare `#fragment` links are not checked, nor
+ * urlcode-current-version block. Absolute, protocol-relative, mail and bare `#fragment` links are not checked, nor
  * links inside fenced code blocks or code spans. A directory link resolves when anything under it ships. Any mention
  * of this repository's `blob/main` or `tree/main` outside a fence is a problem too, link or not (#938).
  */
@@ -185,7 +185,7 @@ const TEXT_DOCS_PAGE = /(?<![\w/.\-[])(?<!\[`)docs\/[\w./-]+?\.md\b/g;
  * Lines of one packed text file (`path`, its `source`) that name a `docs/*.md` page the package does not ship, or
  * this repository's main branch outside a `package.json` (#948). A JSON schema description, a YAML comment or an
  * llms index is read as it is, so every line counts, fenced or not. Name a page that ships, a `urlcode docs search` query, or this release's
- * `https://github.com/jimhoyd-com/urlcode/blob/v<version>/docs/...` copy, which the release pull request moves. A file
+ * `https://github.com/jimhoyd-com/urlcode/blob/v<version>/docs/...` copy, which `npm run release:bump` moves. A file
  * holding a NUL byte is binary and not read.
  */
 export function packedTextProblems(path: string, source: string, packed: ReadonlySet<string>): string[] {
@@ -290,13 +290,13 @@ async function auditOne(target: string): Promise<void> {
     const shipped = new Set(pack.files.map(file => file.path));
     const deadLinks: string[] = [];
     for (const path of [...shipped].filter(isPackedDocument).sort()) deadLinks.push(...packedLinkProblems(path, await readFile(join(directory, path), 'utf8'), shipped));
-    assert.deepEqual(deadLinks, [], `Shipped documents link files ${pack.name} does not ship (#931); ship the target, or link this repository's blob/v<current version>/... inside a x-release-please-start-version block:\n${deadLinks.join('\n')}`);
+    assert.deepEqual(deadLinks, [], `Shipped documents link files ${pack.name} does not ship (#931); ship the target, or link this repository's blob/v<current version>/... inside a urlcode-current-version block:\n${deadLinks.join('\n')}`);
     const deadStrings: string[] = [];
     for (const path of [...shipped].filter(isPackedCode).sort()) deadStrings.push(...packedStringProblems(path, await readFile(join(directory, path), 'utf8'), shipped));
     assert.deepEqual(deadStrings, [], `Shipped code names docs pages ${pack.name} does not ship (#938); link this release's copy with docsUrl() from packages/core/src/release.ts, name a shipped page, or a urlcode docs search query:\n${deadStrings.join('\n')}`);
     const deadText: string[] = [];
     for (const path of [...shipped].filter(isPackedText).sort()) deadText.push(...packedTextProblems(path, await readFile(join(directory, path), 'utf8'), shipped));
-    assert.deepEqual(deadText, [], `Shipped text names docs pages ${pack.name} does not ship (#948); link this repository's blob/v<current version>/docs/... (the release pull request moves it), name a shipped page, or a urlcode docs search query:\n${deadText.join('\n')}`);
+    assert.deepEqual(deadText, [], `Shipped text names docs pages ${pack.name} does not ship (#948); link this repository's blob/v<current version>/docs/... (npm run release:bump moves it), name a shipped page, or a urlcode docs search query:\n${deadText.join('\n')}`);
     // Core also carries its add-on pins and the release-wide add-on agent catalog beside them (#721).
     const required = [...targets(manifest.exports), ...Object.values(manifest.bin ?? {}), ...(kind === 'core' ? ['dist/addons.json', 'dist/addon-catalog.json'] : [])]
       .map(path => path.replace(/^\.\//, ''));

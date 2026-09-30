@@ -25,7 +25,7 @@ middleware version. `/maintenance` returns 503 without its bypass header and
 `/inspect` echoes request details only with `X-Debug: 1`. The small default
 starter remains the recommended starting point for a new application.
 
-<!-- x-release-please-start-version -->
+<!-- urlcode-current-version:start -->
 [docs/MIDDLEWARE-EXAMPLES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/MIDDLEWARE-EXAMPLES.md
 [docs/YAML-GUIDE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/YAML-GUIDE.md
-<!-- x-release-please-end -->
+<!-- urlcode-current-version:end -->

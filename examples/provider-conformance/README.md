@@ -11,6 +11,6 @@ See [provider verification][docs/PROVIDER-VERIFICATION.md] for the runner,
 evidence format and limitations. CI replays the fixture through local adapters;
 that does not establish that any provider deployment has been verified.
 
-<!-- x-release-please-start-version -->
+<!-- urlcode-current-version:start -->
 [docs/PROVIDER-VERIFICATION.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/PROVIDER-VERIFICATION.md
-<!-- x-release-please-end -->
+<!-- urlcode-current-version:end -->

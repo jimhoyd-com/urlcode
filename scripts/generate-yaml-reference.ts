@@ -98,7 +98,7 @@ ${toc}
 
 ${sections}`;
 // The reference ships in the core package without the guide pages it links (#931), so every relative link becomes
-// a reference to this repository at the current version, defined in a x-release-please-start-version block the release
+// a reference to this repository at the current version, defined in a urlcode-current-version block the release
 // bump moves.
 const version=(JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8')) as {version: string}).version;
 const pinned=new Map<string,string>();
@@ -108,14 +108,14 @@ const linked=draft.replaceAll(/\]\(([^()#\s][^()\s]*)\)/g,(_whole,target: string
   return `][${label}]`;
 });
 // Schema descriptions carry this release's full URL, which is what an editor hover shows (#948). Here each becomes a
-// reference link labelled by its docs path, defined in the same x-release-please-start-version block, so the page names the
+// reference link labelled by its docs path, defined in the same urlcode-current-version block, so the page names the
 // version in one place.
 const described=linked.replaceAll(/https:\/\/github\.com\/jimhoyd-com\/urlcode\/blob\/v([^/\s]+)\/(docs\/[^\s)|]+?)(?=[.,;:]?(?:[\s)|]|$))/g,(_whole,pin: string,label: string)=>{
-  if(pin!==version)throw new Error(`A schema description links ${label} at v${pin}, not the current v${version}; the release pull request moves every pin (scripts/release-versions.ts sync)`);
+  if(pin!==version)throw new Error(`A schema description links ${label} at v${pin}, not the current v${version}; npm run release:bump moves every pin`);
   pinned.set(label,`https://github.com/jimhoyd-com/urlcode/blob/v${version}/${label}`);
   return `[${label}]`;
 });
-const output=`${described.trimEnd()}\n\n<!-- x-release-please-start-version -->\n${[...pinned].map(([label,url])=>`[${label}]: ${url}`).join('\n')}\n<!-- x-release-please-end -->\n`;
+const output=`${described.trimEnd()}\n\n<!-- urlcode-current-version:start -->\n${[...pinned].map(([label,url])=>`[${label}]: ${url}`).join('\n')}\n<!-- urlcode-current-version:end -->\n`;
 const target=new URL('../docs/YAML-REFERENCE.md',import.meta.url);
 if(process.argv.includes('--check')) {
  if(await readFile(target,'utf8')!==output)throw new Error('YAML reference is stale; run npm run docs:reference');
