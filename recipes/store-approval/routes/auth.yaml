@@ -1,0 +1,9 @@
+# Routes for the auth extension (urlcode extensions remove auth deletes this file). Mounts are exclusive to it.
+version: "1"
+routes:
+  /api/auth/*:
+    extension: auth
+    methods:
+      - GET
+      - POST
+    description: "Better Auth: sign-in, sign-out and sessions."

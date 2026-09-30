@@ -1,4 +1,6 @@
 version: "1"
+# The auth mount, exactly as `urlcode extensions add auth` writes it: the fixtures sign in through it.
+includes: [routes/auth.yaml]
 extensions:
   # Who is signed in: the operator-installed auth extension provides the principal `auth: true` needs.
   auth:

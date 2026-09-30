@@ -32,26 +32,32 @@ urlcode validate --local --project ./orders-hook
 | `cors-api` | intermediate | Preflight and CORS headers from route middleware around a declared `respond` | self-hosted runtime |
 | `contact-form` | intermediate | Static page posting JSON; message checked by `request.body.<METHOD>.schema` (`format: email`), `202` from `respond`, fixed signal to a hook after the response, no project code | signal grant (`--policy`) |
 | `middleware` | advanced | Fourteen reusable middleware patterns ([described here](MIDDLEWARE-EXAMPLES.md)) | self-hosted runtime |
-| `authenticated-json-api` | advanced | Function behind `auth: true` | operator auth extension, `--host-file`, `--origin` |
-| `protected-download` | advanced | Native attachment behind `auth: true` | operator auth extension, `--host-file`, `--origin` |
+| `authenticated-json-api` | advanced | Function behind `auth: true` that reads the signed-in user's id | auth extension (`urlcode extensions add auth`), `--host-file` |
+| `protected-download` | advanced | Native attachment behind `auth: true` | auth extension (`urlcode extensions add auth`), `--host-file` |
 | `store-crud` | advanced | Persistent JSON CRUD for a declared collection, no handler code ([store](STORE.md)) | `store` extension (`urlcode extensions add store`), `--host-file`, `--origin`; or initialize with `urlcode init DIR --with auth,store --example` |
-| `store-booking` | advanced | Staff-only room booking in one-hour slots: `intervals` with `length` and `step` refuses an overlapping booking of a room across owners (`409`) and a wrong length or off-grid start (`422`), `create: {members}` refuses a non-member, a `cancel` transition frees the slot, no handler code ([intervals](STORE.md#non-overlapping-intervals)) | `store` and a principal behind `auth: true`, staff added with `urlcode-store members add`, `--host-file` |
-| `store-credits` | advanced | Credit wallets: a members-only issuer transfer (a negative `min` plus `members`) funds them, a projected directory finds a wallet by its `unique` handle without showing a balance, `pay` never overdraws and the total never changes, no handler code ([transfers](STORE.md#declared-transfers)) | `store` and a principal behind `auth: true`, an issuer added with `urlcode-store members add`, `--host-file` |
-| `store-approval` | advanced | Approval workflow, YAML only: owners `submit` and `withdraw`, `by: others` `approve`/`reject` for a reviewers list stamp the reviewer, a readers queue shows pending requests, and `editable`/`deletable` lock an approved request (`409 record_locked`) ([edit and delete states](STORE.md#edit-and-delete-states)) | `store` and a principal behind `auth: true`, reviewers added with `urlcode-store members add`, `--host-file` |
+| `store-booking` | advanced | Staff-only room booking in one-hour slots: `intervals` with `length` and `step` refuses an overlapping booking of a room across owners (`409`) and a wrong length or off-grid start (`422`), `create: {members}` refuses a non-member, a `cancel` transition frees the slot, no handler code ([intervals](STORE.md#non-overlapping-intervals)) | `auth` and `store` extensions (`urlcode extensions add auth store`), staff added with `urlcode-store members add`, `--host-file` |
+| `store-credits` | advanced | Credit wallets: a members-only issuer transfer (a negative `min` plus `members`) funds them, a projected directory finds a wallet by its `unique` handle without showing a balance, `pay` never overdraws and the total never changes, no handler code ([transfers](STORE.md#declared-transfers)) | `auth` and `store` extensions (`urlcode extensions add auth store`), an issuer added with `urlcode-store members add`, `--host-file` |
+| `store-approval` | advanced | Approval workflow, YAML only: owners `submit` and `withdraw`, `by: others` `approve`/`reject` for a reviewers list stamp the reviewer, a readers queue shows pending requests, and `editable`/`deletable` lock an approved request (`409 record_locked`) ([edit and delete states](STORE.md#edit-and-delete-states)) | `auth` and `store` extensions (`urlcode extensions add auth store`), reviewers added with `urlcode-store members add`, `--host-file` |
 | `spa-shell` | advanced | Single-page app: native page, assets and JSON API, plus an operator plugin that answers client routes at any depth with `index.html` (no native SPA fallback, [#809](https://github.com/jimhoyd-com/urlcode/issues/809)) | operator plugin in `--host-file`, self-hosted runtime |
 
 Each recipe contains a README, `tests/requests.json` and editable files.
-Replace example destinations and review the resulting files before use. The
-authenticated recipes declare `extensions.auth` and protect their route with
-the short form described in [extensions](EXTENSIONS.md); their README shows the
-minimal host-file fixture that reproduces the bundled tests. The
-`store-booking`, `store-credits` and `store-approval` commands pass
-`--local-review`, so their fixtures run on each edit with no revision pin
-([the local review loop](EXTENSIONS.md#the-local-review-loop)); serving them
-still needs the reviewed pin. Their fixtures name callers with a stand-in bearer principal
-that only the README's host accepts, not the auth extension a site installs,
-and seed their membership lists from `tests/seed.json`; each README says how to
-rewrite them as sign-in `steps` for a real site.
+Replace example destinations and review the resulting files before use.
+
+The recipes behind `auth: true` (`authenticated-json-api`,
+`protected-download`, `store-booking`, `store-credits` and `store-approval`)
+run against the real auth extension (Better Auth) that
+`urlcode extensions add auth` installs; there is no stand-in principal. Each
+carries the auth mount, `routes/auth.yaml`, as that command writes it (the
+extension serves exactly one mount), and declares its synthetic accounts, and
+any membership lists, in `tests/seed.json`. Its fixtures sign in through
+`POST /api/auth/sign-in/email` inside `steps`, asserting the signed-in user's
+id, and read `GET /api/auth/get-session`, so the audit counts the auth mount
+covered ([authenticated routes](READINESS.md#authenticated-routes-auth-true)).
+In a site created with `urlcode init` and `urlcode extensions add auth` (and
+`store`), the recipe's `urlcode.yaml` and tests copy into `app/` unchanged.
+Their commands pass `--local-review`, so the fixtures run on each edit with no
+revision pin ([the local review loop](EXTENSIONS.md#the-local-review-loop));
+serving still needs the reviewed pin.
 
 Recipes are declarative first ([project direction](PROJECT-DIRECTION.md)): a
 field check is `request.body.<METHOD>.schema` or a parameter `pattern`, a fixed answer is
@@ -141,9 +147,12 @@ schema-checked `recipe.yaml` and are returned as copies. Unknown names and
 arbitrary paths/URLs fail closed. The stdio MCP server adds `search_recipes` and
 `search_examples` beside `list_recipes` and `get_recipe` ([tooling](TOOLING.md)). Integration tests run every recipe through the real
 runtime with its fixtures and audit it with its declared route count (after
-building the TypeScript recipe, with a fixture registry for the authenticated
-ones, the generated policy for the contact form and the webhook receiver, and
-the webhook fixtures' test key in the process environment). `store-crud` runs against the
+building the TypeScript recipe, with the generated policy for the contact form
+and the webhook receiver, and the webhook fixtures' test key in the process
+environment). The recipes behind `auth: true` run through the CLI's own
+`validate`, `test` (twice) and `audit`, as their commands list them, against
+the real auth extension (`packages/auth/test/recipes.test.ts`) and, for the
+store recipes, the real store (`packages/store/test/recipes.test.ts`). `store-crud` runs against the
 real `storeExtension` from `packages/store` with a temporary database, and a
 separate test drives its full lifecycle across a restart. `spa-shell` runs with the
 plugin from its README host file, and `test/spa-shell-recipe.test.ts` drives it
