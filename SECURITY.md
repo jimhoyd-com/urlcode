@@ -82,13 +82,18 @@ A hermetic run (`test`, `audit`, `benchmark`, MCP `run_tests`, and a
 `--local-review` `validate` or `routes`) hands extensions a fresh temporary
 data directory instead of the site's `data/`. Core cannot see where trusted
 extension code writes, so it refuses what could not have agreed to stay there:
-an extension built for extension contract 1, and a host whose registrations
-`composeHost` did not confirm it composed on that directory (#976). That catches
-version skew and hand-made registrations, not a host file written to evade it.
+an extension built for extension contract 1, and a host exporting any
+registration that `composeHost` did not build on that directory during the
+load (#976), checked per registration. The host file is trusted operator code,
+so this is a correctness check, not a security boundary: it catches version
+skew and a registration written by hand beside composed ones, not a host file
+written to evade it or an extension writing outside its directory.
 The directories hold seeded test accounts (hashed passwords) and fixture data.
 They are mode 0700, named `urlcode-hermetic-<pid>-*` and `urlcode-data-<pid>-*`,
 removed on close, SIGINT, SIGTERM and an unhandled rejection, and swept by a
-later run once their process is gone and they are an hour old (#977). A
+later run once their process is gone and nothing in them has been modified
+for an hour (#977). A run in another pid namespace sharing the temporary
+directory looks dead, so there only that hour protects it. A
 SIGKILL leaves them until that sweep, as does any stop signal on Windows, where
 the sweep also cannot check owner or mode. See
 [test data and seeds][docs/READINESS.md#test-data-and-seeds].

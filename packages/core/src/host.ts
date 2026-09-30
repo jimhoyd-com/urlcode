@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { ConfigError, assert, extensionError } from './errors.ts';
 import type { ExtensionEntry, HostContext, HostedExtension } from './extensions.ts';
 import { contractProblem } from './addon-manifest.ts';
-import { hermeticConfirmationKey, hermeticDataKey, hostRevisionPin, revisionPinGuidance, type OperatorHost } from './operator-host.ts';
+import { hermeticConfirmedKey, hermeticDataKey, hostRevisionPin, revisionPinGuidance, type OperatorHost } from './operator-host.ts';
 import type { RuntimeOptions } from './runtime.ts';
 
 /**
@@ -53,10 +53,10 @@ export async function composeHost(hostUrl: string | URL, entries: readonly Exten
   // host file for one; otherwise the site's own data directory.
   const hermeticData = (globalThis as Record<symbol, unknown>)[hermeticDataKey];
   const hermetic = typeof hermeticData === 'string', data = hermetic ? hermeticData : join(site, 'data');
-  // The confirmation a hermetic load checks (#976): every host() below was given this directory.
-  const confirmed = <T extends OperatorHost>(host: T): T => hermetic ? Object.assign(host, { [hermeticConfirmationKey]: data }) : host;
+  // The registrations a hermetic load accepts (#976): each one below was built by a host() given this directory.
+  const confirmed = hermetic ? (globalThis as Record<symbol, unknown>)[hermeticConfirmedKey] as WeakSet<object> | undefined : undefined;
   // A site with no extensions has nothing to pin.
-  if (!entries.length) return confirmed({ extensions: [], ...(plugins ? { plugins } : {}) });
+  if (!entries.length) return { extensions: [], ...(plugins ? { plugins } : {}) };
   const projectSha256 = hostRevisionPin();
   if (!/^[a-f0-9]{64}$/.test(projectSha256)) throw new ConfigError(`The extension host needs the reviewed project revision: ${revisionPinGuidance}`, { code: 'revision-pin-required' });
   const definitions = entries.map(entry => entry.definition);
@@ -96,5 +96,6 @@ export async function composeHost(hostUrl: string | URL, entries: readonly Exten
       exported.set(name, result.exports);
     }
   } catch (error) { await close().catch(() => undefined); throw error; }
-  return confirmed({ extensions: hosted.map(({ result }) => result.registration), ...(plugins ? { plugins } : {}), close });
+  for (const { result } of hosted) confirmed?.add(result.registration);
+  return { extensions: hosted.map(({ result }) => result.registration), ...(plugins ? { plugins } : {}), close };
 }

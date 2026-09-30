@@ -16,10 +16,17 @@ export type RunDirectoryKind = 'hermetic' | 'data';
 /** A directory `createRunDirectory` made: the kind, the creating process id and mkdtemp's six-character suffix. */
 export const runDirectoryPattern = /^urlcode-(?:hermetic|data)-([1-9][0-9]{0,9})-[A-Za-z0-9]{6}$/;
 /**
- * A directory whose process is gone is swept only once it is this old. The pid check is the real guard; the age
- * covers a pid from another pid namespace sharing the temporary directory (a container), which looks dead from here.
+ * A directory whose process is gone is swept only once neither it nor anything in it has been modified for this long.
+ * The pid check is the real guard; the age covers a pid from another pid namespace sharing the temporary directory (a
+ * container), which looks dead from here. A directory's own mtime changes only when an entry is added or removed, so
+ * the age is that of its newest entry: a database written a minute ago keeps its directory (#977).
  */
 export const staleRunDirectoryMs = 60 * 60 * 1000;
+/**
+ * How far the age check looks inside a candidate: at most this many entries, this many levels deep. A directory with
+ * more, or one the check cannot read, is kept: leaving a stale directory is cheap, removing a live one is not.
+ */
+export const staleRunDirectoryScan = { entries: 1024, depth: 8 } as const;
 
 const live = new Set<string>();
 let exitHook = false;
@@ -55,6 +62,26 @@ function processExists(pid: number): boolean {
   catch (error) { return (error as NodeJS.ErrnoException).code === 'EPERM'; }
 }
 
+/**
+ * Whether nothing under `dir` (by `lstat`, never following a link) was modified since `cutoff`, within
+ * `staleRunDirectoryScan`. Stops at the first recent entry; an unreadable entry or an exhausted budget is not stale.
+ */
+async function unmodifiedSince(dir: string, cutoff: number): Promise<boolean> {
+  let budget: number = staleRunDirectoryScan.entries;
+  const walk = async (path: string, depth: number): Promise<boolean> => {
+    let names: string[];
+    try { names = await readdir(path); } catch { return false; }
+    for (const name of names) {
+      if (--budget < 0) return false;
+      const info = await lstat(join(path, name)).catch(() => undefined);
+      if (!info || info.mtimeMs > cutoff) return false;
+      if (info.isDirectory() && (depth >= staleRunDirectoryScan.depth || !await walk(join(path, name), depth + 1))) return false;
+    }
+    return true;
+  };
+  return walk(dir, 1);
+}
+
 export interface SweepOptions {
   /** The directory to sweep; the OS temporary directory by default. */
   root?: string;
@@ -66,8 +93,9 @@ export interface SweepOptions {
 /**
  * Removes the run directories a killed process left behind and returns their paths. A candidate is only an entry of
  * `root` whose name matches `runDirectoryPattern` and that is, by `lstat` (never following a link), a real directory
- * owned by this user with mode 0700 (what mkdtemp creates), last modified at least `maxAgeMs` ago, whose process is
- * neither this one nor still running. Removal never follows a symbolic link, inside the directory either.
+ * owned by this user with mode 0700 (what mkdtemp creates), whose process is neither this one nor still running, and
+ * which, with everything in it, was last modified at least `maxAgeMs` ago (`staleRunDirectoryScan` bounds the look
+ * inside). Removal never follows a symbolic link, inside the directory either.
  */
 export async function sweepStaleRunDirectories({ root = tmpdir(), now = Date.now(), maxAgeMs = staleRunDirectoryMs, exists = processExists }: SweepOptions = {}): Promise<string[]> {
   const removed: string[] = [];
@@ -81,7 +109,7 @@ export async function sweepStaleRunDirectories({ root = tmpdir(), now = Date.now
     const info = await lstat(path).catch(() => undefined);
     if (!info?.isDirectory()) continue;
     if (uid !== undefined && (info.uid !== uid || (info.mode & 0o777) !== 0o700)) continue;
-    if (now - info.mtimeMs < maxAgeMs || exists(pid)) continue;
+    if (now - info.mtimeMs < maxAgeMs || exists(pid) || !await unmodifiedSince(path, now - maxAgeMs)) continue;
     try { await rm(path, { recursive: true, force: true }); removed.push(path); } catch { /* another sweeper, or not ours to remove */ }
   }
   return removed;

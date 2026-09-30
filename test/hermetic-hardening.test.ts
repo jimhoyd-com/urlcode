@@ -2,6 +2,7 @@
 // (contract 1) and any host whose registrations composeHost did not confirm were composed on the run's own data
 // directory, so neither can write the site's live data/. #977: the run's temporary directories are removed on SIGINT,
 // SIGTERM and an unhandled rejection, and a later run sweeps the ones a killed process left behind.
+import './scratch-tmpdir.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -13,7 +14,7 @@ import type { TestContext } from 'node:test';
 import { project } from './helpers.ts';
 import { loadOperatorHost } from '../packages/core/src/operator-host.ts';
 import { inspectExtensionRevision } from '../packages/core/src/extensions.ts';
-import { createRunDirectory, removeRunDirectory, runDirectoryPattern, sweepStaleRunDirectories } from '../packages/core/src/temp-dirs.ts';
+import { createRunDirectory, removeRunDirectory, runDirectoryPattern, staleRunDirectoryScan, sweepStaleRunDirectories } from '../packages/core/src/temp-dirs.ts';
 
 const exists = (path: string): Promise<boolean> => access(path).then(() => true, () => false);
 const core = (file: string): string => JSON.stringify(pathToFileURL(join(import.meta.dirname, '..', 'packages', 'core', 'src', file)).href);
@@ -66,7 +67,7 @@ export default { extensions: [legacyRegistration(site, process.env.PROJECT_SHA25
   const closed = (): number => (globalThis as Record<string, unknown>).__hardeningClosed as number;
   const before = await readdir(tmpdir());
   await assert.rejects(loadOperatorHost(join(site, 'host.mjs'), app, { hermetic: true }), (error: Error & { details?: { code?: string } }) => {
-    assert.match(error.message, /^A hermetic run \(test, audit, benchmark, MCP run_tests, or validate and routes with --local-review\) needs the host file's extensions composed on its fresh temporary data directory/);
+    assert.match(error.message, /^A hermetic run \(test, audit, benchmark, MCP run_tests, or validate and routes with --local-review\) needs every extension the host file exports composed on its fresh temporary data directory, and at least one was not/);
     assert.equal(error.details?.code, 'hermetic-host-unconfirmed');
     return true;
   });
@@ -101,10 +102,37 @@ export default { ...composed, plugins: [] };
   assert.equal(await exists(data), false);
 });
 
+test('a hermetic run refuses a hand-made registration spread or pushed beside composed ones (#976)', async t => {
+  const app = await project(t, routes, {}, declarations);
+  pinned(t, await inspectExtensionRevision(app));
+  const hosts = {
+    // The reviewer's host: an empty compose spread, with a hand-written registration as its extensions.
+    spread: `const c = await composeHost(import.meta.url, []);\nexport default { ...c, extensions: [legacyRegistration(site, process.env.PROJECT_SHA256)] };`,
+    // A composed host whose extensions array gains a hand-written registration.
+    pushed: `const c = await composeHost(import.meta.url, [confirmed()]);\nc.extensions.push(legacyRegistration(site, process.env.PROJECT_SHA256));\nexport default c;`,
+    // Composed registrations reused in a hand-built export, beside a hand-written one.
+    mixed: `const c = await composeHost(import.meta.url, [confirmed()]);\nexport default { extensions: [...c.extensions, legacyRegistration(site, process.env.PROJECT_SHA256)], close: c.close };`,
+  };
+  for (const [label, body] of Object.entries(hosts)) await t.test(label, async t => {
+    const site = await temp(t, 'urlcode-hardening-site-');
+    await writeFile(join(site, 'host.mjs'), `${preamble}import { composeHost } from ${core('host.ts')};
+import { defineExtension } from ${core('extensions.ts')};
+const schema = ${JSON.stringify(schema)};
+const confirmed = defineExtension({ name: 'other', description: 'A contract-2 extension', contract: 2, targets: ['node'], schema, host(ctx) {
+  return { registration: { name: 'other', version: '1', projectSha256: ctx.projectSha256, targets: ['node'], schema, activate: () => ({ handle: () => ({ status: 200, headers: [] }) }) } };
+} });
+${body}
+`);
+    await assert.rejects(loadOperatorHost(join(site, 'host.mjs'), app, { hermetic: true }), (error: Error & { details?: { code?: string } }) => error.details?.code === 'hermetic-host-unconfirmed');
+    assert.equal(await exists(join(site, 'data')), false, 'the site\'s data/ is never created');
+  });
+});
+
 test('a stale run directory is swept only when it is ours, old, unlinked and its process is gone (#977)', async t => {
   const root = await temp(t, 'urlcode-sweep-root-');
-  const hour = 60 * 60 * 1000, now = Date.now(), old = new Date(now - 2 * hour);
-  const dirs = { dead: 'urlcode-hermetic-4000001-abcDEF', alive: 'urlcode-data-4000002-abcDEF', young: 'urlcode-hermetic-4000003-abcDEF', open: 'urlcode-data-4000004-abcDEF', foreign: 'urlcode-hermetic-abcDEF', mine: `urlcode-data-${process.pid}-abcDEF` };
+  // Sweep as if three hours from now: everything written below is then three hours old unless dated `recent`.
+  const hour = 60 * 60 * 1000, now = Date.now() + 3 * hour, recent = new Date(now - 60 * 1000);
+  const dirs = { dead: 'urlcode-hermetic-4000001-abcDEF', alive: 'urlcode-data-4000002-abcDEF', young: 'urlcode-hermetic-4000003-abcDEF', open: 'urlcode-data-4000004-abcDEF', foreign: 'urlcode-hermetic-abcDEF', mine: `urlcode-data-${process.pid}-abcDEF`, written: 'urlcode-data-4000006-abcDEF', nested: 'urlcode-hermetic-4000007-abcDEF', crowded: 'urlcode-data-4000008-abcDEF' };
   for (const name of Object.values(dirs)) { await mkdir(join(root, name), { mode: 0o700 }); await chmod(join(root, name), 0o700); }
   await chmod(join(root, dirs.open), 0o755);
   // A link inside a swept directory is removed, never followed.
@@ -114,13 +142,30 @@ test('a stale run directory is swept only when it is ours, old, unlinked and its
   await writeFile(join(root, dirs.dead, 'seed.db'), 'seeded');
   // A link named like a run directory is never followed or removed.
   await symlink(outside, join(root, 'urlcode-hermetic-4000005-abcDEF'));
-  for (const name of [dirs.dead, dirs.alive, dirs.open, dirs.foreign, dirs.mine]) await utimes(join(root, name), old, old);
+  await utimes(join(root, dirs.young), recent, recent);
+  // A live run from another pid namespace looks dead, and writing its database leaves the directory's own mtime old.
+  await writeFile(join(root, dirs.written, 'db.sqlite'), 'old');
+  await writeFile(join(root, dirs.written, 'db.sqlite'), 'rewritten');
+  await utimes(join(root, dirs.written, 'db.sqlite'), recent, recent);
+  await mkdir(join(root, dirs.nested, 'a', 'b'), { recursive: true });
+  await writeFile(join(root, dirs.nested, 'a', 'b', 'db.sqlite-wal'), 'wal');
+  await utimes(join(root, dirs.nested, 'a', 'b', 'db.sqlite-wal'), recent, recent);
+  // More entries than the age check looks at: it cannot tell, so the directory is kept.
+  for (let index = 0; index <= staleRunDirectoryScan.entries; index++) await writeFile(join(root, dirs.crowded, `f${index}`), '');
+  assert.equal(await sweepStaleRunDirectories({ root, now: now - 2.5 * hour, exists: () => false }).then(removed => removed.length), 0, 'nothing is an hour old yet');
   const removed = await sweepStaleRunDirectories({ root, now, exists: pid => pid === 4000002 });
   // Windows has no uid or POSIX mode to check, so there the 0755 directory is swept like any other stale one.
   const windows = process.platform === 'win32';
   assert.deepEqual(removed.sort(), (windows ? [dirs.dead, dirs.open] : [dirs.dead]).map(name => join(root, name)).sort());
-  assert.deepEqual((await readdir(root)).sort(), [dirs.alive, ...(windows ? [] : [dirs.open]), dirs.foreign, dirs.mine, 'urlcode-hermetic-4000005-abcDEF', dirs.young].sort());
+  assert.deepEqual((await readdir(root)).sort(), [dirs.alive, ...(windows ? [] : [dirs.open]), dirs.foreign, dirs.mine, 'urlcode-hermetic-4000005-abcDEF', dirs.young, dirs.written, dirs.nested, dirs.crowded].sort());
   assert.equal(await exists(join(outside, 'keep.txt')), true);
+  // Once its database is an hour old too, the dead run's directory goes.
+  assert.deepEqual(await sweepStaleRunDirectories({ root, now: now + hour, exists: pid => pid === 4000002 }).then(paths => paths.filter(path => path.endsWith(dirs.written))), [join(root, dirs.written)]);
+});
+
+test('the sweep and run directories of this suite stay inside its scratch temporary directory (#977)', () => {
+  const scratch = process.env.URLCODE_TEST_TMPDIR;
+  assert.ok(scratch !== undefined && tmpdir() === scratch, 'test/scratch-tmpdir.ts redirected the OS temporary directory');
 });
 
 test('createRunDirectory names the directory for this process and removeRunDirectory deletes it (#977)', async () => {

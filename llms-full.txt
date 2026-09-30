@@ -5832,20 +5832,26 @@ not have made the promise:
 
 - An extension built for contract 1 is refused, as any other contract is,
   before its `host()` runs.
-- A hermetic load refuses a host with registrations unless `composeHost`
-  confirmed it gave every `host()` that run's directory
-  (`hermetic-host-unconfirmed`). A host built by an older copy of core, or
-  registrations written by hand without `composeHost`, cannot confirm it.
-  `composeHost` records the confirmation under a `Symbol.for` key, so a
-  `host.mjs` that spreads the composed host into its own export keeps it. The
-  check catches version skew, not a hostile host file: `host.mjs` is trusted
-  operator code.
+- A hermetic load refuses the host unless every registration it exports is
+  one `composeHost` built during that load, from a `host()` it gave the run's
+  directory (`hermetic-host-unconfirmed`). The check is per registration, so
+  a registration written by hand is refused wherever it sits: alone, in a
+  spread of a composed host, or pushed onto a composed host's `extensions`.
+  One built by an older copy of core is refused too. A `host.mjs` may spread
+  or rebuild the composed host freely as long as every registration it
+  exports came from `composeHost`. `composeHost` records them in a set the
+  load creates under a `Symbol.for` key, so another copy of this core adds to
+  the same set.
+- The check is for correctness, not security. `host.mjs` is trusted operator
+  code with full Node access: it catches version skew and a registration that
+  bypassed `composeHost`. It does not stop a host file written to evade it,
+  or an extension's own code writing outside `ctx.data`.
 
 The run's directory is `urlcode-hermetic-<pid>-XXXXXX` under the OS temporary
 directory. It is removed on close, on SIGINT or SIGTERM, and on an unhandled
-rejection (on Windows a stop signal skips the handlers), and a later run sweeps
-one a killed process left behind
-([test data and seeds](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#test-data-and-seeds)).
+rejection (on Windows a stop signal skips the handlers). A later run sweeps
+one a killed process left behind once nothing in it has been modified for an
+hour ([test data and seeds](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#test-data-and-seeds)).
 
 #### Site origins and same-origin checks
 
@@ -6735,7 +6741,8 @@ keep working. A hand-written host file that builds registrations without
 `composeHost` still reads `PROJECT_SHA256` itself. It can serve, but a
 [hermetic run](#hermetic-runs-and-test-seeds) refuses it
 (`hermetic-host-unconfirmed`): wrap each registration in a `defineExtension`
-definition and compose them. The pin travels through a
+definition and compose them. The refusal covers each registration, so adding a
+hand-written one to a composed host is refused as well. The pin travels through a
 process-global `Symbol.for('urlcode.host.operatorRevision')` slot that is set
 only while the host file is imported, so a host file that imports another copy
 of core still sees it.
