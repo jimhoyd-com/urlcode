@@ -1,4 +1,5 @@
 import { assert } from '../errors.ts';
+import { reservedResponseHeaders } from '../reserved-headers.ts';
 import { validateHeaderName, validateHeaderValue } from '../header-validation.ts';
 import type { HandlerResult, HeaderPair } from '../http-response.ts';
 
@@ -42,10 +43,9 @@ export const profiles: Readonly<Record<string, readonly (readonly [string, strin
   off: Object.freeze([] as HeaderPair[]),
 });
 
-// Headers the runtime or a handler owns; `set` may not claim them. Mirrors
-// the set in packages/core/src/http-policy.ts (that file uses the Node Buffer global, so the
-// list is reproduced rather than imported).
-export const reservedHeaders = Object.freeze(new Set(['connection','keep-alive','transfer-encoding','content-length','upgrade','trailer','proxy-authenticate','proxy-authorization','te','location','allow','content-range','accept-ranges','etag','last-modified','content-encoding','x-request-id','x-content-type-options','content-type','set-cookie','cache-control','vary','ratelimit','ratelimit-policy','retry-after','age']));
+// Headers the runtime or a handler owns; `set` may not claim them: the headers a route's own response.headers may
+// not set either, and the ones a route may set but a profile must not overwrite.
+export const reservedHeaders = Object.freeze(new Set([...reservedResponseHeaders,'content-type','set-cookie','cache-control','vary','ratelimit','ratelimit-policy','retry-after','age']));
 
 // A compiled profile must leave room for the response it decorates: the
 // runtime caps a response at 16 KiB / 256 headers, so static headers are
