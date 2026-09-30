@@ -1,9 +1,10 @@
-// One serving process per database, for every extension that keeps a SQLite database (store, auth). A process
+// One serving process per database, for the bundled extensions' own SQLite files (store, auth). A process
 // that serves a database first holds an exclusive lock on the file `<database>.server-lock` beside it, which the
 // operating system drops when the process ends, however it ends. A second serving process is refused before it writes.
-// The operator commands never take it: they share the database through SQLite's own locking, as before. Several
-// servers need a database server, which URLCode does not provide. Locks are unreliable over a network filesystem, so a
-// Linux database directory on one is refused first.
+// The operator commands never take it: they share the database through SQLite's own locking, as before. A site
+// that needs several servers keeps its data in a database server through its own library or an independent extension
+// (docs/EXTENSIONS.md, owner choice). Locks are unreliable over a network filesystem, so a Linux database directory on
+// one is refused first.
 import { closeSync, openSync, realpathSync } from 'node:fs';
 import { mkdir, statfs } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -88,7 +89,7 @@ export async function holdServerLock(database: string, what: string, probe?: Par
       db.exec('PRAGMA busy_timeout=500; PRAGMA locking_mode=EXCLUSIVE; BEGIN EXCLUSIVE');
     } catch (error) {
       db.close();
-      if (busy(error)) throw new Error(`Another process is already serving this ${what} database (${resolve(database)}): URLCode serves each database from one process. Stop that server first. Several servers need a real database server, which URLCode does not provide.`, { cause: error });
+      if (busy(error)) throw new Error(`Another process is already serving this ${what} database (${resolve(database)}): the bundled ${what} serves its database from one process. Stop that server first, or, to run several servers, keep the data in a database server through your own library or an independent extension.`, { cause: error });
       throw error;
     }
     entry = { db, refs: 0 };
