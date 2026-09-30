@@ -19,7 +19,7 @@ beside them, `dist/BUILD-MANIFEST.json` with a SHA-256 per emitted file, and
 | Import | Runtime | Declarations |
 |---|---|---|
 | `@jimhoyd/urlcode` | `dist/index.js` | `dist/types/index.d.ts` |
-| `@jimhoyd/urlcode/plugins`, `@jimhoyd/urlcode/policies`, `@jimhoyd/urlcode/observability`, `@jimhoyd/urlcode/compliance`, `@jimhoyd/urlcode/prerender`, `@jimhoyd/urlcode/extensions`, `@jimhoyd/urlcode/host`, `@jimhoyd/urlcode/sandbox`, `@jimhoyd/urlcode/agent-context`, `@jimhoyd/urlcode/skills` | `dist/<name>.js` | `dist/types/<name>.d.ts` |
+| `@jimhoyd/urlcode/plugins`, `@jimhoyd/urlcode/policies`, `@jimhoyd/urlcode/observability`, `@jimhoyd/urlcode/compliance`, `@jimhoyd/urlcode/prerender`, `@jimhoyd/urlcode/extensions`, `@jimhoyd/urlcode/sqlite`, `@jimhoyd/urlcode/host`, `@jimhoyd/urlcode/sandbox`, `@jimhoyd/urlcode/agent-context`, `@jimhoyd/urlcode/skills` | `dist/<name>.js` | `dist/types/<name>.d.ts` |
 | `@jimhoyd/urlcode/aws`, `@jimhoyd/urlcode/vercel`, `@jimhoyd/urlcode/cloudflare` | `dist/<name>.js` | `dist/types/<name>.d.ts` |
 | `@jimhoyd/urlcode/schema` | `schemas/urlcode.schema.json` | — |
 
@@ -56,6 +56,11 @@ release cannot ship a declaration that does not resolve.
   `ScaffoldRequest`, `ScaffoldResult`, `HostContext`, `HostedExtension`,
   `RuntimeExtension`, `ExtensionActivation`, plus the hook helpers. See
   [extensions](EXTENSIONS.md#the-extension-definition).
+- `@jimhoyd/urlcode/sqlite`: `holdServerLock`, `serverLockHeld`,
+  `refuseNetworkFilesystem`, `ServerLock`, `HostProbe`: the one-serving-process
+  helpers of the bundled SQLite-backed extensions, kept off
+  `@jimhoyd/urlcode/extensions` so it never loads `node:sqlite`. See
+  [request helpers](EXTENSIONS.md#request-helpers).
 - `@jimhoyd/urlcode/host`: `composeHost`, which builds a site's `host.mjs`
   export from its list of extensions.
 - `@jimhoyd/urlcode/aws`, `@jimhoyd/urlcode/vercel`, `@jimhoyd/urlcode/cloudflare`: `LambdaEvent`,

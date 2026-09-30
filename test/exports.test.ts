@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 // Every package.json subpath must resolve even when the repository test process
 // enables --conditions=development, and carry the named exports its shipped
@@ -17,7 +19,8 @@ const expected: Record<string, string[]> = {
   './policies': ['registry','targets','builtinProfiles','effectivePolicies','compilePolicies','compileErrorPolicy','errorHeaders','closePolicies','policyRequest'],
   './compliance': ['severities','builtinProfiles','profileNames','validateRules','resolveRules','loadComplianceRules','runCompliance'],
   './observability': ['events','validateObservers','createMetrics','createObserverSink','renderPrometheus','SNAPSHOT_VERSION'],
-  './extensions': ['inspectExtensionRevision','effectiveExtensionPolicies','hasExtensionPolicy','prepareExtensions','extensionResponse','defineExtension','clientKey','clientKeyIpv6Prefix','ExtensionHttpError','readBody','jsonResponse','isSameOriginRequest','holdServerLock','hostProbe','NETWORK_FILESYSTEMS','refuseNetworkFilesystem','serverLockHeld','serverLockPath','AuditError','auditLimits','validateAuditEvent','validateAuditQuery'],
+  './extensions': ['inspectExtensionRevision','effectiveExtensionPolicies','hasExtensionPolicy','prepareExtensions','extensionResponse','defineExtension','clientKey','clientKeyIpv6Prefix','ExtensionHttpError','readBody','jsonResponse','isSameOriginRequest','AuditError','auditLimits','validateAuditEvent','validateAuditQuery'],
+  './sqlite': ['holdServerLock','hostProbe','NETWORK_FILESYSTEMS','refuseNetworkFilesystem','serverLockHeld','serverLockPath'],
   './host': ['composeHost'],
   './sandbox': ['SandboxPool','functionFile'],
   './body-schema': ['assertBodySchema','compileBodySchema','bodyIssues','bodySchemaIssues','checkBodySchema','bodySchemaLine','bodySchemaJson','bodySchemaEnvelope','bodySchemaProfile','bodySchemaDialect','declaredBodyNames','holdsIllFormedString','illFormedMember','maxRequestBodyBytes','uuidFormat'],
@@ -34,4 +37,21 @@ test('every package.json subpath resolves to shipped code and exposes its named 
   }
   assert.equal(pkg.exports['./package.json'], './package.json');
   assert.equal(pkg.exports['./schema'], './schemas/urlcode.schema.json');
+});
+
+// The SQLite helpers the bundled extensions share live on `./sqlite` (#1052): an extension on another database imports
+// the generic contract without loading `node:sqlite`. A fresh process, so nothing else in this run loaded it first.
+test('the generic extensions entry does not load node:sqlite; the sqlite entry does', () => {
+  const loads = (subpath: string): boolean => {
+    const code = `import { registerHooks } from 'node:module';
+let sqlite = false;
+registerHooks({ resolve(specifier, context, next) { if (specifier === 'node:sqlite' || specifier === 'sqlite') sqlite = true; return next(specifier, context); } });
+await import('@jimhoyd/urlcode/${subpath}');
+process.stdout.write(JSON.stringify(sqlite || process.moduleLoadList.includes('NativeModule sqlite')));`;
+    const run = spawnSync(process.execPath, ['--input-type=module', '-e', code], { cwd: fileURLToPath(new URL('..', import.meta.url)), encoding: 'utf8' });
+    assert.equal(run.status, 0, run.stderr);
+    return JSON.parse(run.stdout) as boolean;
+  };
+  assert.equal(loads('extensions'), false, '@jimhoyd/urlcode/extensions must not load node:sqlite');
+  assert.equal(loads('sqlite'), true, 'the probe sees node:sqlite when an entry loads it');
 });

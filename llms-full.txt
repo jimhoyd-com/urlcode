@@ -310,7 +310,8 @@ Activation likewise carries the canonical `origin` and the operator's full
 `isSameOriginRequest`, so mcp, store and auth admit the same
 origins ([site origins](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#site-origins-and-same-origin-checks)).
 A SQLite-backed extension refuses a network filesystem and a second serving
-process through core's `refuseNetworkFilesystem` and `holdServerLock`, an OS
+process through core's `refuseNetworkFilesystem` and `holdServerLock`
+(`@jimhoyd/urlcode/sqlite`, kept off the generic extension contract), an OS
 lock on a file beside its own database, so store and auth enforce one
 rule: one serving process per database ([request helpers](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#request-helpers)).
 An extension reports a startup condition the operator should act on through
@@ -5571,11 +5572,15 @@ string or key in a parsed value holds an unpaired surrogate, and
 `illFormedMember(object)` names the first top-level member that does, for an
 error that names the argument (the MCP extension answers `-32602` with it).
 
-An extension that keeps a SQLite database is served by one process. The
-store and auth share these helpers
-([one serving process per database](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#one-serving-process-per-database)):
+The bundled store and auth extensions each keep a SQLite file, served
+by one process
+([one serving process per database](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#one-serving-process-per-database)).
+The helpers they share are published on their own subpath,
+`@jimhoyd/urlcode/sqlite`. They are helpers of that bundled implementation,
+not URLCode rules: an extension that keeps its data in another database does
+not use them, and `@jimhoyd/urlcode/extensions` never loads `node:sqlite`.
 
-| Helper | What it does |
+| Helper (`@jimhoyd/urlcode/sqlite`) | What it does |
 |---|---|
 | `holdServerLock(database, what, probe?)` | Before serving: creates the database's directory (0700) when absent, refuses it on a network filesystem, then takes an exclusive OS lock on `<database>.server-lock` (SQLite's file lock, held by a transaction that never ends) and returns `{path, release()}`. Another process holding it refuses with `Another process is already serving this <what> database`. Holders in one process share it (a dev reload), and the operating system releases it when the process exits or is killed. No heartbeat, timestamp or clock. Call `release()` from the activation's `close()` and when activation fails. |
 | `serverLockHeld(database)` | Whether a serving process (this one or another) holds that lock now, read without taking it: an operator command asks before writing with a declaration the server may not share. |

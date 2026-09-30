@@ -1,8 +1,10 @@
 import { createHash } from 'node:crypto';
 import { realpath } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
-import { ExtensionHttpError, holdServerLock, isSameOriginRequest, jsonResponse, principalIdPattern, readBody } from '@jimhoyd/urlcode/extensions';
-import type { ExtensionActivation, ExtensionInstance, ExtensionRequest, HandlerResult, HostProbe, RuntimeExtension, ServerLock } from '@jimhoyd/urlcode/extensions';
+import { ExtensionHttpError, isSameOriginRequest, jsonResponse, principalIdPattern, readBody } from '@jimhoyd/urlcode/extensions';
+import { holdServerLock } from '@jimhoyd/urlcode/sqlite';
+import type { ExtensionActivation, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
+import type { HostProbe, ServerLock } from '@jimhoyd/urlcode/sqlite';
 import { Collection, OWNER_FIELD, StoreError, canonical, collectionSchema, etagOf, redirectable } from './collection.ts';
 import type { CollectionSpec, Page, Retry, Shown, StoredRecord, Transferred, Written } from './collection.ts';
 import { AUDIT_RETENTION, auditLog } from './audit.ts';

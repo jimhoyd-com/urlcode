@@ -13,7 +13,7 @@ import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { DatabaseSync } from 'node:sqlite';
 import type { ExtensionActivation } from '@jimhoyd/urlcode/extensions';
-import { NETWORK_FILESYSTEMS, serverLockHeld } from '@jimhoyd/urlcode/extensions';
+import { NETWORK_FILESYSTEMS, serverLockHeld } from '@jimhoyd/urlcode/sqlite';
 import { STORE_SCHEMA_VERSION, addMember, createStore } from '../src/index.ts';
 import type { CollectionSpec } from '../src/index.ts';
 import { openStoreDatabase } from '../src/database.ts';

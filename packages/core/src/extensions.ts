@@ -48,12 +48,6 @@ export { clientKey, clientKeyIpv6Prefix } from './client-address.ts';
 export { ExtensionHttpError, readBody, jsonResponse, isSameOriginRequest } from './extension-http.ts';
 export type { ExtensionHttpErrorCode, ReadBodyOptions, SameOriginOptions } from './extension-http.ts';
 /**
- * One serving process per database, for every SQLite-backed extension: a Linux network filesystem refusal and the
- * server lock (`<database>.server-lock`), an OS lock a second serving process is refused on and a killed one leaves free.
- */
-export { holdServerLock, hostProbe, NETWORK_FILESYSTEMS, refuseNetworkFilesystem, serverLockHeld, serverLockPath } from './server-lock.ts';
-export type { HostProbe, ServerLock } from './server-lock.ts';
-/**
  * The audit event contract (RIM-EXT-AUDIT-001): the event, its pure validator, the query, and the tap an audit log
  * offers so a sink can forward its events. The store records and serves them; a sink named `audit` may consume them.
  */

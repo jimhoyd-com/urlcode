@@ -1,4 +1,4 @@
-// One serving process per database, for every extension that keeps a SQLite database (store, auth, audit). A process
+// One serving process per database, for every extension that keeps a SQLite database (store, auth). A process
 // that serves a database first holds an exclusive lock on the file `<database>.server-lock` beside it, which the
 // operating system drops when the process ends, however it ends. A second serving process is refused before it writes.
 // The operator commands never take it: they share the database through SQLite's own locking, as before. Several

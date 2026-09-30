@@ -4,7 +4,7 @@ import { bodyIssues, bodySchemaDialect, compileBodySchema } from '@jimhoyd/urlco
 import type { BodySchema, BodySchemaIssue, CompiledBodySchema } from '@jimhoyd/urlcode/body-schema';
 import { AUDIT_RETENTION, recordAuditEvent } from './audit.ts';
 import { QUERY_LIMITS, parseListQuery, queryableString, runList } from './query.ts';
-import { serverLockHeld } from '@jimhoyd/urlcode/extensions';
+import { serverLockHeld } from '@jimhoyd/urlcode/sqlite';
 import { STORE_SCHEMA_VERSION, declarationOf } from './database.ts';
 import type { StoreDatabase } from './database.ts';
 import { listInSql, listPlan } from './listing.ts';

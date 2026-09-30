@@ -271,6 +271,7 @@ import { createFetchHandler, rehydrate, type Artifact, type WorkerRoute } from '
 import { prerenderPages, assertNativeProject, type PrerenderOptions, type PrerenderedPage } from '@jimhoyd/urlcode/prerender';
 import { createVercelHandler, type VercelHandler } from '@jimhoyd/urlcode/vercel';
 import { inspectExtensionRevision, type RuntimeExtension } from '@jimhoyd/urlcode/extensions';
+import { holdServerLock, type ServerLock } from '@jimhoyd/urlcode/sqlite';
 import { validatePlugins, activatePlugins, type Plugin, type PluginRuntime } from '@jimhoyd/urlcode/plugins';
 import { registry, compilePolicies, type PolicyRegistry, type PolicyRequestInput } from '@jimhoyd/urlcode/policies';
 import { createObserverSink, createMetrics, type Observer, type ObserverEvent } from '@jimhoyd/urlcode/observability';
@@ -289,6 +290,8 @@ const credentialPlugin: Plugin = { name: 'credential-boundary', version: '1', ta
 void credentialPlugin;
 declare const extension: RuntimeExtension;
 void [extension, inspectExtensionRevision];
+const lock: (database: string, what: string) => Promise<ServerLock> = holdServerLock;
+void lock;
 
 declare const policies: PolicyRegistry; declare const input: PolicyRequestInput;
 declare const observer: Observer; declare const observerEvent: ObserverEvent;
