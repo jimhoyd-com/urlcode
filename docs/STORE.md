@@ -2168,9 +2168,10 @@ timestamp, hostname or clock involved. A second serving process on the same
 database is refused before it reads or writes the database:
 
 ```text
-Another process is already serving this store database (/srv/site/data/store.sqlite):
-URLCode serves each database from one process. Stop that server first. Several servers
-need a real database server, which URLCode does not provide.
+Another process is already serving this store database (/srv/site/data/store.sqlite): the
+bundled store serves its database from one process. Stop that server first, or, to run
+several servers, keep the data in a database server through your own library or an
+independent extension.
 ```
 
 A pinned `urlcode validate` or `urlcode routes` activates the site's own data,
@@ -2263,7 +2264,7 @@ it. The audit log is part of `store.sqlite`, so it has no lock of its own.
 - On Windows the operating system releases a terminated process's file locks
   after a delay it decides, not at the moment the process exits. A restart
   straight after a crash can therefore be refused once; start it again.
-- Test runs (`urlcode test`, `urlcode audit`, `urlcode benchmark`, and
+- Test runs (`urlcode test`, `urlcode audit` and
   `--local-review`) use a fresh temporary data directory, so their locks
   never meet a served site's.
 

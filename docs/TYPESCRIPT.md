@@ -63,9 +63,9 @@ release cannot ship a declaration that does not resolve.
   `RuntimeExtension`, `ExtensionActivation`, plus the hook helpers. See
   [extensions](EXTENSIONS.md#the-extension-definition).
 - `@jimhoyd/urlcode/sqlite`: `holdServerLock`, `serverLockHeld`,
-  `refuseNetworkFilesystem`, `ServerLock`, `HostProbe`: the one-serving-process
-  helpers of the bundled SQLite-backed extensions, kept off
-  `@jimhoyd/urlcode/extensions` so it never loads `node:sqlite`. See
+  `refuseNetworkFilesystem`, `beginImmediateWithin`, `ServerLock`, `HostProbe`:
+  the one-serving-process and operator write-lock helpers of the bundled
+  SQLite-backed extensions, kept off `@jimhoyd/urlcode/extensions` so it never loads `node:sqlite`. See
   [request helpers](EXTENSIONS.md#request-helpers).
 - `@jimhoyd/urlcode/host`: `composeHost`, which builds a site's `host.mjs`
   export from its list of extensions.
