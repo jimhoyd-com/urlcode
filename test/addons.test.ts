@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { TestContext } from 'node:test';
 import { composeHost } from '../packages/core/src/host.ts';
 import { initSite } from '../packages/core/src/authoring.ts';
-import { addAddons, assertInertArtifact, hostWithExtension, hostWithoutExtension, listAddons, removeAddon, renderInitialHost, validateDeclaredExtensions, describeInstalledArtifacts, readArtifactMember, yamlAppendItem, yamlDelete, yamlInsertEntry } from '../packages/core/src/addon-install.ts';
+import { addAddons, assertInertArtifact, packedCoreBeside, hostWithExtension, hostWithoutExtension, listAddons, removeAddon, renderInitialHost, validateDeclaredExtensions, describeInstalledArtifacts, readArtifactMember, yamlAppendItem, yamlDelete, yamlInsertEntry } from '../packages/core/src/addon-install.ts';
 import { parseAddonManifest, withRequirements } from '../packages/core/src/addon-manifest.ts';
 import type { AddonManifest } from '../packages/core/src/addon-manifest.ts';
 import type { ExtensionEntry } from '../packages/core/src/extensions.ts';
@@ -73,6 +73,9 @@ async function registry(t: TestContext, dir: string, extra: Record<string, Recor
 
 /** The note `extensions add|remove` prints after moving a fresh site's generated audit counts (#910). */
 const moved = (delta: number): string => `The audit's expected route count moved by ${delta > 0 ? '+' : ''}${delta} in app/tests/audit.json${delta > 0 ? '; add request fixtures for the new routes to app/tests/requests.json' : ''}`;
+/** The notes when an add or remove moves a fresh site's route count across zero and rewrites its generated guidance (#1003). */
+const firstRoute = 'The site has its first active route: AGENTS.md and .github/workflows/urlcode.yml no longer describe an empty project (allow-empty-project removed; the audit must now pass in CI)';
+const emptyAgain = 'The site has no active route again: AGENTS.md and .github/workflows/urlcode.yml now describe an empty project (the workflow permits only the initial no-active-routes audit again)';
 async function site(t: TestContext): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'urlcode-site-'));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -145,7 +148,7 @@ test('extensions add, list, validate and remove a site end to end', async t => {
   assert.deepEqual(added.added, ['alpha', 'beta'], 'requirements are added first');
   assert.match(added.projectSha256 ?? '', /^[a-f0-9]{64}$/);
   assert.deepEqual(added.env, { ALPHA_MODE: 'Optional mode for the fixture' });
-  assert.deepEqual(added.notes, ['installed: alpha,beta', moved(2)]);
+  assert.deepEqual(added.notes, ['installed: alpha,beta', moved(2), firstRoute]);
   const pkg = JSON.parse(await readFile(join(dir, 'package.json'), 'utf8')) as { dependencies: Record<string, string> };
   assert.equal(pkg.dependencies['@jimhoyd/urlcode-alpha'], `file:${join(fixtures, 'alpha')}`);
   const loaded = await loadDocument(join(dir, 'app'));
@@ -186,7 +189,7 @@ test('extensions add, list, validate and remove a site end to end', async t => {
   await writeFile(join(dir, 'app', 'urlcode.yaml'), (await readFile(join(dir, 'app', 'urlcode.yaml'), 'utf8')).replace('routes:\n  /mine:\n    extension: alpha\n    methods: [GET]', 'routes: {}'));
   const removedAlpha = await removeAddon(dir, 'extension', 'alpha', { manifest: m });
   assert.deepEqual(removedAlpha.kept, ['data/alpha.key'], 'operator files and data are never deleted');
-  assert.deepEqual(removedAlpha.notes, [moved(-1)]);
+  assert.deepEqual(removedAlpha.notes, [moved(-1), emptyAgain]);
   assert.equal(await readFile(join(dir, 'host.mjs'), 'utf8'), renderInitialHost());
   const readded = await addAddons(dir, 'extension', ['alpha'], { manifest: m });
   assert.deepEqual(readded.keptFiles, ['data/alpha.key'], 're-adding keeps the existing key');
@@ -251,7 +254,7 @@ test('extensions add installs the capability only; --example adds the example on
   const loadedBlank = await loadDocument(join(blank, 'app'));
   assert.deepEqual(Object.keys(loadedBlank.routes), ['/alpha/*'], 'a blank install adds no sample endpoint');
   assert.deepEqual(loadedBlank.document.extensions?.alpha?.config, { greeting: 'hello' });
-  assert.deepEqual(plain.notes, ['installed: alpha', moved(1)]);
+  assert.deepEqual(plain.notes, ['installed: alpha', moved(1), firstRoute]);
   await assert.rejects(addAddons(blank, 'extension', ['alpha'], { manifest: m, example: true }), /--example has no effect: alpha is already installed/);
 
   const demo = await site(t);
@@ -260,7 +263,7 @@ test('extensions add installs the capability only; --example adds the example on
   const loaded = await loadDocument(join(demo, 'app'));
   assert.deepEqual(Object.keys(loaded.routes).sort(), ['/alpha-demo', '/alpha/*']);
   assert.deepEqual(loaded.document.extensions?.alpha?.config, { greeting: 'hello from the example' }, 'example config merges over the capability');
-  assert.deepEqual(withExample.notes, ['installed: alpha', 'example: open /alpha-demo', moved(2)]);
+  assert.deepEqual(withExample.notes, ['installed: alpha', 'example: open /alpha-demo', moved(2), firstRoute]);
   assert.deepEqual(withExample.env, { ALPHA_MODE: 'Optional mode for the fixture' });
 
   // An extension with no example refuses --example rather than silently doing nothing, and rolls back.
@@ -341,6 +344,47 @@ test('extensions add and remove keep the one committed audit route count in step
   await rm(file);
   await addAddons(dir, 'extension', ['beta'], { manifest: m, acknowledgements: ['beta:risky'] });
   await assert.rejects(readFile(file, 'utf8'), /ENOENT/);
+});
+
+test('extensions add and remove keep the generated AGENTS.md and workflow describing whether the site is empty (#1003)', async t => {
+  const m = manifest(), dir = await site(t);
+  const guide = join(dir, 'AGENTS.md'), workflow = join(dir, '.github', 'workflows', 'urlcode.yml');
+  const initial = { guide: await readFile(guide, 'utf8'), workflow: await readFile(workflow, 'utf8') };
+  assert.match(initial.guide, /no-active-routes/);
+  assert.match(initial.workflow, /^ +allow-empty-project: true # remove after adding the first active route\n/m);
+  const added = await addAddons(dir, 'extension', ['alpha'], { manifest: m });
+  const guideAfter = await readFile(guide, 'utf8'), workflowAfter = await readFile(workflow, 'utf8');
+  assert.doesNotMatch(guideAfter, /no-active-routes|allow-empty-project/, 'the mount is the first route: the guide no longer describes an empty site');
+  assert.match(guideAfter, /Run all three after every change\./);
+  assert.equal(workflowAfter, initial.workflow.replace(/^ +allow-empty-project: true # remove after adding the first active route\n/m, ''), 'only that one workflow line goes');
+  assert.ok(added.notes.includes(firstRoute), added.notes.join('\n'));
+  // A second extension does not cross zero: nothing more changes.
+  await addAddons(dir, 'extension', ['beta'], { manifest: m, acknowledgements: ['beta:risky'] });
+  assert.equal(await readFile(workflow, 'utf8'), workflowAfter);
+  await removeAddon(dir, 'extension', 'beta', { manifest: m });
+  assert.equal(await readFile(guide, 'utf8'), guideAfter);
+  const removed = await removeAddon(dir, 'extension', 'alpha', { manifest: m });
+  assert.deepEqual({ guide: await readFile(guide, 'utf8'), workflow: await readFile(workflow, 'utf8') }, initial, 'removing the last route restores exactly what init generated');
+  assert.ok(removed.notes.includes(emptyAgain), removed.notes.join('\n'));
+  // Text the operator edited is theirs: it is left alone.
+  await writeFile(guide, '# Mine\n');
+  await writeFile(workflow, 'name: mine\n');
+  const again = await addAddons(dir, 'extension', ['alpha'], { manifest: m });
+  assert.deepEqual([await readFile(guide, 'utf8'), await readFile(workflow, 'utf8')], ['# Mine\n', 'name: mine\n']);
+  assert.ok(!again.notes.some(note => note.startsWith('The site has')));
+});
+
+test('a catalog of local add-on tarballs pins the site\'s core to the core packed beside them, not the registry (#1002)', async t => {
+  const out = await mkdtemp(join(tmpdir(), 'urlcode-packed-'));
+  t.after(() => rm(out, { recursive: true, force: true }));
+  const sri = `sha512-${'A'.repeat(86)}==`;
+  const tarballs = (directory: string): AddonManifest => parseAddonManifest({ format: 1, version: '9.9.9', addons: {
+    alpha: { kind: 'extension', package: '@jimhoyd/urlcode-alpha', description: 'alpha', requires: [], url: `file:${join(directory, 'jimhoyd-urlcode-alpha-9.9.9.tgz')}`, integrity: sri },
+  } }, 'packed manifest');
+  assert.equal(await packedCoreBeside(tarballs(out)), undefined, 'no core tarball beside the add-ons');
+  await writeFile(join(out, 'jimhoyd-urlcode-9.9.9.tgz'), '');
+  assert.equal(await packedCoreBeside(tarballs(out)), join(out, 'jimhoyd-urlcode-9.9.9.tgz'));
+  assert.equal(await packedCoreBeside(manifest()), undefined, 'a development manifest links source directories and has no packed core');
 });
 
 test('the minimal YAML edits handle block and flow collections and keep CRLF', () => {

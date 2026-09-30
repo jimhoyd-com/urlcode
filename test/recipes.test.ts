@@ -15,8 +15,6 @@ import {runProjectTests} from '../packages/core/src/project-tests.ts';
 import {auditProject} from '../packages/core/src/readiness.ts';
 import {loadDocument} from '../packages/core/src/config.ts';
 import {prepareFunctionSnapshot,requestedPermissions} from '../packages/core/src/policy.ts';
-import {inspectExtensionRevision} from '../packages/core/src/extensions.ts';
-import type {RuntimeExtension} from '../packages/core/src/extensions.ts';
 import {project,request} from './helpers.ts';
 import {readmeHost} from './spa-shell-host.ts';
 import {declaredExtensionTargets,parseAddonCatalog} from '../packages/core/src/addon-manifest.ts';
@@ -185,17 +183,6 @@ test('the middleware recipe serves every pattern and mirrors the cookbook module
   for(const file of recipe.files.filter(f=>f.startsWith('middleware/')||f.startsWith('functions/')))assert.equal(recipe.content[file],await readFile(join(cookbook,file),'utf8'),file);
 });
 
-// The registration the authenticated-json-api README host builds: one bearer token, no real authentication. The test
-// stands in for the operator and pins the revision it just copied; the README host takes it from PROJECT_SHA256 or --policy.
-async function authRegistry(root: string,realm: string): Promise<RuntimeExtension> {return {
-  name:'auth',version:'1',projectSha256:await inspectExtensionRevision(root),targets:['node','aws','vercel'],providesPrincipal:true,
-  schema:{type:'object',properties:{realm:{type:'string'}},required:['realm'],additionalProperties:false},
-  policySchema:{type:'object',properties:{role:{type:'string'}},additionalProperties:false},
-  activate(config){assert.equal(config.realm,realm);return {
-    handle(){return {status:404,headers:[],body:'no auth mount declared'};},
-    authorize(_requirement,request){if(request.headers.get('authorization')==='Bearer demo-token')return undefined;return {status:401,headers:[['www-authenticate',`Bearer realm="${realm}"`]],body:'sign in'};},
-  };},
-};}
 async function policyFor(root: string) {const loaded=await loadDocument(root);return requestedPermissions(loaded,await prepareFunctionSnapshot(loaded));}
 
 test('every recipe validates, passes its fixtures and audits with its declared route count',async t=>{
@@ -204,13 +191,13 @@ test('every recipe validates, passes its fixtures and audits with its declared r
   const previousSecret=process.env.WEBHOOK_SIGNING_SECRET;process.env.WEBHOOK_SIGNING_SECRET='recipe-test-secret';
   t.after(()=>{if(previousSecret===undefined)delete process.env.WEBHOOK_SIGNING_SECRET;else process.env.WEBHOOK_SIGNING_SECRET=previousSecret;});
   for(const recipe of await listRecipes()){
-    // The store recipes need the operator-installed @jimhoyd/urlcode-store; core cannot import it, so
-    // packages/store/test/store.test.ts and recipes.test.ts run their fixtures against the real extension.
-    if(recipe.services?.some(service=>service.name==='store extension'))continue;
+    // The auth and store recipes need the operator-installed @jimhoyd/urlcode-auth and -store; core cannot import them,
+    // so packages/auth/test/recipes.test.ts and packages/store/test/recipes.test.ts run their fixtures, signed in
+    // through the real auth extension (#1001).
+    if(recipe.services?.some(service=>service.name==='store extension'||service.name==='auth extension'))continue;
     let out=join(root,recipe.id);await addRecipe(recipe.id,out);
     if(recipe.id==='typescript'){await buildTypeScriptProject(out,join(root,'typescript-built'));out=join(root,'typescript-built');}
     const options: Parameters<typeof runProjectTests>[1]={};
-    if(recipe.capabilities!.includes('extension')){options.extensions=[await authRegistry(out,recipe.id==='protected-download'?'downloads':'api')];options.origin='https://recipe.example.test';}
     if(recipe.capabilities!.includes('signals')||recipe.grants?.some(grant=>grant.kind==='secret'))options.permissions=await policyFor(out);
     // spa-shell's client routes need the operator plugin from its README host file (test/spa-shell-recipe.test.ts).
     if(recipe.id==='spa-shell')options.plugins=(await readmeHost(join(root,'spa-operator'))).default.plugins;
@@ -237,44 +224,6 @@ test('the webhook recipe verifies an HMAC signature on a trusted route with a gr
   const send=(signature:string)=>request(app,'/webhook',{method:'POST',headers:{'content-type':'application/json','x-webhook-event':'order.paid','x-webhook-signature':signature},body});
   const accepted=await send(sign('another-key'));assert.equal(accepted.status,202);assert.deepEqual(JSON.parse(accepted.body),{received:true,event:'order.paid',id:'evt_9'});
   assert.equal((await send(sign('recipe-test-secret'))).status,401);
-});
-
-test('the authenticated recipes use the auth short form and never let credentials reach the guest',async t=>{
-  const root=await project(t,{}),out=join(root,'api');await addRecipe('authenticated-json-api',out);
-  assert.match(await readFile(join(out,'urlcode.yaml'),'utf8'),/^\s+auth: true$/m);
-  const app=await startServer({project:out,port:0,log:()=>{},origin:'https://recipe.example.test',extensions:[await authRegistry(out,'api')]});t.after(()=>app.close());
-  const denied=await request(app,'/api/profile');assert.equal(denied.status,401);assert.equal(denied.headers['www-authenticate'],'Bearer realm="api"');
-  const allowed=await request(app,'/api/profile',{headers:{authorization:'Bearer demo-token'}});assert.equal(allowed.status,200);assert.equal(allowed.headers['cache-control'],'no-store');
-  // The revision pin covers the requirement: editing it invalidates the registration.
-  await writeFile(join(out,'urlcode.yaml'),(await readFile(join(out,'urlcode.yaml'),'utf8')).replace('auth: true','auth: {role: admin}'));
-  await assert.rejects(startServer({project:out,port:0,log:()=>{},origin:'https://recipe.example.test',extensions:[{...await authRegistry(out,'api'),projectSha256:'0'.repeat(64)}]}),/pin mismatch/);
-});
-
-test('the README host example takes the reviewed revision pin, so an edit fails validate until the operator re-pins (#784)',async t=>{
-  const root=await project(t,{}),out=join(root,'api'),operator=join(root,'operator');await addRecipe('authenticated-json-api',out);
-  // The host file exactly as the README teaches it, with the package specifiers pointed at this checkout.
-  const readme=await readFile(fileURLToPath(new URL('../recipes/authenticated-json-api/README.md',import.meta.url)),'utf8');
-  const example=/## The host file[\s\S]*?```js\n([\s\S]*?)```/.exec(readme)![1]!;
-  assert.doesNotMatch(example,/inspectExtensionRevision/,'the example must not recompute the revision it registers');
-  const host=join(operator,'host.mjs');await mkdir(operator);
-  await writeFile(host,example.replace(`'@jimhoyd/urlcode/host'`,JSON.stringify(new URL('../packages/core/src/host.ts',import.meta.url).href)).replace(`'@jimhoyd/urlcode/extensions'`,JSON.stringify(new URL('../packages/core/src/extensions.ts',import.meta.url).href)));
-  const {PROJECT_SHA256:_ignored,...inherited}=process.env;
-  const run=(pin: string|undefined,...args: string[])=>spawnSync(process.execPath,[cli,...args,'--project',out,'--host-file',host,'--origin','https://api.example.com'],{encoding:'utf8',timeout:30000,env:{...inherited,API_DEMO_TOKEN:'demo-token',...(pin===undefined?{}:{PROJECT_SHA256:pin})}});
-  // The operator prints the revision once, reviews it and supplies it.
-  const printed=spawnSync(process.execPath,[cli,'extensions','--project',out],{encoding:'utf8',timeout:20000});
-  const reviewed=/Project revision: ([a-f0-9]{64})/.exec(printed.stdout)![1]!;assert.equal(reviewed,await inspectExtensionRevision(out));
-  assert.match(run(undefined,'validate','--local').stderr,/PROJECT_SHA256/,'no pin refuses');
-  const valid=run(reviewed,'validate','--local');assert.equal(valid.status,0,valid.stderr);assert.match(valid.stdout,/"event":"valid"/);
-  const tested=run(reviewed,'test');assert.equal(tested.status,0,tested.stdout+tested.stderr);
-  const policy=join(operator,'api-policy.json'),permissions=spawnSync(process.execPath,[cli,'permissions','--project',out],{encoding:'utf8',timeout:20000});
-  assert.equal(permissions.status,0);await writeFile(policy,permissions.stdout);
-  assert.equal(run(undefined,'validate','--local','--policy',policy).status,0,'the reviewed --policy revision pins the host too');
-  // Adding a route changes the revision; the same process environment no longer activates the extension.
-  await writeFile(join(out,'urlcode.yaml'),(await readFile(join(out,'urlcode.yaml'),'utf8'))+'  /api/health:\n    respond:\n      text: ok\n');
-  const stale=run(reviewed,'validate','--local');assert.equal(stale.status,1);assert.match(stale.stderr,/Extension revision pin mismatch: auth/);
-  const stalePolicy=run(undefined,'validate','--local','--policy',policy);assert.equal(stalePolicy.status,1);assert.match(stalePolicy.stderr,/revision-pin-mismatch/);
-  const edited=await inspectExtensionRevision(out);assert.notEqual(edited,reviewed);
-  const repinned=run(edited,'validate','--local');assert.equal(repinned.status,0,repinned.stderr);
 });
 
 test('examples carry the same metadata shape and search returns the smallest runnable match with its route',async t=>{

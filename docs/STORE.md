@@ -2110,17 +2110,25 @@ row by whether that value changes, timed on its own monotonic clock:
   another host, whether or not its own row is still there, the lease is lost:
   the process deletes its row, logs a line naming that host, and does not
   re-insert it. Every store write checks the lease first, inside its own
-  transaction. While the lease is lost, or not renewed for 10 seconds and its
-  row cannot be confirmed under the write lock, the write answers
-  `503 storage_unavailable` and writes nothing. Reads keep working.
+  transaction: under the write lock it reads the lease table and proceeds only
+  while its own row is there and no other host's is. Otherwise the write
+  answers `503 storage_unavailable` and writes nothing. Reads keep working.
+  The check never trusts the process's own clock or its last heartbeat
+  ([#1010](https://github.com/jimhoyd-com/urlcode/issues/1010)); it is one
+  read of a table of a few rows under a lock the write already holds (about
+  2 µs on an Apple-silicon laptop, against about 70 µs for a one-row commit
+  with `synchronous=FULL`).
 - **Recovering.** A process that lost the lease keeps watching. Once no
   other host holds a row (that host closed, or its row stayed unchanged for
   20 seconds), it rejoins at its next heartbeat and writes again.
 
-So a holder that stalled for longer than the TTL (a suspended VM, `SIGSTOP`,
-a blocked event loop) and resumes after another host took over refuses its
-writes. It does not rejoin beside that host. A failed heartbeat is logged once
-and retried every 5 seconds.
+A host inserts its row only in a transaction that found no other host's row,
+so at any moment the table holds rows of one host at most, and a write that
+passed the check holds the write lock until it commits. So a holder that
+stalled for longer than the TTL (a suspended VM whose clock stopped with it,
+`SIGSTOP`, a blocked event loop) and resumes after another host took over
+refuses its writes, whatever its clock says. It does not rejoin beside that
+host. A failed heartbeat is logged once and retried every 5 seconds.
 
 **One audit drainer.** With the audit extension every process has a drain
 loop, but only the holder of the drain lease (`holder` and `lease_until` in
@@ -2148,9 +2156,15 @@ site that runs auth or audit without the store is refused on a second host too
 ([#941](https://github.com/jimhoyd-com/urlcode/issues/941)). A process that
 lost the lease answers `503 auth_unavailable` on every auth request, and
 stores no audit event, so audit's producers keep their events and deliver them
-once it rejoins. Auth checks the lease once per request, before Better Auth
-runs, because Better Auth's own statements cannot be wrapped. Store and audit
-check it inside each write transaction. Each extension releases its lease
+once it rejoins. Store and audit check the lease inside each write
+transaction. Auth checks it once per request before Better Auth runs (a quick
+`503`), and again inside every Better Auth write: Better Auth's statements
+cannot be wrapped in a transaction of auth's, so each of its tables has a
+temporary trigger, on auth's connection only, that runs the same check before
+every insert, update and delete, under that statement's write lock. A stall
+between the per-request check and Better Auth's writes therefore writes
+nothing once another host took over; the request answers
+`503 auth_unavailable`. Each extension releases its lease
 when an activation fails after joining
 ([#979](https://github.com/jimhoyd-com/urlcode/issues/979)).
 
@@ -2164,12 +2178,18 @@ What the lease does not do:
   SQLite's locks and write-ahead log are unreliable, so the lease's own
   statements can fail there too. It is a check for a misconfiguration, not a
   way to run on two hosts.
-- A process judges peers by its own monotonic clock. A clock that runs slow
-  by a large factor (not an offset), or a stall inside a single write
-  transaction, is not covered.
-- A process that lost its lease keeps its connection and keeps reading. It
-  also keeps watching the lease table, which takes the write lock once per
-  heartbeat.
+- A process judges peers by its own monotonic clock, so clocks decide when a
+  take-over happens, never whether two hosts write. A clock that runs fast by
+  a large factor makes a process take over from a live holder too early; the
+  holder then refuses its writes rather than both
+  writing.
+- It guards writes, not reads. A process whose row is gone keeps serving
+  reads, which can be stale once the other host writes, until its next
+  heartbeat notices the other host. It keeps its connection and keeps
+  watching the lease table, which takes the write lock once per heartbeat.
+- Auth guards the tables that exist when it activates. A table created while
+  it serves (running `urlcode-auth migrate` for a new plugin against a live
+  server) has no trigger until the next activation.
 - A row that stays after a crash is watched for 20 seconds by the next
   process to start, then deleted. An operator never needs to clear it by
   hand. To clear it anyway, stop every server first, then run

@@ -19,6 +19,7 @@ import { orderByRequires } from './host.ts';
 import { runNpm } from './npm.ts';
 import { auditExpectationFile, readAuditExpectation } from './readiness.ts';
 import { generatedPaths } from './site.ts';
+import { activeProjectAuditGuidance, emptyProjectAuditGuidance } from './agents-guide.ts';
 import { isCode, isRecord } from './object-guards.ts';
 import { addonNamePattern, addonPackage, contractProblem, declaredExtensionTargets, installedProviders, isDevelopmentManifest, packageDataPath, parseDescriptor, readAddonCatalog, readAddonManifest, readInstalledDescriptor, withRequirements } from './addon-manifest.ts';
 import type { AddonDescriptor, AddonKind, AddonManifest, AddonPin, ArtifactDocument, ExtensionTarget, InstalledProvider } from './addon-manifest.ts';
@@ -393,6 +394,50 @@ async function syncExpectedRoutes(site: Site, delta: number): Promise<string | u
   await writeFile(file, `${JSON.stringify({ expectRoutes: Math.max(0, expected + delta) }, null, 2)}\n`);
   return `The audit's expected route count moved by ${delta > 0 ? '+' : ''}${delta} in ${relative(site.site, file).split(sep).join('/')}${delta > 0 ? '; add request fixtures for the new routes to app/tests/requests.json' : ''}`;
 }
+/**
+ * The core tarball packed beside a catalog of local add-on tarballs: scripts/pack-addons.ts writes
+ * `jimhoyd-urlcode-<version>.tgz` next to the add-on tarballs its manifest pins. A site that pins core by bare version
+ * beside such a catalog would install the registry's core of that version, a different build than the add-ons were
+ * packed with (#1002), so it installs this one instead. A release catalog (https URLs) or a development one
+ * (source directories) has none.
+ */
+export async function packedCoreBeside(manifest: AddonManifest): Promise<string | undefined> {
+  const pins = Object.values(manifest.addons);
+  if (!pins.length || !pins.every(pin => pin.integrity !== null && pin.url.startsWith('file:') && pin.url.endsWith('.tgz'))) return undefined;
+  const directories = new Set(pins.map(pin => dirname(pin.url.slice('file:'.length))));
+  if (directories.size !== 1) return undefined;
+  const core = join([...directories][0]!, `jimhoyd-urlcode-${manifest.version}.tgz`);
+  return await exists(core) ? core : undefined;
+}
+/** The site files `urlcode init` generates that describe an empty project, relative to the site (#1003). */
+const siteGuide = 'AGENTS.md', siteWorkflow = '.github/workflows/urlcode.yml';
+const emptyProjectInput = 'allow-empty-project: true # remove after adding the first active route';
+function guidanceFiles(site: Site): string[] { return [join(site.site, siteGuide), join(site.site, ...siteWorkflow.split('/'))]; }
+/**
+ * When `extensions add|remove` moves the route count across zero, the generated AGENTS.md audit paragraph and the
+ * CI workflow's `allow-empty-project` input follow it (#1003), as the committed route count does. Only text that is
+ * still exactly what init generated is changed; an edited or missing file is left alone. The result names what changed.
+ */
+async function syncEmptyProjectGuidance(site: Site, before: number, after: number): Promise<string | undefined> {
+  if ((before === 0) === (after === 0)) return undefined;
+  const empty = after === 0, changed: string[] = [];
+  const [guide, workflow] = guidanceFiles(site) as [string, string];
+  const read = (path: string): Promise<string | undefined> => readFile(path, 'utf8').catch((error: unknown) => { if (isCode(error, 'ENOENT')) return undefined; throw error; });
+  const text = await read(guide), [from, to] = empty ? [activeProjectAuditGuidance, emptyProjectAuditGuidance] : [emptyProjectAuditGuidance, activeProjectAuditGuidance];
+  if (text !== undefined && text.split(from).length === 2) { await writeFile(guide, text.replace(from, to)); changed.push(siteGuide); }
+  const yaml = await read(workflow);
+  if (yaml !== undefined) {
+    const line = new RegExp(`^[ \\t]*${emptyProjectInput}\\r?\\n`, 'm');
+    // The input sits under the URLCode action step's `with:`, one level deeper than `with:` itself.
+    const step = /^([ \t]*)(?:- )?uses: jimhoyd-com\/urlcode\/action@[^\n]*\n([ \t]*)with:[ \t]*\r?\n/m;
+    const next = empty ? (line.test(yaml) ? yaml : yaml.replace(step, (match, _step: string, indent: string) => `${match}${indent}  ${emptyProjectInput}\n`)) : yaml.replace(line, '');
+    if (next !== yaml) { await writeFile(workflow, next); changed.push(siteWorkflow); }
+  }
+  if (!changed.length) return undefined;
+  return empty
+    ? `The site has no active route again: ${changed.join(' and ')} now describe${changed.length === 1 ? 's' : ''} an empty project${changed.includes(siteWorkflow) ? ' (the workflow permits only the initial no-active-routes audit again)' : ''}`
+    : `The site has its first active route: ${changed.join(' and ')} no longer describe${changed.length === 1 ? 's' : ''} an empty project${changed.includes(siteWorkflow) ? ' (allow-empty-project removed; the audit must now pass in CI)' : ''}`;
+}
 export async function snapshot(paths: readonly string[]): Promise<Snapshot> {
   const saved = new Map<string, string | undefined>();
   for (const path of paths) { try { saved.set(path, await readFile(path, 'utf8')); } catch (error) { if (!isCode(error, 'ENOENT')) throw error; saved.set(path, undefined); } }
@@ -535,7 +580,7 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
     return result;
   }
   const yamlFile = join(site.project, 'urlcode.yaml');
-  const state = await snapshot([site.packageFile, join(site.site, 'package-lock.json'), yamlFile, site.hostFile, filesLockPath, expectedRouteFile(site)]);
+  const state = await snapshot([site.packageFile, join(site.site, 'package-lock.json'), yamlFile, site.hostFile, filesLockPath, expectedRouteFile(site), ...guidanceFiles(site)]);
   const routesBefore = kind === 'extension' ? await configuredRouteCount(site.project) : 0;
   const tree = await dependencyTree(site.site);
   // What each independent package provided before npm ran, so a re-added one is recognised as an upgrade (#857).
@@ -544,6 +589,11 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
   let installing = false;
   try {
     pkg.dependencies = { ...pkg.dependencies };
+    const packedCore = toAdd.length && pkg.dependencies['@jimhoyd/urlcode'] === manifest.version ? await packedCoreBeside(manifest) : undefined;
+    if (packedCore) {
+      pkg.dependencies['@jimhoyd/urlcode'] = `file:${packedCore}`;
+      result.notes.push(`@jimhoyd/urlcode now installs from ${packedCore}, the core packed with these local add-on tarballs, instead of the registry's ${manifest.version}, a different build they may not load with`);
+    }
     for (const name of toAdd) pkg.dependencies[manifest.addons[name]!.package] = manifest.addons[name]!.url;
     await writeFile(site.packageFile, renderJson(pkg));
     installing = true;
@@ -710,7 +760,10 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
     for (const [name, dependency] of [...independent, ...upgrades, ...unchanged]) files.packages[dependency] = await recordPackage(site.site, dependency, recordLock[`node_modules/${dependency}`], { name, kind, spec: specOf.get(dependency) ?? null });
     await writeFilesLock(site.site, files);
     result.added = [...toAdd, ...independent.keys()];
-    if (kind === 'extension') { const moved = await syncExpectedRoutes(site, await configuredRouteCount(site.project) - routesBefore); if (moved) result.notes.push(moved); }
+    if (kind === 'extension') {
+      const routesAfter = await configuredRouteCount(site.project);
+      for (const note of [await syncExpectedRoutes(site, routesAfter - routesBefore), await syncEmptyProjectGuidance(site, routesBefore, routesAfter)]) if (note) result.notes.push(note);
+    }
     return result;
   } catch (error) { return rollBack(state, installing ? tree : undefined, site.site, error); }
   finally { for (const secret of secrets) secret.fill(0); }
@@ -757,7 +810,7 @@ export async function removeAddon(directory: string, kind: AddonKind, name: stri
   // An add-on that only uses this one keeps working without it, except the features that need it.
   const notes = others.filter(other => edges(other).uses.includes(name)).map(other => other.name).sort().map(other => `${other} uses ${name}; features of ${other} that need ${name} will refuse to activate`);
   const yamlFile = join(site.project, 'urlcode.yaml'), routesFile = join(site.project, 'routes', `${name}.yaml`);
-  const state = await snapshot([site.packageFile, join(site.site, 'package-lock.json'), yamlFile, site.hostFile, routesFile, join(site.site, ADDON_FILES_LOCK), expectedRouteFile(site)]);
+  const state = await snapshot([site.packageFile, join(site.site, 'package-lock.json'), yamlFile, site.hostFile, routesFile, join(site.site, ADDON_FILES_LOCK), expectedRouteFile(site), ...guidanceFiles(site)]);
   const routesBefore = kind === 'extension' ? await configuredRouteCount(site.project) : 0;
   const tree = await dependencyTree(site.site);
   const kept: string[] = [];
@@ -792,7 +845,10 @@ export async function removeAddon(directory: string, kind: AddonKind, name: stri
     const files = await readFilesLock(site.site);
     delete files.packages[packageName];
     await writeFilesLock(site.site, files);
-    if (kind === 'extension') { const moved = await syncExpectedRoutes(site, await configuredRouteCount(site.project) - routesBefore); if (moved) notes.push(moved); }
+    if (kind === 'extension') {
+      const routesAfter = await configuredRouteCount(site.project);
+      for (const note of [await syncExpectedRoutes(site, routesAfter - routesBefore), await syncEmptyProjectGuidance(site, routesBefore, routesAfter)]) if (note) notes.push(note);
+    }
     return { removed: name, kept, projectSha256: kind === 'extension' ? await inspectExtensionRevision(site.project) : undefined, notes };
   } catch (error) { return rollBack(state, installing ? tree : undefined, site.site, error); }
 }
