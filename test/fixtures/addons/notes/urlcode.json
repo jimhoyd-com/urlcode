@@ -1,1 +1,1 @@
-{ "kind": "artifact", "name": "notes", "description": "Fixture artifact", "contract": 1, "requires": [] }
+{ "kind": "artifact", "name": "notes", "description": "Fixture artifact", "contract": 2, "requires": [] }

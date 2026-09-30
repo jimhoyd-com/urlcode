@@ -302,18 +302,18 @@ async function npmInstall(dir: string, name: string, file: string): Promise<void
 
 test('a package declares the URLCode extension contract it is built for: add, list --strict, validate and activation refuse any other by name (#844)', async t => {
   const dir = await site(t), packages = await temp(t, 'urlcode-tarballs-');
-  // Compatible: the independent greeting package declares contract 1, the one this core implements.
+  // Compatible: the independent greeting package declares contract 2, the one this core implements.
   assert.deepEqual((await addAddons(dir, 'extension', [await tarball(t, packages, 'greeting', '2.3.4')], { manifest })).added, ['greeting']);
   const before = await siteFiles(dir);
-  // Incompatible: beyond declares contract 2. Refused from its descriptor, before its entry is imported, and rolled back.
+  // Incompatible: beyond declares contract 3. Refused from its descriptor, before its entry is imported, and rolled back.
   const beyond = await tarball(t, packages, 'beyond', '3.0.0');
-  await assert.rejects(addAddons(dir, 'extension', [beyond], { manifest }), /Refusing @example\/urlcode-beyond: @example\/urlcode-beyond@3\.0\.0 is built for URLCode extension contract 2, but this core implements extension contract 1; install a version of it built for contract 1, or a core that implements contract 2/);
+  await assert.rejects(addAddons(dir, 'extension', [beyond], { manifest }), /Refusing @example\/urlcode-beyond: @example\/urlcode-beyond@3\.0\.0 is built for URLCode extension contract 3, but this core implements extension contract 2; install a version of it built for contract 2, or a core that implements contract 3/);
   assert.deepEqual(await siteFiles(dir), before);
   // An artifact descriptor declares its contract too.
-  const futureDocs = await tarball(t, packages, 'petstore-docs', '9.0.0', async pkgDir => { const file = join(pkgDir, 'urlcode.json'); await writeFile(file, JSON.stringify({ ...JSON.parse(await readFile(file, 'utf8')) as object, contract: 2 })); });
-  await assert.rejects(addAddons(dir, 'artifact', [futureDocs], { manifest }), /Refusing @example\/urlcode-petstore-docs: @example\/urlcode-petstore-docs@9\.0\.0 is built for URLCode extension contract 2, but this core implements extension contract 1/);
+  const futureDocs = await tarball(t, packages, 'petstore-docs', '9.0.0', async pkgDir => { const file = join(pkgDir, 'urlcode.json'); await writeFile(file, JSON.stringify({ ...JSON.parse(await readFile(file, 'utf8')) as object, contract: 3 })); });
+  await assert.rejects(addAddons(dir, 'artifact', [futureDocs], { manifest }), /Refusing @example\/urlcode-petstore-docs: @example\/urlcode-petstore-docs@9\.0\.0 is built for URLCode extension contract 3, but this core implements extension contract 2/);
   const noContract = await tarball(t, packages, 'greeting', '2.3.9', async pkgDir => { const file = join(pkgDir, 'urlcode.json'), { contract: _, ...rest } = JSON.parse(await readFile(file, 'utf8')) as Record<string, unknown>; await writeFile(file, JSON.stringify(rest)); });
-  await assert.rejects(addAddons(dir, 'extension', [noContract], { manifest }), /carries no valid urlcode\.json extension descriptor \(.*contract must be the URLCode extension contract the package is built for, a positive integer \(this core implements 1\)\)/);
+  await assert.rejects(addAddons(dir, 'extension', [noContract], { manifest }), /carries no valid urlcode\.json extension descriptor \(.*contract must be the URLCode extension contract the package is built for, a positive integer \(this core implements 2\)\)/);
   assert.deepEqual(await siteFiles(dir), before);
 
   // Installed by plain npm, outside add, and declared by hand: list --strict, static validate and composeHost refuse it.
@@ -321,13 +321,13 @@ test('a package declares the URLCode extension contract it is built for: add, li
   const yaml = join(dir, 'app', 'urlcode.yaml');
   await writeFile(yaml, (await readFile(yaml, 'utf8')).replace('extensions:\n', 'extensions:\n  beyond:\n    version: "1"\n    config: {}\n'));
   const report = await listAddons(dir, 'extension', { manifest });
-  assert.deepEqual(report.problems.filter(problem => /contract/.test(problem)), ['beyond: @example/urlcode-beyond is built for URLCode extension contract 2, but this core implements extension contract 1; install a version of it built for contract 1, or a core that implements contract 2']);
+  assert.deepEqual(report.problems.filter(problem => /contract/.test(problem)), ['beyond: @example/urlcode-beyond is built for URLCode extension contract 3, but this core implements extension contract 2; install a version of it built for contract 2, or a core that implements contract 3']);
   const strict = printer();
   assert.equal(await runAddonCommand('extensions', 'list', [], { site: dir, strict: true }, strict.print), 1);
-  assert.match(String(strict.printed[0]), /Problem: beyond: @example\/urlcode-beyond is built for URLCode extension contract 2/);
-  assert.deepEqual(await validateDeclaredExtensions(join(dir, 'app')), ['extensions.beyond: the installed package is built for URLCode extension contract 2, but this core implements extension contract 1; install a version of it built for contract 1, or a core that implements contract 2']);
+  assert.match(String(strict.printed[0]), /Problem: beyond: @example\/urlcode-beyond is built for URLCode extension contract 3/);
+  assert.deepEqual(await validateDeclaredExtensions(join(dir, 'app')), ['extensions.beyond: the installed package is built for URLCode extension contract 3, but this core implements extension contract 2; install a version of it built for contract 2, or a core that implements contract 3']);
   const entry = (await import(pathToFileURL(join(dir, 'node_modules', '@example', 'urlcode-beyond', 'extension.js')).href) as { default: () => ExtensionEntry }).default;
-  await assert.rejects(composeHost(pathToFileURL(join(dir, 'host.mjs')), [entry()]), /Extension beyond is built for URLCode extension contract 2, but this core implements extension contract 1/);
+  await assert.rejects(composeHost(pathToFileURL(join(dir, 'host.mjs')), [entry()]), /Extension beyond is built for URLCode extension contract 3, but this core implements extension contract 2/);
 });
 
 test('a package that bundles its own @jimhoyd/urlcode is refused at add and reported by list --strict: one core per site (#844)', async t => {

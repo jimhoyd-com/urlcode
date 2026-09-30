@@ -46,7 +46,7 @@ const pin = 'b'.repeat(64);
 const schema = { type: 'object' };
 function synthetic(name: string, edges: { requires?: string[]; uses?: string[] } = {}, read: (ctx: HostContext) => unknown = () => undefined) {
   return defineExtension({
-    name, description: `Synthetic ${name}`, contract: 1, targets: ['node'], schema, ...edges,
+    name, description: `Synthetic ${name}`, contract: 2, targets: ['node'], schema, ...edges,
     host(ctx) {
       const seen = read(ctx);
       return { registration: { name, version: '1' as const, projectSha256: ctx.projectSha256, targets: ['node' as const], schema, activate: () => ({ handle: () => ({ status: 404, headers: [] }) }) }, exports: { from: name, seen } };
@@ -70,22 +70,22 @@ test('a used extension that is installed is hosted first and read through get', 
 });
 
 test('an extension registers exactly the targets its definition declares, which urlcode.json carries (#859)', async t => {
-  const wide = defineExtension({ name: 'wide', description: 'Synthetic wide', contract: 1, targets: ['node', 'aws'], schema,
+  const wide = defineExtension({ name: 'wide', description: 'Synthetic wide', contract: 2, targets: ['node', 'aws'], schema,
     host: ctx => ({ registration: { name: 'wide', version: '1' as const, projectSha256: ctx.projectSha256, targets: ['node' as const], schema, activate: () => ({ handle: () => ({ status: 404, headers: [] }) }) } }) });
   await assert.rejects(composed(t, [wide()]), /wide registers targets that differ from its definition's targets/);
-  const base = { description: 'Synthetic', contract: 1, schema, host: () => { throw new Error('unused'); } };
+  const base = { description: 'Synthetic', contract: 2, schema, host: () => { throw new Error('unused'); } };
   for (const targets of [[], ['node', 'node'], ['cloudflare']]) assert.throws(() => defineExtension({ ...base, name: 'bad', targets: targets as never }), /targets must list node, aws, vercel once each/);
 });
 
 test('an extension registers providesPrincipal exactly when its definition declares it, which urlcode.json carries (#888)', async t => {
   const registration = (ctx: { projectSha256: string }, providesPrincipal?: boolean) => ({ registration: { name: 'gate', version: '1' as const, projectSha256: ctx.projectSha256, targets: ['node' as const], schema, ...(providesPrincipal === undefined ? {} : { providesPrincipal }), activate: () => ({ handle: () => ({ status: 404, headers: [] }) }) } });
-  const undeclared = defineExtension({ name: 'gate', description: 'Synthetic gate', contract: 1, targets: ['node'], schema, host: ctx => registration(ctx, true) });
+  const undeclared = defineExtension({ name: 'gate', description: 'Synthetic gate', contract: 2, targets: ['node'], schema, host: ctx => registration(ctx, true) });
   await assert.rejects(composed(t, [undeclared()]), /gate registers providesPrincipal true, which differs from its definition's/);
-  const declared = defineExtension({ name: 'gate', description: 'Synthetic gate', contract: 1, targets: ['node'], providesPrincipal: true, schema, host: ctx => registration(ctx) });
+  const declared = defineExtension({ name: 'gate', description: 'Synthetic gate', contract: 2, targets: ['node'], providesPrincipal: true, schema, host: ctx => registration(ctx) });
   await assert.rejects(composed(t, [declared()]), /gate registers providesPrincipal false, which differs from its definition's/);
-  const agreed = defineExtension({ name: 'gate', description: 'Synthetic gate', contract: 1, targets: ['node'], providesPrincipal: true, schema, host: ctx => registration(ctx, true) });
+  const agreed = defineExtension({ name: 'gate', description: 'Synthetic gate', contract: 2, targets: ['node'], providesPrincipal: true, schema, host: ctx => registration(ctx, true) });
   assert.equal((await composed(t, [agreed()])).extensions![0]!.providesPrincipal, true);
-  assert.throws(() => defineExtension({ name: 'gate', description: 'Synthetic gate', contract: 1, targets: ['node'], providesPrincipal: 'yes' as never, schema, host: ctx => registration(ctx) }), /providesPrincipal must be a boolean/);
+  assert.throws(() => defineExtension({ name: 'gate', description: 'Synthetic gate', contract: 2, targets: ['node'], providesPrincipal: 'yes' as never, schema, host: ctx => registration(ctx) }), /providesPrincipal must be a boolean/);
 });
 
 test('get returns the producer exports when present and undefined when absent', async t => {
@@ -111,7 +111,7 @@ test('a cycle through uses among installed extensions is refused; an absent used
 });
 
 test('defineExtension refuses a uses entry that is invalid, repeated, itself or also required', () => {
-  const base = { description: 'Synthetic', contract: 1, targets: ['node' as const], schema, host: () => { throw new Error('unused'); } };
+  const base = { description: 'Synthetic', contract: 2, targets: ['node' as const], schema, host: () => { throw new Error('unused'); } };
   assert.throws(() => defineExtension({ ...base, name: 'both', requires: ['x'], uses: ['x'] }), /Extension both lists x in both requires and uses/);
   assert.throws(() => defineExtension({ ...base, name: 'self', uses: ['self'] }), /Extension self uses must list other extension names once each/);
   assert.throws(() => defineExtension({ ...base, name: 'twice', uses: ['x', 'x'] }), /uses must list other extension names once each/);
@@ -121,11 +121,18 @@ test('defineExtension refuses a uses entry that is invalid, repeated, itself or 
 
 test('an extension declares the URLCode extension contract it is built for; any other is refused by name (#844)', async t => {
   const base = { name: 'future', description: 'Synthetic future', targets: ['node' as const], schema, host: () => { throw new Error('unused'); } };
-  assert.equal(extensionContract, 1);
-  assert.throws(() => defineExtension({ ...base, contract: undefined as never }), /Extension future must declare contract, the URLCode extension contract it is built for \(this core implements 1\)/);
+  // Contract 2 added the hermetic obligation (#976): keep every file under context.data when hermetic.
+  assert.equal(extensionContract, 2);
+  assert.throws(() => defineExtension({ ...base, contract: undefined as never }), /Extension future must declare contract, the URLCode extension contract it is built for \(this core implements 2\)/);
   assert.throws(() => defineExtension({ ...base, contract: 1.5 }), /must declare contract/);
-  assert.throws(() => defineExtension({ ...base, contract: 2 }), /Extension future is built for URLCode extension contract 2, but this core implements extension contract 1/);
+  assert.throws(() => defineExtension({ ...base, contract: 3 }), /Extension future is built for URLCode extension contract 3, but this core implements extension contract 2/);
   // A definition that never passed this core's defineExtension (another copy of core made it) is refused at activation.
-  const foreign: ExtensionEntry = Object.freeze({ definition: { ...base, contract: 2 }, options: {} });
-  await assert.rejects(composed(t, [synthetic('fine')(), foreign]), /Extension future is built for URLCode extension contract 2, but this core implements extension contract 1/);
+  const foreign: ExtensionEntry = Object.freeze({ definition: { ...base, contract: 3 }, options: {} });
+  await assert.rejects(composed(t, [synthetic('fine')(), foreign]), /Extension future is built for URLCode extension contract 3, but this core implements extension contract 2/);
+  // An extension built before the hermetic obligation is refused before its host() runs, not trusted to honour it.
+  let ran = false;
+  const legacy: ExtensionEntry = Object.freeze({ definition: { ...base, contract: 1, host: () => { ran = true; throw new Error('unused'); } }, options: {} });
+  assert.throws(() => defineExtension({ ...base, contract: 1 }), /Extension future is built for URLCode extension contract 1, but this core implements extension contract 2/);
+  await assert.rejects(composed(t, [legacy]), /Extension future is built for URLCode extension contract 1, but this core implements extension contract 2/);
+  assert.equal(ran, false);
 });

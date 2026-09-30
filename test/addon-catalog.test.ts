@@ -21,10 +21,10 @@ async function checkout(t: TestContext): Promise<string> {
   const write = async (path: string, text: string): Promise<void> => { await mkdir(join(root, path, '..'), { recursive: true }); await writeFile(join(root, path), text); };
   await write('package.json', json({ name: '@jimhoyd/urlcode', version: '9.9.9' }));
   await write('packages/alpha/package.json', json({ name: '@jimhoyd/urlcode-alpha', version: '9.9.9', type: 'module' }));
-  await write('packages/alpha/urlcode.json', json({ kind: 'extension', name: 'alpha', description: 'stub', contract: 1, requires: [], schema: {} }));
-  await write('packages/alpha/dist/extension.js', `export default { definition: ${JSON.stringify({ name: 'alpha', description: 'Alpha extension', contract: 1, targets: ['vercel', 'node'], schema: { type: 'object' }, agent: agent('alpha') })} };\n`);
+  await write('packages/alpha/urlcode.json', json({ kind: 'extension', name: 'alpha', description: 'stub', contract: 2, requires: [], schema: {} }));
+  await write('packages/alpha/dist/extension.js', `export default { definition: ${JSON.stringify({ name: 'alpha', description: 'Alpha extension', contract: 2, targets: ['vercel', 'node'], schema: { type: 'object' }, agent: agent('alpha') })} };\n`);
   await write('artifacts/notes/package.json', json({ name: '@jimhoyd/urlcode-notes', version: '9.9.9' }));
-  await write('artifacts/notes/urlcode.json', json({ kind: 'artifact', name: 'notes', description: 'Notes artifact', contract: 1, requires: ['alpha'], agent: agent('notes') }));
+  await write('artifacts/notes/urlcode.json', json({ kind: 'artifact', name: 'notes', description: 'Notes artifact', contract: 2, requires: ['alpha'], agent: agent('notes') }));
   return root;
 }
 
@@ -56,14 +56,14 @@ test('the drift check fails when the built catalog or an artifact descriptor cha
   assert.deepEqual(await syncExpectedFiles(root, { check: true }), [catalog]);
   await syncExpectedFiles(root);
   const descriptor = join(root, 'artifacts', 'notes', 'urlcode.json');
-  await writeFile(descriptor, json({ kind: 'artifact', name: 'notes', description: 'Renamed notes', contract: 1, requires: [] }));
+  await writeFile(descriptor, json({ kind: 'artifact', name: 'notes', description: 'Renamed notes', contract: 2, requires: [] }));
   assert.deepEqual(await syncExpectedFiles(root, { check: true }), [catalog]);
   await rm(catalog);
   assert.deepEqual(await syncExpectedFiles(root, { check: true }), [catalog]);
 });
 
 test('building and parsing refuse a catalog that is not bounded metadata of one release', () => {
-  const source = (descriptor: Record<string, unknown>, version = '1.0.0') => ({ descriptor: { kind: 'artifact', contract: 1, requires: [], ...descriptor }, package: `@jimhoyd/urlcode-${String(descriptor.name)}`, version, source: `${String(descriptor.name)}/urlcode.json` });
+  const source = (descriptor: Record<string, unknown>, version = '1.0.0') => ({ descriptor: { kind: 'artifact', contract: 2, requires: [], ...descriptor }, package: `@jimhoyd/urlcode-${String(descriptor.name)}`, version, source: `${String(descriptor.name)}/urlcode.json` });
   const catalog = buildAddonCatalog('1.0.0', [source({ name: 'zeta', description: 'z' }), source({ name: 'beta', description: 'b', requires: ['zeta'] })]);
   assert.deepEqual(catalog.addons.map(entry => entry.name), ['beta', 'zeta']);
   assert.deepEqual(parseAddonCatalog(JSON.parse(JSON.stringify(catalog)), 'round trip'), catalog);
@@ -79,8 +79,8 @@ test('building and parsing refuse a catalog that is not bounded metadata of one 
 test('an artifact\'s documents reach the catalog as bounded paths and media types, never contents (#857)', () => {
   const documents = [{ path: 'schemas/config.json', mediaType: 'application/schema+json' }, { path: 'README.md', mediaType: 'text/markdown' }];
   const catalog = buildAddonCatalog('1.0.0', [
-    { descriptor: { kind: 'artifact', name: 'docs', description: 'd', contract: 1, requires: [], documents }, package: '@jimhoyd/urlcode-docs', version: '1.0.0', source: 'docs/urlcode.json' },
-    { descriptor: { kind: 'artifact', name: 'plain', description: 'p', contract: 1, requires: [], documents: [] }, package: '@jimhoyd/urlcode-plain', version: '1.0.0', source: 'plain/urlcode.json' },
+    { descriptor: { kind: 'artifact', name: 'docs', description: 'd', contract: 2, requires: [], documents }, package: '@jimhoyd/urlcode-docs', version: '1.0.0', source: 'docs/urlcode.json' },
+    { descriptor: { kind: 'artifact', name: 'plain', description: 'p', contract: 2, requires: [], documents: [] }, package: '@jimhoyd/urlcode-plain', version: '1.0.0', source: 'plain/urlcode.json' },
   ]);
   assert.deepEqual(catalog.addons.map(entry => [entry.name, entry.documents]), [['docs', documents], ['plain', undefined]], 'an empty list is omitted');
   assert.equal(Object.hasOwn(catalog.addons[1]!, 'documents'), false);
@@ -95,7 +95,7 @@ test('an artifact\'s documents reach the catalog as bounded paths and media type
 
 test('uses round-trips from the definition through urlcode.json, the catalog and the development manifest, never as a requirement', async t => {
   const root = await checkout(t);
-  await writeFile(join(root, 'packages/alpha/dist/extension.js'), `export default { definition: ${JSON.stringify({ name: 'alpha', description: 'Alpha extension', contract: 1, targets: ['node'], schema: { type: 'object' }, uses: ['zeta', 'mail'] })} };\n`);
+  await writeFile(join(root, 'packages/alpha/dist/extension.js'), `export default { definition: ${JSON.stringify({ name: 'alpha', description: 'Alpha extension', contract: 2, targets: ['node'], schema: { type: 'object' }, uses: ['zeta', 'mail'] })} };\n`);
   await syncExpectedFiles(root);
   const descriptor = JSON.parse(await readFile(join(root, 'packages/alpha/urlcode.json'), 'utf8')) as Record<string, unknown>;
   assert.deepEqual(Object.keys(descriptor).slice(0, 6), ['kind', 'name', 'description', 'contract', 'requires', 'uses'], 'uses follows requires');
@@ -107,15 +107,15 @@ test('uses round-trips from the definition through urlcode.json, the catalog and
   assert.deepEqual(withRequirements(manifest, ['alpha']), ['alpha'], 'uses never enters the requires closure');
   assert.throws(() => parseDescriptor({ ...descriptor, requires: ['mail'] }, 'overlap'), /uses must be a list of other extension names, disjoint from requires/);
   assert.throws(() => parseDescriptor({ ...descriptor, uses: ['alpha'] }, 'self'), /disjoint from requires/);
-  assert.throws(() => parseDescriptor({ kind: 'artifact', name: 'notes', description: 'n', contract: 1, requires: [], uses: ['alpha'] }, 'artifact'), /carries no extension schema, policySchema, hooks, authoring or uses/);
+  assert.throws(() => parseDescriptor({ kind: 'artifact', name: 'notes', description: 'n', contract: 2, requires: [], uses: ['alpha'] }, 'artifact'), /carries no extension schema, policySchema, hooks, authoring or uses/);
   // Targets (#859): an extension declares a non-empty list in canonical order; an artifact declares none.
   for (const targets of [undefined, [], ['aws', 'node'], ['node', 'node'], ['cloudflare']]) assert.throws(() => parseDescriptor({ ...descriptor, targets }, 'targets'), /needs targets/);
-  assert.throws(() => parseDescriptor({ kind: 'artifact', name: 'notes', description: 'n', contract: 1, requires: [], targets: ['node'] }, 'artifact'), /declares no targets/);
+  assert.throws(() => parseDescriptor({ kind: 'artifact', name: 'notes', description: 'n', contract: 2, requires: [], targets: ['node'] }, 'artifact'), /declares no targets/);
 });
 
 test('providesPrincipal round-trips from the definition through urlcode.json and the catalog, only as true (#888)', async t => {
   const root = await checkout(t);
-  await writeFile(join(root, 'packages/alpha/dist/extension.js'), `export default { definition: ${JSON.stringify({ name: 'alpha', description: 'Alpha extension', contract: 1, targets: ['node'], providesPrincipal: true, schema: { type: 'object' } })} };\n`);
+  await writeFile(join(root, 'packages/alpha/dist/extension.js'), `export default { definition: ${JSON.stringify({ name: 'alpha', description: 'Alpha extension', contract: 2, targets: ['node'], providesPrincipal: true, schema: { type: 'object' } })} };\n`);
   await syncExpectedFiles(root);
   const descriptor = JSON.parse(await readFile(join(root, 'packages/alpha/urlcode.json'), 'utf8')) as Record<string, unknown>;
   assert.equal(descriptor.providesPrincipal, true);
@@ -123,7 +123,7 @@ test('providesPrincipal round-trips from the definition through urlcode.json and
   assert.equal(catalog.addons.find(entry => entry.name === 'alpha')!.providesPrincipal, true);
   assert.equal(catalog.addons.find(entry => entry.name === 'notes')!.providesPrincipal, undefined);
   assert.throws(() => parseDescriptor({ ...descriptor, providesPrincipal: false }, 'false'), /providesPrincipal is written only as true/);
-  assert.throws(() => parseDescriptor({ kind: 'artifact', name: 'notes', description: 'n', contract: 1, requires: [], providesPrincipal: true }, 'artifact'), /provides no principal/);
+  assert.throws(() => parseDescriptor({ kind: 'artifact', name: 'notes', description: 'n', contract: 2, requires: [], providesPrincipal: true }, 'artifact'), /provides no principal/);
 });
 
 test('readAddonCatalog reads the catalog file without importing, installing or activating any add-on', async t => {

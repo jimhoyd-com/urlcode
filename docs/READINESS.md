@@ -445,6 +445,35 @@ do. `dev`, `serve`, and `validate` and `routes` with the reviewed pin, use the
 site's own `data/`: the pinned `validate` checks what `serve` will use,
 including a missing migration or secret.
 
+Core enforces the handover, not the extension's goodwill (#976). An
+extension built for extension contract 1 predates this obligation and is
+refused before its `host()` runs. A run with `--host-file` also refuses a
+host if any registration it exports was not built by `composeHost` on that
+run's directory (`hermetic-host-unconfirmed`): one from an older copy of core,
+or one written by hand, including one spread or pushed beside composed ones.
+The run then replays no request. `host.mjs` is trusted code, so this catches
+mistakes and version skew, not a host file written to evade it.
+
+The run's temporary directories are named
+`urlcode-hermetic-<pid>-XXXXXX` and `urlcode-data-<pid>-XXXXXX` under the OS
+temporary directory (#977). They are removed when the run ends, when `test`,
+`audit`, `benchmark`, `validate` or `routes` is stopped by SIGINT or SIGTERM
+(exit 130 or 143), and when an unhandled rejection ends the process. The MCP
+server's runners send SIGTERM and wait 5 seconds before SIGKILL. A process
+killed outright cannot clean up, so the next run removes a directory another
+run left behind once its process no longer exists, `lstat` shows a real
+directory owned by you with mode 0700, and neither the directory nor anything
+in it has been modified for an hour. The age is that of its newest entry, so
+a database written a minute ago keeps its directory. The check looks at up to
+1,024 entries, eight levels deep, and keeps a directory with more. It never
+follows a symbolic link. The process check cannot see a process in another
+pid namespace (a container sharing the temporary directory and your uid), so
+there only the age protects a live run: one that writes nothing into its
+directory for an hour can be swept by another container's run. On Windows, a stop signal ends the process without
+running its handlers, so the directories wait for that sweep, and the sweep
+has no owner or mode to check there: it relies on the name, the age and the
+process id.
+
 What fixtures cannot create over HTTP is declared in `tests/seed.json` beside
 `tests/requests.json`: an object keyed by extension name, handed to that
 extension when the run's runtime first starts (never again after a `restart`

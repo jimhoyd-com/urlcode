@@ -89,11 +89,17 @@ test('validate, test and dev print an extension activation warning',async t=>{
   const dir=await mkdtemp(join(tmpdir(),'urlcode-warn-host-'));t.after(()=>rm(dir,{recursive:true,force:true}));
   const {activate:_activate,...data}=await registration(root,()=>({handle:()=>({status:200,headers:[]})}));
   const host=join(dir,'host.mjs');
-  await writeFile(host,`export default {extensions:[{...${JSON.stringify(data)},activate(config,context){context.warn('4 stored items use a retired setting');return {handle(){context.warn('request time');return {status:200,headers:[['content-type','text/plain']],body:'ok'};}};}}]};`);
+  // Composed, as a hermetic test run requires (#976): composeHost confirms the data directory it gave host().
+  await writeFile(host,`import {composeHost} from ${JSON.stringify(new URL('../packages/core/src/host.ts',import.meta.url).href)};
+const data=${JSON.stringify(data)};
+const demo={definition:{name:'demo',contract:2,targets:data.targets,schema:data.schema,host(ctx){return {registration:{...data,projectSha256:ctx.projectSha256,activate(config,context){context.warn('4 stored items use a retired setting');return {handle(){context.warn('request time');return {status:200,headers:[['content-type','text/plain']],body:'ok'};}};}}};}},options:{}};
+export default await composeHost(import.meta.url,[demo]);
+`);
+  const env={...process.env,PROJECT_SHA256:data.projectSha256};
   const expected={event:'extension_warning',extension:'demo',message:'4 stored items use a retired setting'};
   const lines=(text:string)=>text.trim().split('\n').filter(Boolean).map(line=>JSON.parse(line) as Record<string,unknown>);
   for(const command of ['validate','test'])await t.test(command,()=>{
-    const out=spawnSync(process.execPath,[cli,command,'--project',root,'--origin',origin,'--host-file',host],{encoding:'utf8',timeout:20000});
+    const out=spawnSync(process.execPath,[cli,command,'--project',root,'--origin',origin,'--host-file',host],{encoding:'utf8',timeout:20000,env});
     assert.equal(out.status,0,out.stderr);
     const printed=lines(out.stdout);
     assert.deepEqual(warnings(printed),[expected]);
@@ -101,7 +107,7 @@ test('validate, test and dev print an extension activation warning',async t=>{
     if(command==='validate')assert.equal(printed.at(-1)!.event,'valid');else assert.equal(printed.at(-1)!.failed,0);
   });
   await t.test('dev',async()=>{
-    const child=spawn(process.execPath,[cli,'dev','--project',root,'--origin',origin,'--host-file',host,'--port','0'],{stdio:['ignore','pipe','pipe']});
+    const child=spawn(process.execPath,[cli,'dev','--project',root,'--origin',origin,'--host-file',host,'--port','0'],{stdio:['ignore','pipe','pipe'],env});
     t.after(()=>child.kill());
     let stdout='';
     await new Promise<void>((resolve,reject)=>{

@@ -174,7 +174,7 @@ function retry(request, principal) {
 export default defineExtension({
   name: 'wallets',
   description: 'Credit wallets served through host transactions (a measurement fixture)',
-  contract: 1,
+  contract: 2,
   targets: ['node'],
   requires: ['store'],
   schema: { type: 'object', additionalProperties: false },

@@ -30,7 +30,7 @@ export default defineExtension<McpHostOptions>({
   name: 'mcp',
   targets: ['node', 'aws', 'vercel'],
   description: 'Declarative MCP (Model Context Protocol) server: tools, resources and prompts backed by trusted project handlers',
-  contract: 1,
+  contract: 2,
   requires: [],
   schema: mcpConfigSchema,
   authoring: mcpAuthoring,
