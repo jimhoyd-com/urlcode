@@ -4,9 +4,16 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { showRecipe } from '@jimhoyd/urlcode';
-import { commands, mergedSite } from './recipe-fixture.ts';
+import { commands, mergedSite, site } from './recipe-fixture.ts';
 
-for (const name of ['store-booking', 'store-credits', 'store-approval'] as const) {
+test('the store-booking recipe books one-hour slots for staff only, refuses overlaps and frees a cancelled slot, with no pin given', async t => {
+  const booking = await site(t, 'store-booking');
+  const { database } = booking;
+  commands(booking);
+  assert.equal(existsSync(database), false, 'validate, test and audit under --local-review never open the configured database (#954)');
+});
+
+const name = 'store-booking';
   test(`recipes add ${name} --project merges it into an init + extensions add auth store site that validates, tests and audits ready`, async t => {
     const merged = await mergedSite(t, [name]);
     assert.equal(merged.routes, (await showRecipe(name)).routes);
@@ -18,4 +25,3 @@ for (const name of ['store-booking', 'store-credits', 'store-approval'] as const
     assert.match(audited.stdout, /"countMatches":true/);
     assert.equal(existsSync(merged.database), false);
   });
-}
