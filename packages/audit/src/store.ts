@@ -3,8 +3,8 @@
 import { DatabaseSync } from 'node:sqlite';
 import type { SQLInputValue } from 'node:sqlite';
 import { lstat, open, realpath } from 'node:fs/promises';
-import { refuseNetworkFilesystem } from '@jimhoyd/urlcode/extensions';
-import type { HostProbe } from '@jimhoyd/urlcode/extensions';
+import { refuseNetworkFilesystem } from '@jimhoyd/urlcode/sqlite';
+import type { HostProbe } from '@jimhoyd/urlcode/sqlite';
 import { basename, dirname, join, resolve } from 'node:path';
 import { AuditError } from './types.ts';
 import type { AuditEvent, AuditPage, AuditStoredEvent, AuditValue } from './types.ts';
