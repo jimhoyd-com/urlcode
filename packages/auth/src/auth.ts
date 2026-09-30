@@ -218,6 +218,10 @@ export function createAuthExtension(settings: AuthSettings & { projectSha256: st
         // database from another host refuses activation; processes on one host do not refuse each other.
         if (database) lease = await joinHostLease(database, { table: 'auth_servers', what: 'auth', probe: settings.probe });
         auth = betterAuth(options);
+        // Better Auth starts a schema check on construction without awaiting it (#1013). Awaited here, it has finished
+        // before a short run (validate) closes the connection, which it would otherwise report as a failed check, and
+        // a real mismatch refuses activation instead of failing each request. Every later caller shares its verdict.
+        await (await auth.$context).checkSchema?.();
         if (activation.seed !== undefined) await seedUsers(auth, activation.seed as AuthSeed);
       } catch (error) {
         // Release the lease before its connection closes (#979): its row would block another host until it expired, and
