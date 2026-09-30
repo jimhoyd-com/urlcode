@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import {spawnSync} from 'node:child_process';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {project,request,byReplyId} from './helpers.ts';
+import {project,request,byReplyId,spawnAsync} from './helpers.ts';
 import {loadDocument} from '../packages/core/src/config.ts';
 import {createRuntime} from '../packages/core/src/runtime.ts';
 import {assertExtensionMountsDisjoint} from '../packages/core/src/router.ts';
@@ -447,7 +447,7 @@ test('activation errors name the extension, keep the message bounded and stay ou
   assert.equal(result.statusCode,500);const body=Buffer.from(result.body,'base64').toString();assert.equal(body,'Internal server error\n');assert.ok(!body.includes('maxLength'));
   assert.ok(logged.some(entry=>entry instanceof ConfigError&&entry.details.extension==='demo'));
 });
-test('validate, test and dev print an extension activation error with its name (#714)',async t=>{
+test('validate, test and dev print an extension activation error with its name (#714)',{concurrency:true},async t=>{
   const root=await project(t,{'/demo/*':mount},{'tests/demo.test.yaml':'version: "1"\ncases:\n  - {request: {path: /demo}, expect: {status: 200}}\n'},{extensions:declarations});
   const dir=await mkdtemp(join(tmpdir(),'urlcode-host-'));t.after(()=>rm(dir,{recursive:true,force:true}));
   const {activate:_activate,...data}=await registration(root);
@@ -462,24 +462,27 @@ export default await composeHost(import.meta.url,[demo]);
   await writeFile(broken,`throw new Error('internal detail /secret/path');\n`);
   const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
   const env={...process.env,PROJECT_SHA256:data.projectSha256};
-  const run=(command:string,...args:string[])=>spawnSync(process.execPath,[cli,command,'--project',root,'--origin',origin,...args],{encoding:'utf8',timeout:20000,env});
+  const run=(command:string,...args:string[])=>spawnAsync(process.execPath,[cli,command,'--project',root,'--origin',origin,...args],{encoding:'utf8',timeout:20000,env});
   const lastError=(stderr:string)=>JSON.parse(stderr.trim().split('\n').at(-1)!) as {event:string;message:string;code?:string;extension?:string};
-  for(const command of ['validate','test'])await t.test(command,()=>{
-    const out=run(command,'--host-file',failing);assert.equal(out.status,1,out.stderr);
+  // Independent CLI runs against the unchanged project run concurrently.
+  const cases:Promise<void>[]=[];
+  for(const command of ['validate','test'])cases.push(t.test(command,async()=>{
+    const out=await run(command,'--host-file',failing);assert.equal(out.status,1,out.stderr);
     assert.deepEqual(lastError(out.stderr),{event:'error',message:'Extension "demo" failed to activate: MCP server hosted: tool urlcode_yaml_validate inputSchema: maxLength must be an integer from 0 to 8192',code:'extension-activation',extension:'demo'});
     assert.ok(!out.stderr.includes('    at '));
-  });
-  await t.test('dev',()=>{
-    const out=run('dev','--port','0','--host-file',failing);assert.equal(out.status,1,out.stderr);
+  }));
+  cases.push(t.test('dev',async()=>{
+    const out=await run('dev','--port','0','--host-file',failing);assert.equal(out.status,1,out.stderr);
     assert.match(lastError(out.stderr).message,/^Extension "demo" failed to activate: MCP server hosted/);
-  });
-  await t.test('host file failure',()=>{
-    const out=run('validate','--host-file',broken);assert.equal(out.status,1);
+  }));
+  cases.push(t.test('host file failure',async()=>{
+    const out=await run('validate','--host-file',broken);assert.equal(out.status,1);
     assert.deepEqual(lastError(out.stderr),{event:'error',message:'Host file failed to load: internal detail /secret/path',code:'host-load'});
-  });
+  }));
+  await Promise.all(cases);
   assert.equal(describeError(new Error('internal detail')),'Operation failed; check project files, module dependencies and command options');
 });
-test('validate, test and dev print a host file load failure and an extension host() failure; requests never see them (#724)',async t=>{
+test('validate, test and dev print a host file load failure and an extension host() failure; requests never see them (#724)',{concurrency:true},async t=>{
   const root=await project(t,{'/demo/*':mount},{'tests/demo.test.yaml':'version: "1"\ncases:\n  - {request: {path: /demo}, expect: {status: 200}}\n'},{extensions:declarations});
   const dir=await mkdtemp(join(tmpdir(),'urlcode-host-'));t.after(()=>rm(dir,{recursive:true,force:true}));
   const hostModule=new URL('../packages/core/src/host.ts',import.meta.url).href;
@@ -492,34 +495,37 @@ test('validate, test and dev print a host file load failure and an extension hos
   const paths=Object.fromEntries(await Promise.all(Object.entries(files).map(async([name,[text]])=>{const file=join(dir,`${name}.mjs`);await writeFile(file,text!);return [name,file] as const;})));
   const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
   const env={...process.env,PROJECT_SHA256:await inspectExtensionRevision(root)};
-  const run=(command:string,host:string,...args:string[])=>spawnSync(process.execPath,[cli,command,'--project',root,'--origin',origin,'--host-file',host,...args],{encoding:'utf8',timeout:20000,env});
+  const run=(command:string,host:string,...args:string[])=>spawnAsync(process.execPath,[cli,command,'--project',root,'--origin',origin,'--host-file',host,...args],{encoding:'utf8',timeout:20000,env});
   const lastError=(stderr:string)=>JSON.parse(stderr.trim().split('\n').at(-1)!) as {event:string;message:string;code?:string;extension?:string};
-  for(const command of ['validate','test','dev'])await t.test(command,()=>{
+  // Independent CLI runs against the unchanged project run concurrently.
+  const cases:Promise<void>[]=[];
+  for(const command of ['validate','test','dev'])cases.push(t.test(command,async()=>{
     const extra=command==='dev'?['--port','0']:[];
-    const top=run(command,paths.topLevel!,...extra);assert.equal(top.status,1,top.stderr);
+    const top=await run(command,paths.topLevel!,...extra);assert.equal(top.status,1,top.stderr);
     assert.deepEqual(lastError(top.stderr),{event:'error',message:'Host file failed to load: host.mjs setup failed: line two',code:'host-load'});
-    const hook=run(command,paths.hook!,...extra);assert.equal(hook.status,1,hook.stderr);
+    const hook=await run(command,paths.hook!,...extra);assert.equal(hook.status,1,hook.stderr);
     const error=lastError(hook.stderr);
     assert.match(error.message,/^Extension "demo" host\(\) failed: CSRF key data\/csrf\.key must be 32 bytes x+\.\.\.$/);assert.ok(error.message.length<600);
     assert.deepEqual({...error,message:undefined},{event:'error',message:undefined,code:'extension-host',extension:'demo'});
     for(const out of [top,hook])assert.ok(!out.stderr.includes('    at '));
-  });
-  await t.test('module resolution names the missing specifier',()=>{
-    const out=run('validate',paths.missing!);assert.equal(out.status,1);
+  }));
+  cases.push(t.test('module resolution names the missing specifier',async()=>{
+    const out=await run('validate',paths.missing!);assert.equal(out.status,1);
     const error=lastError(out.stderr);assert.equal(error.code,'host-load');
     assert.match(error.message,/^Host file failed to load: Cannot find package '@jimhoyd\/urlcode-not-installed'/);
-  });
-  await t.test('core refusals inside composeHost keep their own message',()=>{
-    const out=run('validate',paths.refusal!);assert.equal(out.status,1);
+  }));
+  cases.push(t.test('core refusals inside composeHost keep their own message',async()=>{
+    const out=await run('validate',paths.refusal!);assert.equal(out.status,1);
     assert.equal(lastError(out.stderr).message,'demo host() must return {registration} for extension demo');
-  });
+  }));
+  await Promise.all(cases);
   // A second copy of core (the published package imported by host.mjs while the CLI runs from a checkout) is recognized by its brand only.
   const foreign=Object.assign(new Error('Set PROJECT_SHA256'),{details:{code:'x',extension:'demo',line:'1'},[Symbol.for('urlcode.ConfigError')]:true});
   const rebuilt=asConfigError(foreign);assert.ok(rebuilt instanceof ConfigError);assert.equal(rebuilt.message,'Set PROJECT_SHA256');assert.deepEqual(rebuilt.details,{code:'x',extension:'demo'});
   assert.equal(asConfigError(Object.assign(new Error('look-alike'),{details:{code:'x'}})),undefined);
 });
 
-test('a verified --policy pins the extension host; PROJECT_SHA256 must agree and a stale or missing policy still refuses (#723)',async t=>{
+test('a verified --policy pins the extension host; PROJECT_SHA256 must agree and a stale or missing policy still refuses (#723)',{concurrency:true},async t=>{
   const root=await project(t,{'/demo/*':mount},{'tests/requests.json':JSON.stringify([{path:'/demo/x',status:200}])},{extensions:declarations});
   const revision=await inspectExtensionRevision(root);
   const dir=await mkdtemp(join(tmpdir(),'urlcode-host-'));t.after(()=>rm(dir,{recursive:true,force:true}));
@@ -538,18 +544,20 @@ export default await composeHost(import.meta.url,[demo]);
   await writeFile(stale,JSON.stringify({version:1,projectSha256:'c'.repeat(64),routes:{}}));
   const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
   const {PROJECT_SHA256:_unset,...base}=process.env;
-  const run=(command:string,env:Record<string,string>,...args:string[])=>spawnSync(process.execPath,[cli,command,'--project',root,'--origin',origin,'--host-file',host,...args],{encoding:'utf8',timeout:20000,env:{...base,...env}});
+  const run=(command:string,env:Record<string,string>,...args:string[])=>spawnAsync(process.execPath,[cli,command,'--project',root,'--origin',origin,'--host-file',host,...args],{encoding:'utf8',timeout:20000,env:{...base,...env}});
   const lastError=(stderr:string)=>JSON.parse(stderr.trim().split('\n').at(-1)!) as {event:string;message:string;code?:string};
-  for(const command of ['validate','test'])await t.test(`${command} takes the pin from --policy`,()=>{
-    const out=run(command,{},'--policy',policy);assert.equal(out.status,0,out.stderr);
-    const agreeing=run(command,{PROJECT_SHA256:revision},'--policy',policy);assert.equal(agreeing.status,0,agreeing.stderr);
-  });
-  await t.test('a different PROJECT_SHA256 refuses',()=>{
-    const out=run('validate',{PROJECT_SHA256:'b'.repeat(64)},'--policy',policy);assert.equal(out.status,1);
+  // Every case below is an independent CLI run against the unchanged project, so they run concurrently.
+  const cases:Promise<void>[]=[];
+  for(const command of ['validate','test'])cases.push(t.test(`${command} takes the pin from --policy`,async()=>{
+    const out=await run(command,{},'--policy',policy);assert.equal(out.status,0,out.stderr);
+    const agreeing=await run(command,{PROJECT_SHA256:revision},'--policy',policy);assert.equal(agreeing.status,0,agreeing.stderr);
+  }));
+  cases.push(t.test('a different PROJECT_SHA256 refuses',async()=>{
+    const out=await run('validate',{PROJECT_SHA256:'b'.repeat(64)},'--policy',policy);assert.equal(out.status,1);
     assert.deepEqual(lastError(out.stderr),{event:'error',code:'revision-pin-mismatch',message:`PROJECT_SHA256 (${'b'.repeat(64)}) differs from the --policy revision (${revision}); with --policy the host is pinned to the policy's projectSha256, so unset PROJECT_SHA256 or set it to the same reviewed revision`});
-  });
-  await t.test('no policy and no PROJECT_SHA256 still refuses; PROJECT_SHA256 alone still works',()=>{
-    const out=run('validate',{});assert.equal(out.status,1);
+  }));
+  cases.push(t.test('no policy and no PROJECT_SHA256 still refuses; PROJECT_SHA256 alone still works',async()=>{
+    const out=await run('validate',{});assert.equal(out.status,1);
     const error=lastError(out.stderr) as {message:string;code?:string;command?:string};
     assert.match(error.message,/^The extension host needs the reviewed project revision: pass the reviewed operator policy with --policy/);
     // One complete command: the actual invocation plus a placeholder for the one missing value (#834).
@@ -557,48 +565,49 @@ export default await composeHost(import.meta.url,[demo]);
     assert.ok(error.command?.endsWith(` validate --project ${root} --origin ${origin} --host-file ${host} --policy <operator/policy.json>`),out.stderr);
     assert.ok(error.message.includes(`Run: ${error.command} where <operator/policy.json>`),error.message);
     // URLCODE_POLICY stands in for an absent --policy.
-    const fromEnv=run('validate',{URLCODE_POLICY:policy});assert.equal(fromEnv.status,0,fromEnv.stderr);
-    assert.equal(run('validate',{PROJECT_SHA256:revision}).status,0);
-  });
-  await t.test('a policy for another revision refuses',()=>{
-    const out=run('validate',{},'--policy',stale);assert.equal(out.status,1);
+    const fromEnv=await run('validate',{URLCODE_POLICY:policy});assert.equal(fromEnv.status,0,fromEnv.stderr);
+    assert.equal((await run('validate',{PROJECT_SHA256:revision})).status,0);
+  }));
+  cases.push(t.test('a policy for another revision refuses',async()=>{
+    const out=await run('validate',{},'--policy',stale);assert.equal(out.status,1);
     const error=lastError(out.stderr);assert.equal(error.code,'revision-pin-mismatch');
     assert.match(error.message,new RegExp(`^The extension host is pinned by --policy: the policy is pinned to project revision ${'c'.repeat(64)}, but the project is now revision ${revision}`));
-  });
-  await t.test('commands without --policy support do not derive a pin: extensions inspects unpinned (#910)',()=>{
-    const out=spawnSync(process.execPath,[cli,'extensions','--project',root,'--host-file',host,'--policy',policy],{encoding:'utf8',timeout:20000,env:base});
+  }));
+  cases.push(t.test('commands without --policy support do not derive a pin: extensions inspects unpinned (#910)',async()=>{
+    const out=await spawnAsync(process.execPath,[cli,'extensions','--project',root,'--host-file',host,'--policy',policy],{encoding:'utf8',timeout:20000,env:base});
     assert.equal(out.status,0,out.stderr);
     assert.match(out.stdout,/Registered: demo \(contract 1; targets [^)]*; declared; revision NOT pinned\)/);
     assert.match(out.stdout,/unpinned inspection\): serve, dev, validate and test refuse until the reviewed revision is pinned/);
-  });
+  }));
   // #910: reading registrations never needs the pin; activating or serving always does.
-  for(const args of [['explain'],['explain','/demo/x'],['plan-feature','store records for signed-in users'],['context'],['review'],['openapi'],['report','--json']])await t.test(`${args.join(' ')} inspects the host without a pin`,()=>{
-    const out=spawnSync(process.execPath,[cli,...args,'--project',root,'--origin',origin,'--host-file',host],{encoding:'utf8',timeout:20000,env:base});
+  for(const args of [['explain'],['explain','/demo/x'],['plan-feature','store records for signed-in users'],['context'],['review'],['openapi'],['report','--json']])cases.push(t.test(`${args.join(' ')} inspects the host without a pin`,async()=>{
+    const out=await spawnAsync(process.execPath,[cli,...args,'--project',root,'--origin',origin,'--host-file',host],{encoding:'utf8',timeout:20000,env:base});
     assert.equal(out.status,0,out.stderr);
-  });
-  await t.test('an unpinned inspection reports the registration as not matching the revision',()=>{
-    const out=spawnSync(process.execPath,[cli,'explain','/demo/x','--project',root,'--host-file',host,'--json'],{encoding:'utf8',timeout:20000,env:base});
+  }));
+  cases.push(t.test('an unpinned inspection reports the registration as not matching the revision',async()=>{
+    const out=await spawnAsync(process.execPath,[cli,'explain','/demo/x','--project',root,'--host-file',host,'--json'],{encoding:'utf8',timeout:20000,env:base});
     assert.equal(out.status,0,out.stderr);
     assert.match(out.stdout,/"revisionMatch":false/);
-  });
-  for(const args of [['serve','--port','0'],['dev','--port','0'],['validate','--local'],['validate'],['test'],['routes'],['audit']])await t.test(`${args.join(' ')} still refuses without a pin, naming a command that prints it`,()=>{
-    const out=spawnSync(process.execPath,[cli,...args,'--project',root,'--origin',origin,'--host-file',host],{encoding:'utf8',timeout:30000,env:base});
+  }));
+  for(const args of [['serve','--port','0'],['dev','--port','0'],['validate','--local'],['validate'],['test'],['routes'],['audit']])cases.push(t.test(`${args.join(' ')} still refuses without a pin, naming a command that prints it`,async()=>{
+    const out=await spawnAsync(process.execPath,[cli,...args,'--project',root,'--origin',origin,'--host-file',host],{encoding:'utf8',timeout:30000,env:base});
     assert.equal(out.status,1,out.stdout+out.stderr);
     const error=lastError(out.stderr);
     assert.equal(error.code,'revision-pin-required',out.stderr);
     assert.ok(error.message.includes('`urlcode permissions --project app` prints it as projectSha256'),error.message);
-  });
+  }));
   // The inspection commands take the reviewed policy too (#834).
-  await t.test('explain derives the pin from a verified --policy',()=>{
-    const out=spawnSync(process.execPath,[cli,'explain','--project',root,'--host-file',host,'--policy',policy],{encoding:'utf8',timeout:20000,env:base});
+  cases.push(t.test('explain derives the pin from a verified --policy',async()=>{
+    const out=await spawnAsync(process.execPath,[cli,'explain','--project',root,'--host-file',host,'--policy',policy],{encoding:'utf8',timeout:20000,env:base});
     assert.equal(out.status,0,out.stderr);
-  });
-  await t.test('the project YAML cannot supply the pin',async()=>{
+  }));
+  cases.push(t.test('the project YAML cannot supply the pin',async()=>{
     const pinned=await project(t,{'/demo/*':mount},{},{extensions:declarations,projectSha256:revision} as Parameters<typeof project>[3]);
-    const out=spawnSync(process.execPath,[cli,'validate','--project',pinned,'--origin',origin,'--host-file',host],{encoding:'utf8',timeout:20000,env:base});
+    const out=await spawnAsync(process.execPath,[cli,'validate','--project',pinned,'--origin',origin,'--host-file',host],{encoding:'utf8',timeout:20000,env:base});
     // The host is composed before the YAML is read, and nothing in the project is consulted for the pin.
     assert.equal(out.status,1);assert.match(lastError(out.stderr).message,/^The extension host needs the reviewed project revision: pass the reviewed operator policy with --policy/);
-  });
+  }));
+  await Promise.all(cases);
   // The slot is set only while the host file is imported.
   const {loadOperatorHost,operatorRevisionKey,inspectionHostKey,unpinnedInspectionRevision}=await import('../packages/core/src/operator-host.ts');
   const loaded=await loadOperatorHost(host,root,{revision});
@@ -624,7 +633,7 @@ export default await composeHost(import.meta.url,[demo]);
 
 // #932: the generated validate, test, routes and audit scripts pass --local-review, so an edit needs no new pin; serving
 // still does, an operator pin always wins, and a local review reads no policy, so it holds no grant.
-test('--local-review pins a non-serving run to the current revision, never serves, never outranks an operator pin and grants nothing (#932)',async t=>{
+test('--local-review pins a non-serving run to the current revision, never serves, never outranks an operator pin and grants nothing (#932)',{concurrency:true},async t=>{
   const root=await project(t,{'/demo/*':{...mount,methods:['GET','HEAD']}},{'tests/requests.json':JSON.stringify([{path:'/demo/x',status:200,expectBody:'pinned'}])},{extensions:declarations});
   const dir=await mkdtemp(join(tmpdir(),'urlcode-host-'));t.after(()=>rm(dir,{recursive:true,force:true}));
   const {activate:_activate,projectSha256:_pin,...data}=await registration(root);
@@ -641,66 +650,81 @@ export default await composeHost(import.meta.url,[demo]);
   await writeFile(stale,JSON.stringify({version:1,projectSha256:'c'.repeat(64),routes:{}}));
   const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
   const {PROJECT_SHA256:_unset,URLCODE_ORIGIN:_origin,URLCODE_POLICY:_policy,...base}=process.env;
-  const run=(args:string[],env:Record<string,string>={})=>spawnSync(process.execPath,[cli,...args,'--project',root,'--host-file',host],{encoding:'utf8',timeout:30000,env:{...base,...env}});
+  const run=(args:string[],env:Record<string,string>={})=>spawnAsync(process.execPath,[cli,...args,'--project',root,'--host-file',host],{encoding:'utf8',timeout:30000,env:{...base,...env}});
   const lines=(stderr:string)=>stderr.trim().split('\n').filter(line=>line.startsWith('{')).map(line=>JSON.parse(line) as {event:string;message?:string;code?:string;revision?:string;origin?:string});
-  for(const args of [['validate','--local'],['test'],['routes'],['audit','--expect-routes','1']])await t.test(`${args[0]} --local-review needs no pin and no origin`,async()=>{
-    const out=run([...args,'--local-review']);assert.equal(out.status,0,out.stdout+out.stderr);
+  // The cases before the edit below only read the project, so they run concurrently; the two that edit it run after.
+  // The project is unchanged until then, so its revision is read once: in-process configuration loads are capped at two.
+  const current=await inspectExtensionRevision(root),cases:Promise<void>[]=[];
+  for(const args of [['validate','--local'],['test'],['routes'],['audit','--expect-routes','1']])cases.push(t.test(`${args[0]} --local-review needs no pin and no origin`,async()=>{
+    const out=await run([...args,'--local-review']);assert.equal(out.status,0,out.stdout+out.stderr);
     const notice=lines(out.stderr).find(line=>line.event==='local_review');
-    assert.deepEqual({revision:notice?.revision,origin:notice?.origin},{revision:await inspectExtensionRevision(root),origin:'http://localhost'},out.stderr);
-  });
-  await t.test('an edit is reviewed at its new revision with no new pin',async()=>{
-    const before=await inspectExtensionRevision(root);
-    await writeFile(join(root,'urlcode.yaml'),(await readFile(join(root,'urlcode.yaml'),'utf8')).replace('label: hello','label: edited'));
-    const after=await inspectExtensionRevision(root);assert.notEqual(after,before);
-    const out=run(['validate','--local','--local-review']);assert.equal(out.status,0,out.stderr);
-    assert.equal(lines(out.stderr).find(line=>line.event==='local_review')?.revision,after);
-    // Without the flag nothing changed: the run still needs the reviewed pin.
-    assert.equal(lines(run(['validate','--local']).stderr).at(-1)?.code,'revision-pin-required');
-  });
-  for(const [args,message] of [[['serve','--port','0'],/^serve does not take --local-review: serving always needs the reviewed revision pin/],[['dev','--port','0'],/^dev does not take --local-review: serving always needs the reviewed revision pin/],[['verify-deployment'],/^verify-deployment does not take --local-review; it is for the checks validate\/test\/routes\/audit and the pin-free read-only commands explain\/.*openapi$/]] as const)await t.test(`${args[0]} refuses --local-review, naming itself`,()=>{
-    const out=run([...args,'--local-review']);assert.equal(out.status,1,out.stdout+out.stderr);
+    assert.deepEqual({revision:notice?.revision,origin:notice?.origin},{revision:current,origin:'http://localhost'},out.stderr);
+  }));
+  for(const [args,message] of [[['serve','--port','0'],/^serve does not take --local-review: serving always needs the reviewed revision pin/],[['dev','--port','0'],/^dev does not take --local-review: serving always needs the reviewed revision pin/],[['verify-deployment'],/^verify-deployment does not take --local-review; it is for the checks validate\/test\/routes\/audit and the pin-free read-only commands explain\/.*openapi$/]] as const)cases.push(t.test(`${args[0]} refuses --local-review, naming itself`,async()=>{
+    const out=await run([...args,'--local-review']);assert.equal(out.status,1,out.stdout+out.stderr);
     const error=lines(out.stderr).at(-1)!;
     assert.equal(error.code,'local-review-unsupported',out.stderr);
     assert.match(error.message!,message);
     assert.equal(lines(out.stderr).some(line=>line.event==='local_review'),false);
-  });
+  }));
   // #958: a read-only command that needs no pin takes the flag the check scripts pass, and ignores it.
-  for(const args of [['openapi','--check'],['explain','/demo/x'],['review']])await t.test(`${args[0]} needs no pin and ignores --local-review`,()=>{
-    const out=run([...args,'--local-review']);assert.equal(out.status,0,out.stdout+out.stderr);
+  for(const args of [['openapi','--check'],['explain','/demo/x'],['review']])cases.push(t.test(`${args[0]} needs no pin and ignores --local-review`,async()=>{
+    const out=await run([...args,'--local-review']);assert.equal(out.status,0,out.stdout+out.stderr);
     assert.equal(lines(out.stderr).some(line=>line.event==='local_review'),false);
-  });
+  }));
   // #954: a local review activates on throwaway data, as test and audit do; the reviewed pin checks the data serve uses.
-  await t.test('a local review never needs the site data set up; the pinned validate still checks it',async()=>{
+  cases.push(t.test('a local review never needs the site data set up; the pinned validate still checks it',async()=>{
     for(const args of [['validate','--local'],['routes']]){
-      const out=run([...args,'--local-review'],{DEMO_SITE_DATA_UNSET:'1'});assert.equal(out.status,0,out.stdout+out.stderr);
+      const out=await run([...args,'--local-review'],{DEMO_SITE_DATA_UNSET:'1'});assert.equal(out.status,0,out.stdout+out.stderr);
     }
-    const pinned=run(['validate','--local','--origin',origin],{DEMO_SITE_DATA_UNSET:'1',PROJECT_SHA256:await inspectExtensionRevision(root)});
+    const pinned=await run(['validate','--local','--origin',origin],{DEMO_SITE_DATA_UNSET:'1',PROJECT_SHA256:current});
     assert.equal(pinned.status,1);assert.match(lines(pinned.stderr).at(-1)!.message!,/the site data is not set up; run demo migrate/,pinned.stderr);
-    const flagged=run(['validate','--local','--local-review','--origin',origin],{DEMO_SITE_DATA_UNSET:'1',PROJECT_SHA256:await inspectExtensionRevision(root)});
+    const flagged=await run(['validate','--local','--local-review','--origin',origin],{DEMO_SITE_DATA_UNSET:'1',PROJECT_SHA256:current});
     assert.equal(flagged.status,1,'with an operator pin the flag changes nothing');
-  });
-  await t.test('an operator pin wins: a stale --policy or PROJECT_SHA256 still refuses',()=>{
-    const policy=run(['validate','--local','--local-review','--origin',origin],{URLCODE_POLICY:stale});assert.equal(policy.status,1);
+  }));
+  cases.push(t.test('an operator pin wins: a stale --policy or PROJECT_SHA256 still refuses',async()=>{
+    const policy=await run(['validate','--local','--local-review','--origin',origin],{URLCODE_POLICY:stale});assert.equal(policy.status,1);
     assert.equal(lines(policy.stderr).at(-1)?.code,'revision-pin-mismatch',policy.stderr);
-    const pinned=run(['validate','--local','--local-review','--origin',origin],{PROJECT_SHA256:'b'.repeat(64)});assert.equal(pinned.status,1);
+    const pinned=await run(['validate','--local','--local-review','--origin',origin],{PROJECT_SHA256:'b'.repeat(64)});assert.equal(pinned.status,1);
     assert.match(lines(pinned.stderr).at(-1)!.message!,/Extension revision pin mismatch: demo/,pinned.stderr);
     for(const out of [policy,pinned])assert.equal(lines(out.stderr).some(line=>line.event==='local_review'),false);
+  }));
+  cases.push(t.test('a local review holds no grant: egress a policy has not approved is still denied',async()=>{
+    const upstream=await project(t,{'/demo/*':mount,'/up':{proxy:{url:'https://upstream.example.test/'}}},{},{extensions:declarations});
+    const out=await spawnAsync(process.execPath,[cli,'validate','--local','--local-review','--project',upstream,'--host-file',host],{encoding:'utf8',timeout:30000,env:base});
+    assert.equal(out.status,1);assert.match(lines(out.stderr).at(-1)!.message!,/^Egress denied by revision-pinned operator policy/,out.stderr);
+    // The reviewed policy that grants it is used as given, with its own pin.
+    const granted=join(dir,'granted.json');
+    await writeFile(granted,JSON.stringify({version:1,projectSha256:await inspectExtensionRevision(upstream),routes:{'/up':{env:[],secrets:[],egress:{proxy:['https://upstream.example.test']}}}}));
+    const reviewed=await spawnAsync(process.execPath,[cli,'validate','--local','--local-review','--project',upstream,'--host-file',host,'--origin',origin,'--policy',granted],{encoding:'utf8',timeout:30000,env:base});
+    assert.equal(reviewed.status,0,reviewed.stderr);assert.equal(lines(reviewed.stderr).some(line=>line.event==='local_review'),false);
+  }));
+  await Promise.all(cases);
+  await t.test('an edit is reviewed at its new revision with no new pin',async()=>{
+    const before=await inspectExtensionRevision(root);
+    await writeFile(join(root,'urlcode.yaml'),(await readFile(join(root,'urlcode.yaml'),'utf8')).replace('label: hello','label: edited'));
+    const after=await inspectExtensionRevision(root);assert.notEqual(after,before);
+    const out=await run(['validate','--local','--local-review']);assert.equal(out.status,0,out.stderr);
+    assert.equal(lines(out.stderr).find(line=>line.event==='local_review')?.revision,after);
+    // Without the flag nothing changed: the run still needs the reviewed pin.
+    assert.equal(lines((await run(['validate','--local'])).stderr).at(-1)?.code,'revision-pin-required');
   });
   // #940: the authoring MCP runners pass --local-review too, so an agent's edit is checked without a new pin; the same
   // CLI rule decides, so a pin the operator gave the server still wins. #964: the in-process run_tests follows it too.
   await t.test('the MCP runners and run_tests review an edit locally and an operator pin still wins (#940, #964)',async()=>{
     type InProcess={total:number;failed:number;localReview?:{revision:string;origin:string};events:{event:string;revision?:string;origin?:string}[]};
-    const mcp=(env:Record<string,string>={},args:string[]=[])=>{
+    const mcp=async(env:Record<string,string>={},args:string[]=[])=>{
       const messages=[{jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'test',version:'1'}}},{jsonrpc:'2.0',method:'notifications/initialized'},
         ...['run_validate','run_test','run_audit','run_tests'].map((name,index)=>({jsonrpc:'2.0',id:index+2,method:'tools/call',params:{name,arguments:{}}}))];
-      const out=spawnSync(process.execPath,[cli,'mcp','--allow-authoring','--project',root,'--host-file',host,...args],{encoding:'utf8',timeout:120000,input:messages.map(message=>JSON.stringify(message)).join('\n')+'\n',env:{...base,...env}});
+      const out=await spawnAsync(process.execPath,[cli,'mcp','--allow-authoring','--project',root,'--host-file',host,...args],{encoding:'utf8',timeout:120000,input:messages.map(message=>JSON.stringify(message)).join('\n')+'\n',env:{...base,...env}});
       const replies=out.stdout.trim().split('\n').map(line=>JSON.parse(line) as {id?:number;result?:{isError?:boolean;content:{text:string}[]}});
       const reply=(id:number)=>{const found=replies.find(message=>message.id===id);assert.ok(found?.result,out.stdout+out.stderr);return found.result;};
       return {runners:[2,3,4].map(id=>JSON.parse(reply(id).content[0]!.text) as {command:string;exitCode:number;stdout:string;stderr:string}),inProcess:reply(5)};
     };
     await writeFile(join(root,'urlcode.yaml'),(await readFile(join(root,'urlcode.yaml'),'utf8')).replace(/label: \w+/,'label: agent'));
     const revision=await inspectExtensionRevision(root);
-    const reviewed=mcp();
+    // The three servers are independent reads of the edited project, so they run concurrently.
+    const [reviewed,pinned,policy]=await Promise.all([mcp(),mcp({PROJECT_SHA256:'b'.repeat(64),URLCODE_ORIGIN:origin}),mcp({URLCODE_ORIGIN:origin},['--policy',stale])]);
     for(const result of reviewed.runners){
       assert.equal(result.exitCode,0,result.command+result.stdout+result.stderr);
       const notice=lines(result.stderr).find(line=>line.event==='local_review');
@@ -711,7 +735,6 @@ export default await composeHost(import.meta.url,[demo]);
     assert.deepEqual({total:tests.total,failed:tests.failed,localReview:tests.localReview},{total:1,failed:0,localReview:{revision,origin:'http://localhost'}});
     const notice=tests.events.find(event=>event.event==='local_review');
     assert.deepEqual({revision:notice?.revision,origin:notice?.origin},{revision,origin:'http://localhost'});
-    const pinned=mcp({PROJECT_SHA256:'b'.repeat(64),URLCODE_ORIGIN:origin});
     for(const result of pinned.runners){
       assert.notEqual(result.exitCode,0,result.command+result.stdout);
       assert.match(result.stderr,/Extension revision pin mismatch: demo/,result.command);
@@ -719,18 +742,7 @@ export default await composeHost(import.meta.url,[demo]);
     }
     assert.equal(pinned.inProcess.isError,true);assert.match(pinned.inProcess.content[0]!.text,/Extension revision pin mismatch: demo/);
     // A stale --policy given to the server wins the same way: run_tests refuses and reports no local review.
-    const policy=mcp({URLCODE_ORIGIN:origin},['--policy',stale]);
     assert.equal(policy.inProcess.isError,true);assert.match(policy.inProcess.content[0]!.text,/Extension revision pin mismatch: demo/);
-  });
-  await t.test('a local review holds no grant: egress a policy has not approved is still denied',async()=>{
-    const upstream=await project(t,{'/demo/*':mount,'/up':{proxy:{url:'https://upstream.example.test/'}}},{},{extensions:declarations});
-    const out=spawnSync(process.execPath,[cli,'validate','--local','--local-review','--project',upstream,'--host-file',host],{encoding:'utf8',timeout:30000,env:base});
-    assert.equal(out.status,1);assert.match(lines(out.stderr).at(-1)!.message!,/^Egress denied by revision-pinned operator policy/,out.stderr);
-    // The reviewed policy that grants it is used as given, with its own pin.
-    const granted=join(dir,'granted.json');
-    await writeFile(granted,JSON.stringify({version:1,projectSha256:await inspectExtensionRevision(upstream),routes:{'/up':{env:[],secrets:[],egress:{proxy:['https://upstream.example.test']}}}}));
-    const reviewed=spawnSync(process.execPath,[cli,'validate','--local','--local-review','--project',upstream,'--host-file',host,'--origin',origin,'--policy',granted],{encoding:'utf8',timeout:30000,env:base});
-    assert.equal(reviewed.status,0,reviewed.stderr);assert.equal(lines(reviewed.stderr).some(line=>line.event==='local_review'),false);
   });
 });
 
@@ -759,15 +771,17 @@ test('extension schema discovery reports registrations, declarations and mounts 
 });
 test('urlcode extensions prints schemas only with an explicit host file',async t=>{
   const root=fileURLToPath(new URL('../examples/extensions/',import.meta.url)),file=await hostFile(t,root),cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
-  const run=(...args:string[])=>spawnSync(process.execPath,[cli,'extensions','--project',root,...args],{encoding:'utf8',timeout:20000});
-  const plain=run();assert.equal(plain.status,0);assert.match(plain.stdout,/Declared: demo .*schemas need --host-file/);assert.match(plain.stdout,/Declared: auth .*schemas need --host-file/);assert.ok(!plain.stdout.includes('configuration schema'));
-  const json=run('--json');assert.equal(json.status,0);assert.equal(JSON.parse(json.stdout).hostLoaded,false);
-  const withHost=run('--host-file',file);assert.equal(withHost.status,0);assert.match(withHost.stdout,/Declared: auth .*NOT registered by the host file/);assert.match(withHost.stdout,/Registered: demo \(contract 1; targets node, aws, vercel; declared; revision pinned\)/);assert.match(withHost.stdout,/configuration schema: \{"type":"object"/);assert.match(withHost.stdout,/policy schema: \{/);
+  const run=(...args:string[])=>spawnAsync(process.execPath,[cli,'extensions','--project',root,...args],{encoding:'utf8',timeout:20000});
+  // The six runs are independent reads, so they run concurrently and are checked in order.
+  const [plain,json,withHost,withHostJson,yamlHost,help]=await Promise.all([run(),run('--json'),run('--host-file',file),run('--host-file',file,'--json'),run('--host-file',join(root,'urlcode.yaml')),run('--help')]);
+  assert.equal(plain.status,0);assert.equal(plain.status,0);assert.match(plain.stdout,/Declared: demo .*schemas need --host-file/);assert.match(plain.stdout,/Declared: auth .*schemas need --host-file/);assert.ok(!plain.stdout.includes('configuration schema'));
+  assert.equal(json.status,0);assert.equal(JSON.parse(json.stdout).hostLoaded,false);
+  assert.equal(withHost.status,0);assert.match(withHost.stdout,/Declared: auth .*NOT registered by the host file/);assert.match(withHost.stdout,/Registered: demo \(contract 1; targets node, aws, vercel; declared; revision pinned\)/);assert.match(withHost.stdout,/configuration schema: \{"type":"object"/);assert.match(withHost.stdout,/policy schema: \{/);
   assert.match(withHost.stdout,/hooks: transform \(filter\)/);
   assert.match(withHost.stdout,/authoring: \{"description":"Customize the installed extension/);
-  const report=JSON.parse(run('--host-file',file,'--json').stdout) as {extensions:{name:string;mounts:string[]}[]};assert.equal(report.extensions[0]?.name,'demo');assert.deepEqual(report.extensions[0]?.mounts,['/demo']);
-  assert.equal(run('--host-file',join(root,'urlcode.yaml')).status,1);
-  assert.ok(run('--help').stdout.includes('urlcode extensions'));
+  const report=JSON.parse(withHostJson.stdout) as {extensions:{name:string;mounts:string[]}[]};assert.equal(report.extensions[0]?.name,'demo');assert.deepEqual(report.extensions[0]?.mounts,['/demo']);
+  assert.equal(yamlHost.status,1);
+  assert.ok(help.stdout.includes('urlcode extensions'));
 });
 test('MCP exposes get_extensions only when the operator started it with a host file',async t=>{
   const root=fileURLToPath(new URL('../examples/extensions/',import.meta.url)),file=await hostFile(t,root);

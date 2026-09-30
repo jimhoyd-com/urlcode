@@ -1,13 +1,12 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import type {TestContext} from 'node:test';
-import {spawnSync} from 'node:child_process';
 import {mkdir,mkdtemp,rm,writeFile} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {Readable,Writable} from 'node:stream';
 import {buildContext,buildTaskContext,shellWord} from '../packages/core/src/context.ts';
 import {planFeature} from '../packages/core/src/feature-plan.ts';
 import {serveMcp} from '../packages/core/src/mcp.ts';
-import {byReplyId} from './helpers.ts';
+import {byReplyId,spawnAsync} from './helpers.ts';
 
 // #791: the operator's --origin reaches site expansion in context, task context and feature planning (CLI, SDK and MCP).
 // #790: every emitted project argument is shell-quoted and names the project from the caller's working directory.
@@ -29,7 +28,7 @@ async function mcp(options:{project:string;origin?:string;hostFile?:string},call
 /** Runs an emitted `urlcode ...` command through a POSIX shell from `cwd`, with this checkout's CLI standing in for `urlcode`. */
 function runEmitted(command:string,cwd:string) {
  assert.ok(command.startsWith('urlcode '),command);
- return spawnSync('/bin/sh',['-c',`${shellWord(process.execPath)} --conditions=development ${shellWord(cli)} ${command.slice('urlcode '.length)}`],{cwd,encoding:'utf8'});
+ return spawnAsync('/bin/sh',['-c',`${shellWord(process.execPath)} --conditions=development ${shellWord(cli)} ${command.slice('urlcode '.length)}`],{cwd,encoding:'utf8'});
 }
 
 test('context, task context and feature planning compile a sitemap project with the supplied origin (#791)',async t=>{
@@ -46,12 +45,12 @@ test('context, task context and feature planning compile a sitemap project with 
 
 test('the CLI context, context --task and plan-feature forward --origin (#791)',async t=>{
  const root=await projectAt(join(await directory(t),'app'),sitemapYaml);
- for(const args of [['context','--json'],['context','--task','redirects','--json'],['plan-feature','redirect','--json']]) {
-  const run=spawnSync(process.execPath,['--conditions=development',cli,...args,'--project',root,'--origin',origin],{encoding:'utf8'});
+ // Six independent CLI runs, started together.
+ await Promise.all([['context','--json'],['context','--task','redirects','--json'],['plan-feature','redirect','--json']].map(async args=>{
+  const [run,bare]=await Promise.all([spawnAsync(process.execPath,['--conditions=development',cli,...args,'--project',root,'--origin',origin],{encoding:'utf8'}),spawnAsync(process.execPath,['--conditions=development',cli,...args,'--project',root],{encoding:'utf8'})]);
   assert.equal(run.status,0,`${args.join(' ')}: ${run.stderr}`);
-  const bare=spawnSync(process.execPath,['--conditions=development',cli,...args,'--project',root],{encoding:'utf8'});
   assert.notEqual(bare.status,0,args.join(' '));assert.match(bare.stderr,/--origin/);
- }
+ }));
 });
 
 test('plan-feature plans before init: with no project it answers from the catalogs and says what it skipped (#1000)',async t=>{
@@ -62,15 +61,17 @@ test('plan-feature plans before init: with no project it answers from the catalo
  assert.deepEqual(plan.extensions.required.map(item=>[item.name,item.declared,item.artifact]),[['auth',false,'none'],['store',false,'none']]);
  assert.match(plan.withoutProject??'',/^No project yet: .*`urlcode init <directory> --with auth,store`/);
  // From a directory that is not a project, the CLI plans the same way; a --project that names nothing is still an error.
- const run=spawnSync(process.execPath,['--conditions=development',cli,'plan-feature',goal,'--json'],{cwd:dir,encoding:'utf8'});
+ await projectAt(join(dir,'site'),helloYaml);
+ // The three CLI runs are independent: started together, checked in order.
+ const [run,named,insideRun]=await Promise.all([spawnAsync(process.execPath,['--conditions=development',cli,'plan-feature',goal,'--json'],{cwd:dir,encoding:'utf8'}),
+  spawnAsync(process.execPath,['--conditions=development',cli,'plan-feature',goal,'--project',join(dir,'missing'),'--json'],{cwd:dir,encoding:'utf8'}),
+  spawnAsync(process.execPath,['--conditions=development',cli,'plan-feature','redirect','--json'],{cwd:join(dir,'site'),encoding:'utf8'})]);
  assert.equal(run.status,0,run.stderr);
  const printed=JSON.parse(run.stdout) as {project:unknown;withoutProject?:string};
  assert.equal(printed.project,null);assert.match(printed.withoutProject??'',/--with auth,store/);
- const named=spawnSync(process.execPath,['--conditions=development',cli,'plan-feature',goal,'--project',join(dir,'missing'),'--json'],{cwd:dir,encoding:'utf8'});
  assert.notEqual(named.status,0);assert.match(named.stderr,/no-project/);
  // Inside a project nothing changes: the plan reads it.
- await projectAt(join(dir,'site'),helloYaml);
- const inside=JSON.parse(spawnSync(process.execPath,['--conditions=development',cli,'plan-feature','redirect','--json'],{cwd:join(dir,'site'),encoding:'utf8'}).stdout) as {project:{routes:number};withoutProject?:string};
+ const inside=JSON.parse(insideRun.stdout) as {project:{routes:number};withoutProject?:string};
  assert.equal(inside.project.routes,1);assert.equal(inside.withoutProject,undefined);
 });
 
@@ -91,11 +92,13 @@ test('emitted commands quote a project path with spaces or an apostrophe and run
   const context=await buildContext(root),task=await buildTaskContext(root,'redirects');
   const quoted=shellWord(root);assert.notEqual(quoted,root);
   for(const command of [context.commands!.validate!,context.commands!.test!,context.commands!.audit!,context.commands!.routes!,task.commands!.validate!,task.commands!.audit!])assert.ok(command.includes(`--project ${quoted}`),command);
-  for(const command of [context.commands!.validate!,task.commands!.validate!]) {const run=runEmitted(command,site);assert.equal(run.status,0,`${command}\n${run.stderr}`);}
   // A projectFlag override is quoted the same way.
   const relative=await buildContext(root,{projectFlag:name});
   assert.equal(relative.commands!.validate,`urlcode validate --local --project ${shellWord(name)} --local-review`);
-  const run=runEmitted(relative.commands!.validate!,site);assert.equal(run.status,0,run.stderr);
+  // The three emitted commands are independent runs: started together, checked in order.
+  const emitted=[context.commands!.validate!,task.commands!.validate!],[first,second,run]=await Promise.all([...emitted,relative.commands!.validate!].map(command=>runEmitted(command,site)));
+  for(const [index,result] of [first!,second!].entries())assert.equal(result.status,0,`${emitted[index]}\n${result.stderr}`);
+  assert.equal(run!.status,0,run!.stderr);
   assert.equal((await buildTaskContext(root,'redirects',{projectFlag:name})).commands!.validate,`urlcode validate --local --project ${shellWord(name)} --local-review`);
  }
 });
@@ -109,6 +112,6 @@ test('MCP get_context started from the site root with --project app --host-file 
   const {commands}=JSON.parse(reply.result.content[0]!.text) as {commands:Record<string,string>};
   assert.equal(commands.validate,`urlcode validate --local --project ${shellWord(resolve(app))} --host-file ${shellWord(hostFile)} --local-review`);
   // The client's working directory is the site root, where the host file lives beside app/.
-  const run=runEmitted(commands.validate!,site);assert.equal(run.status,0,`${commands.validate}\n${run.stderr}`);
+  const run=await runEmitted(commands.validate!,site);assert.equal(run.status,0,`${commands.validate}\n${run.stderr}`);
  }
 });

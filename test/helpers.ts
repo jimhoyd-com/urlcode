@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { stringify } from 'yaml';
 import http from 'node:http';
+import { spawn } from 'node:child_process';
 import type { IncomingHttpHeaders, OutgoingHttpHeaders } from 'node:http';
 import type { TestContext } from 'node:test';
 import type { OperatorPolicy } from '../packages/core/src/policy.ts';
@@ -86,4 +87,23 @@ export async function artifactSite(t: TestContext, name = 'notes'): Promise<{ si
 export function byReplyId(a:unknown,b:unknown):number {
   const id=(reply:unknown):number=>{const value=(reply as {id?:unknown}|null)?.id;return typeof value==='number'?value:-1;};
   return id(a)-id(b);
+}
+
+export interface SpawnResult { status: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string }
+export interface SpawnOptions { encoding?: 'utf8'; cwd?: string; env?: NodeJS.ProcessEnv; input?: string; timeout?: number }
+/**
+ * spawnSync's result shape without blocking the event loop, so independent subprocess cases can run as concurrent
+ * subtests. A timeout kills the child with SIGTERM, as spawnSync's does, and reports `status: null` and the signal.
+ */
+export function spawnAsync(command: string, args: readonly string[], { cwd, env, input, timeout }: SpawnOptions = {}): Promise<SpawnResult> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], timeout });
+    let stdout = '', stderr = '';
+    child.stdout.setEncoding('utf8').on('data', (chunk: string) => { stdout += chunk; });
+    child.stderr.setEncoding('utf8').on('data', (chunk: string) => { stderr += chunk; });
+    child.on('error', reject);
+    child.on('close', (status, signal) => resolve({ status, signal, stdout, stderr }));
+    child.stdin.on('error', () => {});
+    child.stdin.end(input);
+  });
 }

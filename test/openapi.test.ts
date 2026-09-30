@@ -10,7 +10,7 @@ import {buildOpenApi,renderOpenApi} from '../packages/core/src/openapi.ts';
 import type {RuntimeExtension} from '../packages/core/src/extensions.ts';
 import {startServer} from '../packages/core/src/server.ts';
 import {serveMcp} from '../packages/core/src/mcp.ts';
-import {byReplyId,project,request} from './helpers.ts';
+import {byReplyId,project,request,spawnAsync} from './helpers.ts';
 import {inspectExtensionRevision,isSameOriginRequest} from '../packages/core/src/extensions.ts';
 import {always,assertValidOpenApi,contractRun,methods,noStore,operations} from './openapi-contract.ts';
 import type {Json,Operation} from './openapi-contract.ts';
@@ -403,12 +403,14 @@ test('a client generated from a document with a declared cookie scheme authentic
 
 test('urlcode openapi prints or writes the document, and MCP get_openapi returns the same one',async t=>{
   const expected=renderOpenApi(await buildOpenApi(example));
-  const printed=spawnSync(process.execPath,[cli,'openapi','--project',example],{encoding:'utf8',timeout:60000});
-  assert.equal(printed.status,0,printed.stderr);assert.equal(printed.stdout,expected);
   const dir=await mkdtemp(join(tmpdir(),'urlcode-openapi-cli-'));t.after(()=>rm(dir,{recursive:true,force:true}));
-  const written=spawnSync(process.execPath,[cli,'openapi','--project',example,'--out',join(dir,'openapi.json')],{encoding:'utf8',timeout:60000});
+  // Three independent CLI runs: started together, checked in order.
+  const [printed,written,refused]=await Promise.all([spawnAsync(process.execPath,[cli,'openapi','--project',example],{encoding:'utf8',timeout:60000}),
+    spawnAsync(process.execPath,[cli,'openapi','--project',example,'--out',join(dir,'openapi.json')],{encoding:'utf8',timeout:60000}),
+    spawnAsync(process.execPath,[cli,'openapi','/todos','--project',example],{encoding:'utf8',timeout:60000})]);
+  assert.equal(printed.status,0,printed.stderr);assert.equal(printed.stdout,expected);
   assert.equal(written.status,0,written.stderr);assert.equal(await readFile(join(dir,'openapi.json'),'utf8'),expected);
-  assert.equal(spawnSync(process.execPath,[cli,'openapi','/todos','--project',example],{encoding:'utf8',timeout:60000}).status,1);
+  assert.equal(refused.status,1);
   let text='';
   const output=new Writable({write(chunk,_encoding,callback){text+=String(chunk);callback();}});
   const messages=[{jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'test',version:'1'}}},{jsonrpc:'2.0',method:'notifications/initialized'},{jsonrpc:'2.0',id:2,method:'tools/list'},{jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'get_openapi',arguments:{}}}];
@@ -420,31 +422,31 @@ test('urlcode openapi prints or writes the document, and MCP get_openapi returns
 
 test('urlcode openapi --check validates the export or a file against the shipped OpenAPI 3.1 schema and exits 1 when invalid (#917)',async t=>{
   const dir=await mkdtemp(join(tmpdir(),'urlcode-openapi-check-'));t.after(()=>rm(dir,{recursive:true,force:true}));
-  const run=(args:string[])=>spawnSync(process.execPath,['--conditions=development',cli,'openapi','--check',...args,'--json'],{encoding:'utf8',timeout:60000});
-  const exported=run(['--project',example,'--out',join(dir,'openapi.json')]);
+  const run=(args:string[])=>spawnAsync(process.execPath,['--conditions=development',cli,'openapi','--check',...args,'--json'],{encoding:'utf8',timeout:60000});
+  // The export comes first: every later check reads the file it writes. The routes refusal is independent of it.
+  const [exported,elsewhere]=await Promise.all([run(['--project',example,'--out',join(dir,'openapi.json')]),
+    spawnAsync(process.execPath,['--conditions=development',cli,'routes','--check','--project',example],{encoding:'utf8',timeout:60000})]);
   assert.equal(exported.status,0,exported.stderr);
   const report=JSON.parse(exported.stdout) as {event:string;source:string;valid:boolean;schema:string;problems:unknown[];operations:number;schemaObjects:number};
   assert.equal(report.event,'openapi-check');assert.equal(report.source,'export');assert.equal(report.valid,true);assert.deepEqual(report.problems,[]);
   assert.equal(report.schema,'https://spec.openapis.org/oas/3.1/schema/2025-09-15');
   assert.ok(report.operations>0&&report.schemaObjects>0);
-  // --out still writes the document it checked, and the written file checks the same.
-  const file=run([join(dir,'openapi.json')]);
-  assert.equal(file.status,0,file.stderr);assert.equal((JSON.parse(file.stdout) as {valid:boolean}).valid,true);
   // A broken document: a wrong version string, a Schema Object that is not a schema and a $ref to nothing.
   const document=JSON.parse(await readFile(join(dir,'openapi.json'),'utf8')) as Json&{components:{schemas:Json}};
   document.openapi='3.0.3';
   document.components.schemas.Broken={type:'not-a-type'};
   document.components.schemas.Dangling={$ref:'#/components/schemas/Missing'};
   await writeFile(join(dir,'broken.json'),JSON.stringify(document));
-  const broken=run([join(dir,'broken.json')]);
+  await writeFile(join(dir,'not.json'),'{');
+  // The three file checks only read: started together, checked in order.
+  const [file,broken,notJson]=await Promise.all([run([join(dir,'openapi.json')]),run([join(dir,'broken.json')]),run([join(dir,'not.json')])]);
+  // --out still writes the document it checked, and the written file checks the same.
+  assert.equal(file.status,0,file.stderr);assert.equal((JSON.parse(file.stdout) as {valid:boolean}).valid,true);
   assert.equal(broken.status,1);
   const problems=(JSON.parse(broken.stdout) as {valid:boolean;problems:{where:string;message:string}[]}).problems;
   assert.ok(problems.some(problem=>problem.where==='/openapi'&&/pattern/.test(problem.message)),JSON.stringify(problems));
   assert.ok(problems.some(problem=>problem.where.startsWith('components.schemas.Broken')&&/JSON Schema 2020-12/.test(problem.message)),JSON.stringify(problems));
   assert.ok(problems.some(problem=>problem.where==='/components/schemas/Dangling'&&/Missing names nothing/.test(problem.message)),JSON.stringify(problems));
-  await writeFile(join(dir,'not.json'),'{');
-  const notJson=run([join(dir,'not.json')]);
   assert.equal(notJson.status,1);assert.match(notJson.stderr,/is not JSON/);
-  const elsewhere=spawnSync(process.execPath,['--conditions=development',cli,'routes','--check','--project',example],{encoding:'utf8',timeout:60000});
   assert.match(elsewhere.stderr,/--check is only supported by upgrade and openapi/);
 });
