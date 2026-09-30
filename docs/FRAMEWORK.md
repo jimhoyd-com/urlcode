@@ -258,7 +258,8 @@ Activation likewise carries the canonical `origin` and the operator's full
 `isSameOriginRequest`, so mcp, store and auth admit the same
 origins ([site origins](EXTENSIONS.md#site-origins-and-same-origin-checks)).
 A SQLite-backed extension refuses a network filesystem and a second serving
-process through core's `refuseNetworkFilesystem` and `holdServerLock`, an OS
+process through core's `refuseNetworkFilesystem` and `holdServerLock`
+(`@jimhoyd/urlcode/sqlite`, kept off the generic extension contract), an OS
 lock on a file beside its own database, so store, auth and audit enforce one
 rule: one serving process per database ([request helpers](EXTENSIONS.md#request-helpers)).
 An extension reports a startup condition the operator should act on through

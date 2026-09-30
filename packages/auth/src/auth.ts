@@ -11,9 +11,11 @@ import { runWithEndpointContext } from '@better-auth/core/context';
 import type { AuthEndpointContext } from '@better-auth/core/context';
 import { getMigrations } from 'better-auth/db/migration';
 import { mkdir } from 'node:fs/promises';
-import { clientKey, ExtensionHttpError, holdServerLock, isSameOriginRequest, jsonResponse, principalIdPattern, readBody, refuseNetworkFilesystem } from '@jimhoyd/urlcode/extensions';
+import { clientKey, ExtensionHttpError, isSameOriginRequest, jsonResponse, principalIdPattern, readBody } from '@jimhoyd/urlcode/extensions';
+import { holdServerLock, refuseNetworkFilesystem } from '@jimhoyd/urlcode/sqlite';
 import { maxRequestBodyBytes } from '@jimhoyd/urlcode/body-schema';
-import type { ExtensionAuthoringContract, ExtensionInstance, ExtensionOpenApiSecurity, ExtensionRequest, HandlerResult, HostProbe, RuntimeExtension, ServerLock } from '@jimhoyd/urlcode/extensions';
+import type { ExtensionAuthoringContract, ExtensionInstance, ExtensionOpenApiSecurity, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
+import type { HostProbe, ServerLock } from '@jimhoyd/urlcode/sqlite';
 
 /** The Better Auth paths a mount serves by default: sign-in, sign-out and the session endpoints. */
 export const defaultPaths: readonly string[] = Object.freeze(['/sign-in/email', '/sign-out', '/get-session', '/list-sessions', '/revoke-session', '/revoke-sessions', '/revoke-other-sessions', '/change-password', '/ok']);

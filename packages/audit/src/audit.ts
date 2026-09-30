@@ -1,7 +1,8 @@
 // createAudit: the store, the drain loops and the runtime registration, sharing one `active` state. The extension's
 // host() calls it; tests and operator scripts may call it directly.
-import { holdServerLock } from '@jimhoyd/urlcode/extensions';
-import type { ExtensionAuthoringContract, ExtensionInstance, HandlerResult, RuntimeExtension, ServerLock } from '@jimhoyd/urlcode/extensions';
+import { holdServerLock } from '@jimhoyd/urlcode/sqlite';
+import type { ExtensionAuthoringContract, ExtensionInstance, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
+import type { ServerLock } from '@jimhoyd/urlcode/sqlite';
 import { AuditError } from './types.ts';
 import type { Audit, AuditExports, AuditOptions, AuditProducer } from './types.ts';
 import { MAX_BATCH, validateAuditEvent, validateAuditQuery } from './event.ts';

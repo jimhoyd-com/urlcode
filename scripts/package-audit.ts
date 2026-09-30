@@ -58,7 +58,8 @@ export const budgets: Record<string, Budget> = {
   },
   '@jimhoyd/urlcode-auth': {
     // S5 on top of #1054: 28462 packed / 91743 unpacked bytes, 14 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
-    packed: 32 * 1024,
+    // #1058 on top of #1055: 29782 packed / 96154 unpacked bytes, 14 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
+    packed: 33 * 1024,
     unpacked: 100 * 1024,
     entries: 16,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],

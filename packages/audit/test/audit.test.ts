@@ -10,7 +10,7 @@ import { AuditError, auditOutboxLimits, auditPermissions, createAudit, validateA
 import type { AuditEvent, AuditExports, AuditStoredEvent } from '../src/index.ts';
 import { activation, activeAudit, event, openAudit, pin, tempDir } from './support.ts';
 import { openAuditStore } from '../src/store.ts';
-import { serverLockHeld } from '@jimhoyd/urlcode/extensions';
+import { serverLockHeld } from '@jimhoyd/urlcode/sqlite';
 
 const rejectsWith = (promise: Promise<unknown>, status: number, code: string) =>
   assert.rejects(promise, (error: unknown) => error instanceof AuditError && error.status === status && error.code === code);
