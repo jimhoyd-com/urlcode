@@ -20,7 +20,8 @@ const exists = (path: string): Promise<boolean> => access(path).then(() => true,
 const core = (file: string): string => JSON.stringify(pathToFileURL(join(import.meta.dirname, '..', 'packages', 'core', 'src', file)).href);
 const declarations = { extensions: { legacy: { version: '1', config: {} } } };
 const routes = { '/demo/*': { extension: 'legacy', methods: ['GET'] } };
-const schema = { type: 'object', additionalProperties: false };
+// The generated host files spell the schema as literal source: no value is serialized into code (CodeQL js/bad-code-sanitization).
+const schema = "{ type: 'object', additionalProperties: false }";
 
 /**
  * The child's environment with its temporary directory redirected to `scratch`: TMPDIR on POSIX, TEMP and TMP on
@@ -41,7 +42,7 @@ function pinned(t: TestContext, revision: string): void {
   t.after(() => { if (previous === undefined) delete process.env.PROJECT_SHA256; else process.env.PROJECT_SHA256 = previous; });
 }
 /** The registration the issue's legacy store builds: its database under the site's data/, whatever the run. */
-const legacyRegistration = `(site, projectSha256) => ({ name: 'legacy', version: '1', projectSha256, targets: ['node'], schema: ${JSON.stringify(schema)},
+const legacyRegistration = `(site, projectSha256) => ({ name: 'legacy', version: '1', projectSha256, targets: ['node'], schema: ${schema},
   activate() { return { handle() { mkdirSync(join(site, 'data'), { recursive: true }); appendFileSync(join(site, 'data', 'store.sqlite'), 'WRITE\\n'); return { status: 200, headers: [] }; } }; } })`;
 const preamble = `import { appendFileSync, mkdirSync } from 'node:fs';\nimport { dirname, join } from 'node:path';\nimport { fileURLToPath } from 'node:url';\nconst site = dirname(fileURLToPath(import.meta.url));\nconst legacyRegistration = ${legacyRegistration};\n`;
 
@@ -49,7 +50,7 @@ test('a hermetic run refuses an extension built for contract 1 before its host()
   const app = await project(t, routes, {}, declarations), site = await temp(t, 'urlcode-hardening-site-');
   pinned(t, await inspectExtensionRevision(app));
   await writeFile(join(site, 'host.mjs'), `${preamble}import { composeHost } from ${core('host.ts')};
-const legacy = { definition: { name: 'legacy', description: 'Pre-#947 store', contract: 1, targets: ['node'], schema: ${JSON.stringify(schema)},
+const legacy = { definition: { name: 'legacy', description: 'Pre-#947 store', contract: 1, targets: ['node'], schema: ${schema},
   host(ctx) { mkdirSync(join(ctx.site, 'data'), { recursive: true }); appendFileSync(join(ctx.site, 'data', 'store.sqlite'), 'HOST\\n'); return { registration: legacyRegistration(ctx.site, ctx.projectSha256) }; } }, options: {} };
 export default await composeHost(import.meta.url, [legacy]);
 `);
@@ -85,7 +86,7 @@ test('a composed host confirms its data directory, also when host.mjs spreads it
   pinned(t, await inspectExtensionRevision(app));
   await writeFile(join(site, 'host.mjs'), `import { composeHost } from ${core('host.ts')};
 import { defineExtension } from ${core('extensions.ts')};
-const schema = ${JSON.stringify(schema)};
+const schema = ${schema};
 const legacy = defineExtension({ name: 'legacy', description: 'A contract-2 extension', contract: 2, targets: ['node'], schema, host(ctx) {
   globalThis.__hardeningData = ctx.data;
   return { registration: { name: 'legacy', version: '1', projectSha256: ctx.projectSha256, targets: ['node'], schema, activate: () => ({ handle: () => ({ status: 200, headers: [] }) }) } };
@@ -117,7 +118,7 @@ test('a hermetic run refuses a hand-made registration spread or pushed beside co
     const site = await temp(t, 'urlcode-hardening-site-');
     await writeFile(join(site, 'host.mjs'), `${preamble}import { composeHost } from ${core('host.ts')};
 import { defineExtension } from ${core('extensions.ts')};
-const schema = ${JSON.stringify(schema)};
+const schema = ${schema};
 const confirmed = defineExtension({ name: 'other', description: 'A contract-2 extension', contract: 2, targets: ['node'], schema, host(ctx) {
   return { registration: { name: 'other', version: '1', projectSha256: ctx.projectSha256, targets: ['node'], schema, activate: () => ({ handle: () => ({ status: 200, headers: [] }) }) } };
 } });
@@ -193,7 +194,7 @@ test('an interrupted or crashing urlcode test removes its run directories (#977)
 import { defineExtension } from ${core('extensions.ts')};
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-const schema = ${JSON.stringify(schema)};
+const schema = ${schema};
 const legacy = defineExtension({ name: 'legacy', description: 'A contract-2 extension', contract: 2, targets: ['node'], schema, host(ctx) {
   writeFileSync(join(ctx.data, 'marker.db'), 'seeded');
   return { registration: { name: 'legacy', version: '1', projectSha256: ctx.projectSha256, targets: ['node'], schema, activate: () => ({ handle: () => ({ status: 200, headers: [] }) }) } };
