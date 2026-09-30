@@ -63,14 +63,14 @@ export function hostRevisionPin(): string {
 function assertRevisionsAgree(policy: string, env: string | undefined): void {
   if (env !== undefined && env !== '' && env !== policy) throw new ConfigError(`PROJECT_SHA256 (${env}) differs from the --policy revision (${policy}); with --policy the host is pinned to the policy's projectSha256, so unset PROJECT_SHA256 or set it to the same reviewed revision`, { code: 'revision-pin-mismatch' });
 }
-const hermeticUnconfirmed = `A hermetic run (test, audit, benchmark, MCP run_tests, or validate and routes with --local-review) needs every extension the host file exports composed on its fresh temporary data directory, and at least one was not: build host.mjs with composeHost from this core (@jimhoyd/urlcode/extensions) and extensions built for URLCode extension contract ${extensionContract}, which keep every file under context.data, and export only the registrations it returns (wrap a hand-written registration in a defineExtension definition and pass it to composeHost). No request was replayed; an older composeHost may already have opened files wherever its extensions keep them`;
+const hermeticUnconfirmed = `A hermetic run (test, audit, MCP run_tests, or validate and routes with --local-review) needs every extension the host file exports composed on its fresh temporary data directory, and at least one was not: build host.mjs with composeHost from this core (@jimhoyd/urlcode/extensions) and extensions built for URLCode extension contract ${extensionContract}, which keep every file under context.data, and export only the registrations it returns (wrap a hand-written registration in a defineExtension definition and pass it to composeHost). No request was replayed; an older composeHost may already have opened files wherever its extensions keep them`;
 interface LoadOptions {
   /** The `projectSha256` of an operator policy the CLI already loaded and validated with `--policy`. */
   revision?: string | undefined;
   /** A read-only command: without a pin the host composes unpinned registrations that cannot activate (#910). */
   inspection?: boolean | undefined;
   /**
-   * A run that replays requests (`test`, `audit`, `benchmark`, MCP `run_tests`), or a local review (`validate` or
+   * A run that replays requests (`test`, `audit`, MCP `run_tests`), or a local review (`validate` or
    * `routes` with `--local-review` and no operator pin): the host is composed on a fresh, empty temporary data
    * directory (RIM-EXT-HERMETIC-001), which the returned host's `close()` removes. Each hermetic load imports the host
    * file anew, so a second run in the same process composes its own extensions, and refuses a host exporting any

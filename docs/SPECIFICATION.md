@@ -23,7 +23,7 @@ escape in a double-quoted scalar can write, fails with code `invalid-unicode`
 and its location (#1021): UTF-8 cannot carry one, so a `respond.text` body or a
 redirect URL would reach the client as U+FFFD and a `respond.json` string as the
 raw escape. A surrogate pair (`"\uD83D\uDE00"`) is one character and loads.
-Interchange import (`urlcode import`) parses JSON and YAML with the same rule.
+Bulk import (`urlcode bulk-import`) parses JSON and YAML rows with the same rule.
 Unknown schema fields fail. Files are limited to 32 MiB each, 256 includes and 100,000
 routes total, with a 64 MiB aggregate YAML source cap. Loading runs in a worker
 with a 256 MiB old-generation heap, a 10-second wall deadline and at most two
@@ -508,11 +508,8 @@ programmatic compatibility analysis and provider verification limits.
 
 ## Authoring, conversion and verification tools
 
-[Interchange](INTERCHANGE.md) imports and exports a strict literal redirect
-subset with source diagnostics and dry-run reports. Provider conversions refuse
-semantic differences by default; explicit acknowledgment retains warnings and
-never reports lossless behavior. [Bulk import](BULK.md) shards CSV/JSON/YAML rows
-into ordinary includes while retaining runtime resource limits. [Recipes](RECIPES.md)
+[Bulk import](BULK.md) validates strict literal CSV/JSON/YAML redirect rows,
+with source diagnostics and dry-run reports, and shards them into ordinary includes while retaining runtime resource limits. [Recipes](RECIPES.md)
 are local Git-owned examples; they grant no capabilities. [Build-time TypeScript](TYPESCRIPT-AUTHORING.md)
 is separate from runtime execution.
 

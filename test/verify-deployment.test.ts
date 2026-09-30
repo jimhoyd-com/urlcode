@@ -10,6 +10,7 @@ import type { ProjectFiles, ProjectRoutes, ProjectSettings } from './helpers.ts'
 import { startServer } from '../packages/core/src/server.ts';
 import type { ServerOptions } from '../packages/core/src/server.ts';
 import { verifyDeployment } from '../packages/core/src/verify-deployment.ts';
+import { deploymentTarget } from '../packages/core/src/readiness.ts';
 import type { VerifyFinding, VerifyOptions, VerifyReport } from '../packages/core/src/verify-deployment.ts';
 
 const cli = fileURLToPath(new URL('../packages/core/src/cli.ts', import.meta.url));
@@ -195,4 +196,12 @@ test('the CLI exits 1 on findings at or above --fail-on and 0 otherwise', async 
   for (const args of [['--project', local], ['--project', local, '--target', good.target, '--fail-on', 'severe'], ['--project', local, '--target', good.target, '--timeout-ms', 'soon']]) {
     const bad = await run(...args); assert.equal(bad.code, 1); assert.ok(bad.stderr.includes('"event":"error"'), bad.stderr);
   }
+});
+
+test('a target must be a bare HTTP(S) origin', () => {
+  for (const value of ['not-a-url','ftp://example.com','https://example.com/path','https://user:pw@example.com','']) {
+    assert.throws(() => deploymentTarget(value),/Target must be/,`accepted ${value}`);
+  }
+  assert.deepEqual(deploymentTarget('https://links.example'),{protocol:'https:',hostname:'links.example',port:443,authority:'links.example'});
+  assert.deepEqual(deploymentTarget('http://127.0.0.1:3000'),{protocol:'http:',hostname:'127.0.0.1',port:'3000',authority:'127.0.0.1:3000'});
 });

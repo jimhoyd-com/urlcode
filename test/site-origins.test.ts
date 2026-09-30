@@ -115,5 +115,5 @@ test('the CLI accepts a repeatable --alias-origin on validate and refuses it on 
   assert.match(orphan.stderr + orphan.stdout, /pass --origin/);
   const elsewhere = run('permissions', '--project', root, '--alias-origin', 'https://www.site.example');
   assert.notEqual(elsewhere.status, 0);
-  assert.match(elsewhere.stderr + elsewhere.stdout, /--alias-origin is only supported by dev\/serve\/validate\/test\/routes\/audit\/benchmark/);
+  assert.match(elsewhere.stderr + elsewhere.stdout, /--alias-origin is only supported by dev\/serve\/validate\/test\/routes\/audit/);
 });

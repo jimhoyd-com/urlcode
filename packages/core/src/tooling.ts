@@ -6,8 +6,6 @@ import {checkAssetReferences} from './assets.ts';
 import {compilePolicies,closePolicies} from './policies.ts';
 import {analyzeCompiledCapabilities,routeCapabilities} from './capabilities.ts';
 import type {CompatibilityReport} from './capabilities.ts';
-import {importRoutes,exportRoutes} from './interchange.ts';
-import type {ImportRoutesOptions,InterchangeFormat} from './interchange.ts';
 import {listRecipes,showRecipe,searchRecipes} from './recipes.ts';
 import {listExamples,searchExamples} from './examples.ts';
 import type {CompiledRoute,PolicyChain,PolicyShared} from './types.ts';
@@ -107,8 +105,6 @@ export async function explainProject(project:string,options:InspectOptions={}):P
  const {loaded,routes,chains,projectSha256,declaredTargets}=await prepare(project,options);
  return {projectSha256,routeCount:routes.length,routes:routes.map(route=>explainCompiledRoute(loaded,route,chains.get(route.pattern),{extensions:options.extensions,declaredTargets,projectSha256}))};
 }
-export async function previewImport(options:ImportRoutesOptions) {return importRoutes(options);}
-export async function previewExport(project:string,format:InterchangeFormat,acceptProviderDifferences=false) {const loaded=await loadDocument(project);const {includes:_includes,...document}=loaded.document;return exportRoutes({format,document:{...document,routes:loaded.routes},acceptProviderDifferences});}
 export interface ExtensionInspection {
  format:1;projectSha256:string;hostLoaded:boolean;note:string;
  extensions:{name:string;version:string;targets:string[];credentialHeaders:string[];schema:object;policySchema:object|null;hooks:object[];authoring:object|null;declared:boolean;revisionPinned:boolean;mounts:string[];policyRoutes:string[]}[];

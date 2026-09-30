@@ -20,7 +20,7 @@
   sign-in and sign-up rules rather than adding to them).
 - **Only a hermetic run raises the limits.** An instance activated for a
   hermetic run (`HostContext.hermetic`, set by the operator host for `test`,
-  `audit`, `benchmark` and a `--local-review` `validate` or `routes`, never by
+  `audit` and a `--local-review` `validate` or `routes`, never by
   YAML or the environment) multiplies every rule's `max` by ten (#1019),
   including an operator's `customRules` and what a rule function returns; a rule
   the operator disabled stays disabled. That instance runs on a throwaway

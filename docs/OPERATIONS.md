@@ -45,7 +45,7 @@ origin exactly as it admits `--origin`; everything that builds an absolute URL
 refuses an entry that is not an `https:` origin (loopback `http:` is allowed),
 that carries a path, query, fragment, credentials or `*`, more than 16 entries,
 or aliases without `--origin`. The same list goes to `validate`, `test`,
-`routes`, `audit` and `benchmark`; the AWS and Vercel handlers take an
+`routes` and `audit`; the AWS and Vercel handlers take an
 `aliasOrigins` option or `URLCODE_ALIAS_ORIGINS` (comma-separated). See
 [site origins](EXTENSIONS.md#site-origins-and-same-origin-checks).
 
@@ -81,8 +81,8 @@ node /opt/urlcode/dist/cli.js serve --project /srv/site/app --origin https://lin
   --host-file /srv/site/host.mjs --policy /etc/urlcode/policy.json
 ```
 
-When a command (`serve`, `dev`, `validate`, `test`, `routes`, `audit`,
-`benchmark`) receives both `--policy` and `--host-file`, core validates the
+When a command (`serve`, `dev`, `validate`, `test`, `routes`,
+`audit`) receives both `--policy` and `--host-file`, core validates the
 policy and hands its `projectSha256` to `composeHost()` as the host revision
 pin; no `PROJECT_SHA256` export and no script that parses the policy is
 needed. Only that revision reaches the host (as each `host()` hook's
@@ -293,7 +293,7 @@ without separate security review and stronger service-level containment.
 
 ## Secrets and rotation
 
-`dev`, `test`, `routes`, `audit`, `benchmark` and `validate --local` read
+`dev`, `test`, `routes`, `audit` and `validate --local` read
 `.env.local`. Authoring and
 permissions inspection do not read credentials or execute functions. `serve` and
 ordinary `validate` use process environment only. Resolve logical names from

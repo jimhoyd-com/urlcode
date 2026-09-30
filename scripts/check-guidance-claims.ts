@@ -111,7 +111,7 @@ const NOT_FIELDS = new Set([
   'urlcode.yaml', 'host.js', 'host.mjs', '.mcp.json', 'package.json', 'AGENTS.md',
   'urlcode', 'npm', 'node', 'make', 'validate', 'test', 'audit', 'serve', 'dev',
   'init', 'build', 'context', 'explain', 'manifest', 'capabilities', 'schema',
-  'recipes', 'examples', 'permissions', 'benchmark', 'doctor', 'mcp',
+  'recipes', 'examples', 'permissions', 'doctor', 'mcp',
   'true', 'false', 'null', 'Response', 'Request', 'args', 'context.state',
 ]);
 

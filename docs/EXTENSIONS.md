@@ -912,7 +912,7 @@ current activation that way.
 
 ### Hermetic runs and test seeds
 
-`urlcode test`, `urlcode audit`, `urlcode benchmark`, the MCP server's
+`urlcode test`, `urlcode audit`, the MCP server's
 `run_tests`, and `validate` and `routes` with `--local-review` and no operator
 pin never touch the site's live data (`RIM-EXT-HERMETIC-001`). Each run
 imports `host.mjs` anew with a fresh, empty temporary directory set, and
@@ -922,7 +922,7 @@ imports `host.mjs` anew with a fresh, empty temporary directory set, and
 interface HostContext {
   // <site>/data, or the run's temporary directory (removed when the host closes).
   data: string;
-  // true for test, audit, benchmark, MCP run_tests and a --local-review
+  // true for test, audit, MCP run_tests and a --local-review
   // validate or routes.
   hermetic: boolean;
   // projectSha256, site, get as before
@@ -989,7 +989,7 @@ site-wide list, never in project YAML (issue #717):
 
 | Where | How |
 |---|---|
-| `urlcode dev`, `serve`, `validate`, `test`, `routes`, `audit`, `benchmark` | `--alias-origin https://www.site.example`, repeated once per origin, beside `--origin` |
+| `urlcode dev`, `serve`, `validate`, `test`, `routes`, `audit` | `--alias-origin https://www.site.example`, repeated once per origin, beside `--origin` |
 | `createRuntime`, `startServer`, `runProjectTests` | `aliasOrigins: ['https://www.site.example']` beside `origin` |
 | AWS and Vercel handlers | the `aliasOrigins` handler option, otherwise `URLCODE_ALIAS_ORIGINS` (comma-separated) beside `URLCODE_ORIGIN` |
 
@@ -1284,7 +1284,7 @@ instances but does not close caller-owned services. Host modules are not
 watched or automatically rediscovered. Restart to update them.
 
 The same explicit option is supported by dev, validate, test, routes, audit,
-benchmark, extensions and mcp. These commands execute trusted host activation and may access its
+extensions and mcp. These commands execute trusted host activation and may access its
 store; read-only project inspection commands never implicitly load a host file.
 A host-file path is resolved against the working directory and must be a
 `.mjs`/`.js` file whose real path lies outside the project, including after
@@ -1494,7 +1494,7 @@ The same verbs serve both kinds; every command takes `--site <directory>`
 | `urlcode extensions add <package spec or tarball>…` / `urlcode artifacts add <package spec or tarball>…` | Adds an [independent extension](#independent-extension-packages) or [artifact](#independent-artifact-packages) package the operator chose, outside core's catalog |
 | `urlcode extensions remove <name>` / `urlcode artifacts remove <name>` | Removes one add-on |
 | `urlcode extensions list [--strict]` / `urlcode artifacts list [--strict]` | Reports what is installed and whether it matches core's pins and its [installed file record](#the-installed-file-record) |
-| `urlcode extensions verify [<name>] [--online]` / `urlcode artifacts verify [<name>] [--online]` | Compares the installed files with the [installed file record](#the-installed-file-record), offline; `--online` also re-downloads each locked tarball and compares file by file |
+| `urlcode extensions verify [<name>]` / `urlcode artifacts verify [<name>]` | Compares the installed files with the [installed file record](#the-installed-file-record), offline |
 | `urlcode extensions outdated` / `urlcode artifacts outdated` | Reports, for each independent package, the newest registry version its spec resolves to; see [upgrading an independent package](#upgrading-an-independent-package) |
 | `urlcode artifacts inspect <name> [--strict]` | Reports, offline, the standard documents an installed, pin-verified artifact lists; see [inspecting artifact documents](#inspecting-artifact-documents) |
 
@@ -1646,16 +1646,10 @@ refused. To put the published files back, run `npm ci --ignore-scripts`.
 
 ```sh
 urlcode artifacts verify                      # offline: files against addon-files.lock.json
-urlcode artifacts verify petstore-docs --online
+urlcode artifacts verify petstore-docs
 ```
 
-`verify` exits 1 on any difference. `verify --online` is a network operation
-and runs only when asked: for each package it downloads the tarball from its
-`package-lock.json` `resolved` URL (a `file:` tarball is read from disk),
-refuses it unless its sha512 matches the lock's integrity, and then compares
-it file by file with the installed files and with the record. A private
-registry that needs credentials is not supported; the failure is reported.
-The record is only as trustworthy as the moment it was written: it catches a
+`verify` exits 1 on any difference and never downloads anything. The record is only as trustworthy as the moment it was written: it catches a
 later edit, not a package that was already bad when it was installed. A
 package installed some other way (for example by `npm install` from a committed
 `package.json`) has no record until it is named to `add` again, which records
@@ -1845,8 +1839,8 @@ revision or registers a schema that differs from the definition.
 
 `composeHost` takes the pin from the operator, never from the project:
 
-- When a CLI command (`serve`, `dev`, `validate`, `test`, `routes`, `audit`,
-  `benchmark`) receives both `--policy` and `--host-file`, core validates the
+- When a CLI command (`serve`, `dev`, `validate`, `test`, `routes`, `audit`)
+  receives both `--policy` and `--host-file`, core validates the
   policy and passes its `projectSha256` to `composeHost` while it imports the
   host file. Nothing else in the policy reaches the host.
 - Otherwise `composeHost` reads `PROJECT_SHA256`, as before.
@@ -1935,7 +1929,7 @@ The boundary holds for these reasons:
   `plan-feature`, `review`, `report` and `openapi`) accept it and ignore it
   ([#958](https://github.com/jimhoyd-com/urlcode/issues/958)), so the flag the check scripts pass works on every check. `serve`
   and `dev` refuse it because serving always needs the reviewed pin, and
-  every other command, such as `benchmark`, refuses it too; the refusal
+  every other command, such as `verify-deployment`, refuses it too; the refusal
   names the command (`code` `local-review-unsupported`). A served runtime is
   always pinned by the operator.
 - **Nothing is persisted.** The derived pin exists only in the process for
@@ -2115,8 +2109,7 @@ the last meaning npm's recorded integrity, not re-checked offline), and `files`,
 the comparison with the [installed file record](#the-installed-file-record)
 (`match`, or `linked` for a development link). Inspection is refused unless the
 artifact is inert, pin-verified and unmodified; a `file:` directory link is not
-pin-verified. `artifacts verify --online` is the explicit way to re-check a
-registry install against its published tarball. `--strict` exits 1 when any document has an error diagnostic.
+pin-verified. `--strict` exits 1 when any document has an error diagnostic.
 
 Inspection never imports package code, runs a lifecycle script, fetches a
 reference, follows a symlink, leaves the package directory or creates a grant.

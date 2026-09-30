@@ -212,7 +212,7 @@ remains a live registry fact: see the GitHub Releases page or
 version does not close the review and deployment evidence gaps
 below. `0.4.0-alpha.1`
 added the extension contract, capabilities and provider conformance, strict
-redirect interchange, bulk import, recipes and search, TypeScript guest
+redirect interchange (since removed), bulk import, recipes and search, TypeScript guest
 authoring, conditions, bounded proxy and signals, and the MCP read and
 authoring modes. `0.4.0-alpha.2` then made `function` and `middleware` routes
 run trusted and unsandboxed by default, with `sandbox: true` as a per-route
@@ -264,10 +264,10 @@ the TypeScript source. The `auth` extension runs on the Node target only
 - **Conditions, proxy, signals:** exact predicates with disjoint cases; a bounded
   HTTPS proxy and best-effort webhooks behind operator grants.
   [Conditions][docs/CONDITIONS.md], [egress][docs/EGRESS.md].
-- **Organization:** `includes` across folders; strict CSV/JSON/YAML and
-  provider-file import; searchable recipes and examples. [Organization][docs/ORGANIZATION.md],
-  [interchange][docs/INTERCHANGE.md], [bulk][docs/BULK.md], [recipes][docs/RECIPES.md].
-- **Checks:** `validate`, `test`, `routes`, `audit --expect-routes`, `benchmark`,
+- **Organization:** `includes` across folders; strict CSV/JSON/YAML redirect
+  import; searchable recipes and examples. [Organization][docs/ORGANIZATION.md],
+  [bulk][docs/BULK.md], [recipes][docs/RECIPES.md].
+- **Checks:** `validate`, `test`, `routes`, `audit --expect-routes`,
   `capabilities`, deployment verification and a GitHub Action.
   [Readiness][docs/READINESS.md], [CI][docs/CI.md].
 
@@ -358,7 +358,6 @@ permitted. See [contributing][CONTRIBUTING.md], [security](SECURITY.md),
 [docs/CONDITIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CONDITIONS.md
 [docs/EGRESS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EGRESS.md
 [docs/ORGANIZATION.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/ORGANIZATION.md
-[docs/INTERCHANGE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/INTERCHANGE.md
 [docs/BULK.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/BULK.md
 [docs/RECIPES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RECIPES.md
 [docs/READINESS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md

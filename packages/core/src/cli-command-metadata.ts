@@ -4,17 +4,17 @@ import { parseArgs } from 'node:util';
 // extensions/plugins), and commands that read an operator binding policy
 // outside the project. `cli.ts` shares these lists with its help footnotes so
 // a command cannot accidentally advertise a privilege it rejects (or vice versa).
-export const hostFileCommands = ['serve','dev','validate','test','routes','audit','benchmark','explain','context','plan-feature','review','report','studio','extensions','mcp','openapi'] as const;
+export const hostFileCommands = ['serve','dev','validate','test','routes','audit','explain','context','plan-feature','review','report','studio','extensions','mcp','openapi'] as const;
 // The inspection commands and the MCP server take it too: a verified policy pins their host to its reviewed revision,
 // their emitted commands repeat it, and the MCP runners forward it (#834). None of them creates or changes a grant.
-export const policyCommands = ['dev','serve','validate','test','routes','audit','benchmark','verify-deployment','report','studio','explain','context','plan-feature','review','bootstrap','mcp','openapi'] as const;
+export const policyCommands = ['dev','serve','validate','test','routes','audit','verify-deployment','report','studio','explain','context','plan-feature','review','bootstrap','mcp','openapi'] as const;
 // Read-only commands that may load the host file without a revision pin: their registrations are composed unpinned
 // and cannot activate, so reading them never needs approval while serving always does (#910).
 export const inspectionHostCommands = ['explain','context','plan-feature','review','report','studio','extensions','mcp','openapi'] as const;
 // Commands that replay requests: they activate the extensions on a fresh, empty temporary data directory, never the site's live data
 // (RIM-EXT-HERMETIC-001). `dev`, `serve`, `validate` and `routes` use the site's data, so a pinned validate checks what
 // serve will use; a local review (`--local-review` with no pin) of validate or routes is hermetic too (#954).
-export const hermeticHostCommands = ['test','audit','benchmark'] as const;
+export const hermeticHostCommands = ['test','audit'] as const;
 // Non-serving commands that accept `--local-review` (#932): with no operator pin (no --policy, URLCODE_POLICY or
 // PROJECT_SHA256) the host is pinned to the project's current revision for that one run, no policy is read, so no grant
 // exists, the origin defaults to loopback, and the extensions activate on a fresh temporary data directory as in a
@@ -29,14 +29,14 @@ export const localReviewOrigin = 'http://localhost';
 /** What a `local_review` event says (the CLI checks and the MCP server's in-process `run_tests`). */
 export const localReviewNote = 'Pinned to the current project revision for this run only. No operator policy was read, so no binding or egress grant applies, and extensions use a fresh temporary data directory, never the site\'s data/. serve and dev still need the reviewed pin (--policy or PROJECT_SHA256); with it, validate checks the data they will use.';
 // Commands that activate the project locally and so accept the operator's `--alias-origin`.
-export const aliasOriginCommands = ['dev','serve','validate','test','routes','audit','benchmark'] as const;
+export const aliasOriginCommands = ['dev','serve','validate','test','routes','audit'] as const;
 
 /** The one CLI-wide allowlist passed to Node's argument parser. */
 export const commandOptions = {
-  json:{ type:'boolean' }, yaml:{ type:'boolean' }, report:{type:'string'}, 'accept-provider-differences':{type:'boolean'},
-  project:{ type:'string' }, 'host-file':{type:'string'}, with:{type:'string'}, ack:{type:'string', multiple:true}, example:{type:'boolean'}, site:{type:'string'}, strict:{type:'boolean'}, online:{type:'boolean'}, to:{type:'string'}, check:{type:'boolean'},
+  json:{ type:'boolean' }, yaml:{ type:'boolean' },
+  project:{ type:'string' }, 'host-file':{type:'string'}, with:{type:'string'}, ack:{type:'string', multiple:true}, example:{type:'boolean'}, site:{type:'string'}, strict:{type:'boolean'}, to:{type:'string'}, check:{type:'boolean'},
   port:{ type:'string' }, open:{ type:'boolean' }, 'no-open':{ type:'boolean' }, host:{ type:'string', default:'127.0.0.1' },
-  'expect-routes':{type:'string'}, requests:{type:'string'}, concurrency:{type:'string'}, seconds:{type:'string'}, 'max-p95-ms':{type:'string'}, warmup:{type:'string'}, target:{type:'string'},
+  'expect-routes':{type:'string'}, target:{type:'string'},
   workers:{type:'string'}, 'function-timeout-ms':{type:'string'}, 'max-response-bytes':{type:'string'}, 'max-body-bytes':{type:'string'},
   'max-in-flight':{type:'string'}, 'max-in-flight-health':{type:'string'}, 'request-log':{type:'string'}, 'trust-request-id':{type:'boolean'}, 'trusted-proxies':{type:'string'}, metrics:{type:'boolean'},
   'health-details':{type:'boolean'}, 'close-timeout-ms':{type:'string'}, 'drain-delay-ms':{type:'string'},

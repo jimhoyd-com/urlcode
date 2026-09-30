@@ -1,6 +1,5 @@
 import {basename} from 'node:path';
 import {assert} from './errors.ts';
-import {readConversionInput} from './interchange-cli.ts';
 
 interface Options {
   json?:boolean|undefined;project:string;out?:string|undefined;format?:string|undefined;input?:string|undefined;
@@ -67,8 +66,8 @@ export async function runEcosystemCommand(command:string,args:string[],options:O
     assert(args.length<=(options.format?1:2),'Unexpected bulk import arguments');
     assert(format==='csv'||format==='json'||format==='yaml','Use bulk-import csv|json|yaml <file> --out new-directory');
     assert(input && options.out,'Provide an input file and --out new-directory');
-    const {importBulkProject}=await import('./bulk.ts');
-    const report=await importBulkProject(await readConversionInput(input),format,options.out,{dryRun:options['dry-run'],source:basename(input)});
+    const {importBulkProject,readBulkInput}=await import('./bulk.ts');
+    const report=await importBulkProject(await readBulkInput(input),format,options.out,{dryRun:options['dry-run'],source:basename(input)});
     print(report);if(!report.ok)process.exitCode=1;
   }else if(command==='verify-provider'){
     assert(args.length===0,'Unexpected provider verification arguments');

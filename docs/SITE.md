@@ -51,7 +51,7 @@ URLs, so the runtime needs to know the origin the site is served from. It
 never guesses from a request: a generated file is a fixed response compiled at
 activation, and a `Host` header is client-controlled. The origin is the
 operator's `--origin https://links.example` flag on `serve`, `dev`,
-`validate`, `test`, `routes`, `audit`, `benchmark` and `build`, or the
+`validate`, `test`, `routes`, `audit` and `build`, or the
 `origin` option of `startServer`/`createRuntime`/`buildCloudflare`.
 
 - `site.robots.sitemap: true` without an origin omits the `Sitemap:` line and
