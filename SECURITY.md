@@ -78,7 +78,7 @@ MCP `run_tests` tool does execute it (trusted functions, middleware and
 extensions, with full Node access), so it exists only when the operator starts
 `urlcode mcp --allow-authoring`.
 
-A hermetic run (`test`, `audit`, `benchmark`, MCP `run_tests`, and a
+A hermetic run (`test`, `audit`, MCP `run_tests`, and a
 `--local-review` `validate` or `routes`) hands extensions a fresh temporary
 data directory instead of the site's `data/`. Core cannot see where trusted
 extension code writes, so it refuses what could not have agreed to stay there:
@@ -106,7 +106,7 @@ invalid_unicode`), the store, the auth mount before Better Auth parses a body
 (`400 invalid_unicode`) and its `create-user` input, MCP tool and prompt
 arguments in both the extension and `urlcode mcp` (`-32602` naming the
 argument), `tests/seed.json` and `tests/requests.json`. Project configuration
-refuses one too (#1021): `urlcode.yaml`, its includes and interchange import
+refuses one too (#1021): `urlcode.yaml`, its includes and bulk import
 fail with `invalid-unicode` naming the location, since a `respond.text` body
 or redirect URL would otherwise reach the client as U+FFFD and a
 `respond.json` string as the raw escape. The operator policy file
@@ -126,9 +126,8 @@ inert data (its YAML parsed under a bounded profile that refuses tags and
 alias-expansion bombs). `add` records the sha256 of every installed file in
 `addon-files.lock.json`, and `list --strict`, `artifacts inspect` and `verify`
 check the installed files against it offline: that catches a later edit, not a
-package that was already malicious when it was installed. `verify --online`
-re-downloads the locked tarball and compares it only when explicitly asked,
-and an independent package moves only when the operator re-runs its `add`
+package that was already malicious when it was installed. An independent
+package moves only when the operator re-runs its `add`
 (`urlcode upgrade` never moves it). See
 [the installed file record][docs/EXTENSIONS.md#the-installed-file-record].
 

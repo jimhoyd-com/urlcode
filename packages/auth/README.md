@@ -87,7 +87,7 @@ fixture's cookie jar keeps the session, and `"origin":"{{origin}}"` passes the
 same-origin check. There is no test principal that skips the gate. See
 [authenticated routes][readiness-authenticated-routes].
 
-`urlcode test`, `audit` and `benchmark`, and a `--local-review` `validate` or
+`urlcode test` and `audit`, and a `--local-review` `validate` or
 `routes` with no operator pin, never open the site's
 `data/auth.sqlite`: each run uses a fresh database in a temporary directory,
 creates Better Auth's tables itself, signs sessions with a secret that lives
@@ -176,7 +176,7 @@ not reset it. `betterAuth.rateLimit` can replace `storage`
 `customRules` replaces the default sign-in and sign-up rules rather than adding
 to them.
 
-A hermetic run (`urlcode test`, `audit`, `benchmark`, and `validate` or
+A hermetic run (`urlcode test`, `audit`, and `validate` or
 `routes` under `--local-review`) replays every fixture from one client address
 within seconds, on a throwaway database. There the limiter stays on, stored and
 keyed the same way, but every rule allows ten times its `max`: 100 sign-ins,

@@ -1,9 +1,7 @@
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { lstat, readFile, readdir, readlink, realpath, rm, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { gunzipSync } from 'node:zlib';
+import { join } from 'node:path';
 import type { AddonKind } from './addon-manifest.ts';
 import type { LockEntry } from './addon-install.ts';
 import { ConfigError, assert } from './errors.ts';
@@ -14,8 +12,7 @@ import { isCode, isRecord } from './object-guards.ts';
  * only the lock's sha512 and the unpacked files, so `extensions add` and `artifacts add` write the sha256 of each file
  * they installed to `addon-files.lock.json` at the site root: beside `package-lock.json`, committed and reviewed with
  * it, outside `node_modules` (which it describes) and outside `app/` (so it is not part of the project revision).
- * `list --strict`, `artifacts inspect` and `verify` compare the installed files with it offline; `verify --online`
- * re-downloads the locked tarball, checks its sha512 against the lock and compares file by file. The record is only as
+ * `list --strict`, `artifacts inspect` and `verify` compare the installed files with it offline. The record is only as
  * trustworthy as the moment it was written: it catches a later edit, not a package that was bad when installed.
  */
 export const ADDON_FILES_LOCK = 'addon-files.lock.json';
@@ -26,12 +23,6 @@ export const packageFileLimits = {
   maxBytes: 512 * 1024 * 1024,
   /** Paths listed per category (added, removed, changed) in a report; the rest are counted. */
   maxListed: 20,
-  /** Largest tarball `verify --online` downloads. */
-  maxTarballBytes: 256 * 1024 * 1024,
-  /** Largest unpacked tarball `verify --online` reads. */
-  maxUnpackedBytes: 1024 * 1024 * 1024,
-  /** How long `verify --online` waits for one download. */
-  downloadTimeoutMs: 120000,
 } as const;
 
 export interface RecordedPackage {
@@ -132,90 +123,7 @@ export async function checkPackageFiles(site: string, pkg: string, entry: LockEn
   if (recorded.linked) return { status: 'linked', recorded: 0 };
   const drift = compareFiles(recorded.files, await hashPackageFiles(join(site, 'node_modules', pkg)));
   if (!drifted(drift)) return { status: 'match', recorded: Object.keys(recorded.files).length };
-  return { status: 'modified', recorded: Object.keys(recorded.files).length, drift, message: `${pkg}'s installed files differ from ${ADDON_FILES_LOCK} (${describeDrift(drift)}); reinstall with \`npm ci --ignore-scripts\`, or compare with the published tarball using \`urlcode ${noun} verify --online\`` };
-}
-
-/** The sha256 of every regular file in a gzipped npm tarball, by path with its first segment (`package/`) removed. */
-export function readTarball(gzipped: Uint8Array, limits = packageFileLimits): Record<string, string> {
-  let tar: Buffer;
-  try { tar = gunzipSync(gzipped, { maxOutputLength: limits.maxUnpackedBytes }); }
-  catch { throw new ConfigError(`the tarball is not gzip data or unpacks to more than ${limits.maxUnpackedBytes} bytes`); }
-  const files: Record<string, string> = {}, text = (from: number, length: number): string => tar.subarray(from, from + length).toString('utf8').replace(/\0.*$/s, '');
-  let offset = 0, longName: string | undefined, count = 0;
-  while (offset + 512 <= tar.length) {
-    const header = tar.subarray(offset, offset + 512);
-    if (header.every(byte => byte === 0)) break;
-    const sizeField = header.subarray(124, 136);
-    assert(!(sizeField[0]! & 0x80), 'the tarball uses a base-256 size field, which npm never writes');
-    const size = parseInt(text(offset + 124, 12).trim() || '0', 8), type = String.fromCharCode(header[156]!);
-    assert(Number.isSafeInteger(size) && size >= 0 && offset + 512 + size <= tar.length, 'the tarball is truncated or malformed');
-    const data = tar.subarray(offset + 512, offset + 512 + size);
-    const prefix = text(offset + 257, 6) === 'ustar' ? text(offset + 345, 155) : '';
-    let name = longName ?? (prefix ? `${prefix}/${text(offset, 100)}` : text(offset, 100));
-    longName = undefined;
-    if (type === 'x') {
-      // A pax extended header: its `path` record names the next entry.
-      for (const record of data.toString('utf8').split('\n')) { const match = /^\d+ path=(.*)$/s.exec(record); if (match) longName = match[1]; }
-    } else if (type === 'L') longName = data.toString('utf8').replace(/\0.*$/s, '');
-    else if (type === '0' || type === '\0' || type === '7') {
-      assert(++count <= limits.maxFiles, `the tarball holds more than ${limits.maxFiles} files`);
-      name = name.replace(/^\.\//, '');
-      const rel = name.split('/').slice(1).join('/');
-      assert(rel && !rel.split('/').some(segment => segment === '..' || segment === ''), 'the tarball holds an entry outside its package directory');
-      files[rel] = createHash('sha256').update(data).digest('hex');
-    }
-    offset += 512 + Math.ceil(size / 512) * 512;
-  }
-  return files;
-}
-
-/** The bytes at a lock's `resolved` URL: a `file:` path (relative to the site) or an http(s) download, bounded. */
-export async function fetchTarball(site: string, resolved: string, limits = packageFileLimits): Promise<Buffer> {
-  if (resolved.startsWith('file:')) {
-    const path = resolved.startsWith('file://') ? fileURLToPath(resolved) : resolve(site, resolved.slice('file:'.length));
-    const info = await lstat(path);
-    assert(info.isFile() && info.size <= limits.maxTarballBytes, `${resolved} is not a tarball file of at most ${limits.maxTarballBytes} bytes`);
-    return readFile(path);
-  }
-  assert(/^https?:\/\//.test(resolved), `${resolved} is neither a file: path nor an http(s) URL; it cannot be downloaded`);
-  let response: Response;
-  try { response = await fetch(resolved, { redirect: 'follow', signal: AbortSignal.timeout(limits.downloadTimeoutMs) }); }
-  catch (error) { throw new ConfigError(`downloading ${resolved} failed: ${error instanceof Error ? error.message : String(error)}`); }
-  assert(response.ok && response.body, `downloading ${resolved} failed: HTTP ${response.status}`);
-  assert(Number(response.headers.get('content-length') ?? 0) <= limits.maxTarballBytes, `${resolved} is larger than ${limits.maxTarballBytes} bytes`);
-  const chunks: Buffer[] = [];
-  let total = 0;
-  for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
-    total += chunk.length;
-    assert(total <= limits.maxTarballBytes, `${resolved} is larger than ${limits.maxTarballBytes} bytes`);
-    chunks.push(Buffer.from(chunk));
-  }
-  return Buffer.concat(chunks);
-}
-
-/**
- * `verify --online` for one package (a network operation, never run implicitly): downloads its lock `resolved`
- * tarball, checks it against the lock's sha512 integrity and compares its files with the installed ones and with the
- * record. `integrity: 'mismatch'` stops there: a tarball the lock does not describe is not compared.
- */
-export interface OnlineCheck { url: string; bytes: number; integrity: 'match' | 'mismatch'; installed?: Drift; recorded?: Drift }
-export async function verifyPackageOnline(site: string, pkg: string, entry: LockEntry, recorded: RecordedPackage | undefined): Promise<OnlineCheck> {
-  assert(typeof entry.resolved === 'string' && typeof entry.integrity === 'string', `${pkg} has no resolved URL and integrity in package-lock.json to download and check`);
-  const bytes = await fetchTarball(site, entry.resolved);
-  const expected = entry.integrity.split(/\s+/).filter(item => item.startsWith('sha512-'));
-  assert(expected.length, `${pkg}'s package-lock.json integrity has no sha512 hash`);
-  const actual = `sha512-${createHash('sha512').update(bytes).digest('base64')}`;
-  const check: OnlineCheck = { url: entry.resolved, bytes: bytes.length, integrity: expected.includes(actual) ? 'match' : 'mismatch' };
-  if (check.integrity === 'mismatch') return check;
-  const published = readTarball(bytes);
-  check.installed = compareFiles(published, await hashPackageFiles(join(site, 'node_modules', pkg)));
-  if (recorded && !recorded.linked) check.recorded = compareFiles(published, recorded.files);
-  return check;
-}
-export function onlineProblem(pkg: string, check: OnlineCheck): string | undefined {
-  if (check.integrity === 'mismatch') return `${pkg}: the tarball at ${check.url} does not match the sha512 integrity package-lock.json records`;
-  const parts = [...(check.installed && drifted(check.installed) ? [`installed files differ from the published tarball (${describeDrift(check.installed)})`] : []), ...(check.recorded && drifted(check.recorded) ? [`${ADDON_FILES_LOCK} differs from the published tarball (${describeDrift(check.recorded)})`] : [])];
-  return parts.length ? `${pkg}: ${parts.join('; ')}` : undefined;
+  return { status: 'modified', recorded: Object.keys(recorded.files).length, drift, message: `${pkg}'s installed files differ from ${ADDON_FILES_LOCK} (${describeDrift(drift)}); reinstall with \`npm ci --ignore-scripts\`` };
 }
 
 /** The highest of npm version strings by semver precedence (a prerelease sorts below its release); unparsable ones last. */

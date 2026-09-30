@@ -1,5 +1,4 @@
 import http from 'node:http';
-import type { IncomingMessage } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { randomUUID, createHash } from 'node:crypto';
 import { readdir, lstat, mkdir } from 'node:fs/promises';
@@ -17,7 +16,7 @@ import { writeResponse, writeError } from './http-response.ts';
 import type { HandlerResult } from './http-response.ts';
 import { StreamHost } from './http-stream.ts';
 import { compileTrustedProxies, loopbackHostCheck } from './client-address.ts';
-import { handleHostRequest, hostErrorOptions, originForm, readHeaderLines } from './host-request.ts';
+import { handleHostRequest, hostErrorOptions, originForm, readHeaderLines, readIncomingBody } from './host-request.ts';
 
 export interface ServerOptions extends Omit<RuntimeOptions, 'observers' | 'acceptedExtensionPin' | 'replacing'> {
   /** `urlcode dev` only: on a reload, accept an extension registration still pinned to the revision this server
@@ -105,22 +104,6 @@ async function fingerprint(root: string, local: boolean, assets: string[] = []):
   }
   for (const file of assets) await assetWalk(file);
   return hash.digest('hex');
-}
-async function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
-  if (req.headers['content-length'] && Number(req.headers['content-length']) > limit) throw new HttpError(413, 'Request body too large');
-  return new Promise((resolve, reject) => {
-    let size = 0; const chunks: Buffer[] = [];
-    const cleanup = () => { req.off('data', data); req.off('end', end); req.off('error', error); req.off('aborted', aborted); };
-    const error = (cause: Error) => { cleanup(); reject(cause); };
-    const aborted = () => error(new HttpError(400, 'Request aborted'));
-    const data = (chunk: Buffer) => {
-      size += chunk.length;
-      if (size > limit) { req.pause(); error(new HttpError(413, 'Request body too large')); }
-      else chunks.push(chunk);
-    };
-    const end = () => { cleanup(); resolve(Buffer.concat(chunks)); };
-    req.on('data',data); req.once('end',end); req.once('error',error); req.once('aborted',aborted);
-  });
 }
 const safeRequestId = /^[A-Za-z0-9_.:-]{1,128}$/;
 // Node 22.13.0-22.14.x throws ERR_HTTP_CONTENT_LENGTH_MISMATCH from a
@@ -270,7 +253,7 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
         release = () => { if (!released) { released = true; inFlight--; counters.inFlight('requests', -1); } };
         res.once('finish', release); res.once('close', release);
         result = await handleHostRequest(current, { target: originForm(url), method, ...readHeaderLines(req.rawHeaders), peer: req.socket.remoteAddress,
-          readBody: limit => readBody(req, limit), requestId, signal: controller.signal, trace, origin: publicOrigin() }, { maxBodyBytes, trustedProxies: proxies });
+          readBody: limit => readIncomingBody(req, limit), requestId, signal: controller.signal, trace, origin: publicOrigin() }, { maxBodyBytes, trustedProxies: proxies });
       }
       if (result.stream !== undefined) {
         // From here the response counts against the stream limit, not the short-request admission.

@@ -1,6 +1,6 @@
 import { request, Agent } from 'node:http';
 import type { IncomingMessage, ClientRequest, RequestOptions } from 'node:http';
-import { request as secureRequest, Agent as SecureAgent } from 'node:https';
+import { request as secureRequest } from 'node:https';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { readFile, lstat } from 'node:fs/promises';
@@ -150,8 +150,8 @@ function presented<R extends { mismatches?: Mismatch[] }>(result: R, redact: (te
     return { ...item, expected: cut(expected), actual: cut(actual), firstDifference: at };
   }) };
 }
-export interface BenchmarkTarget { protocol: string; hostname: string; port: number | string; /** The Host header value: the host, plus the port when it is not the scheme's default. */ authority: string }
-/** A started server as the audit and benchmark see it. structural: the real type is startServer's result in src/server.ts. */
+export interface DeploymentTarget { protocol: string; hostname: string; port: number | string; /** The Host header value: the host, plus the port when it is not the scheme's default. */ authority: string }
+/** A started server as the audit sees it. structural: the real type is startServer's result in src/server.ts. */
 export interface AuditableApp {
   address: AddressInfo; root: string; testPlan(): ProjectPlan & { policies?: Record<string, PolicyInventory> };
   /** The site origin the runtime serves (its `--origin`, else its own address): the origin fixture cookie jars are clients of. */
@@ -208,12 +208,6 @@ interface AuditReport {
  * numbers, never fixture text.
  */
 interface CoverageNote { code: 'unasserted-success' | 'gated-route-uncovered' | 'method-without-success' | 'waiver-without-proof'; message: string; routes?: string[]; methods?: { route: string; method: string }[]; cases?: number[] }
-interface BenchmarkOptions { requests?: number | undefined; concurrency?: number | undefined; maxP95Ms?: number | undefined; seconds?: number | undefined; warmup?: number | undefined; target?: string | undefined }
-interface BenchmarkReport {
-  pass: boolean; requested: number; completed: number; complete: boolean; failed: number; transportErrors: number; shedResponses: number; concurrency: number;
-  workloadCases: number; exercisedWorkloadCases: number; workload: string; target: string | null; warmupRequests: number; elapsedMs: number; requestsPerSecond: number;
-  p50Ms: number | null; p95Ms: number | null; p99Ms: number | null; maxP95Ms: number | null; statuses: Record<string, number>; rssMiB: number | null; node: string; platform: string;
-}
 
 /** Narrows a compiled route to one that redirects, so redirectLocation can read its spec. */
 export const hasRedirect = (route: CompiledRoute): route is CompiledRoute & { redirect: CompiledRedirect } => Boolean(route.redirect);
@@ -431,10 +425,6 @@ export async function readFixtures(root: string, optional = false): Promise<Fixt
   checkFixtureSchema(cases);
   return cases as Fixture[]; // trust boundary: fixture JSON, validated field by field above
 }
-/** Single-request fixtures only: the benchmark replays these and cannot run ordered steps. */
-async function readCases(root: string, optional = false): Promise<RequestCase[]> {
-  return (await readFixtures(root,optional)).filter((fixture): fixture is RequestCase => !isStepsFixture(fixture));
-}
 /**
  * One request a fixture run sent: `test` is the request as sent (captured values filled in), `original` as written.
  * `shown` is the target `test.path` with every secret value put back as `{{name}}` (or `<cookie NAME>`): the one to
@@ -442,7 +432,7 @@ async function readCases(root: string, optional = false): Promise<RequestCase[]>
  */
 interface FixtureStep { case: number; fixture: number; test: RequestCase; original: RequestCase; shown: string; result: HitResult }
 interface FixtureHost {
-  app: AuditableApp; agent: Agent; target?: BenchmarkTarget | undefined;
+  app: AuditableApp; agent: Agent; target?: DeploymentTarget | undefined;
   /** The recorder the local runtime captures signals into. Absent (a deployment): `expectSignals` is not checked. */
   signals?: SignalRecorder | undefined;
   /** Close and restart the runtime on the same project and data directory. Absent: the host cannot restart. */
@@ -479,7 +469,7 @@ function resolveStep(test: RequestCase, values: Map<string,string>, typed: Reado
  * The origin a fixture's cookie jar is a client of: the deployment under verification, or the site origin the local
  * runtime serves (its `--origin`, else its own loopback address).
  */
-const siteOrigin = (app: AuditableApp, target?: BenchmarkTarget): string => target ? `${target.protocol}//${target.authority}` : app.origin ?? `http://127.0.0.1:${app.address.port}`;
+const siteOrigin = (app: AuditableApp, target?: DeploymentTarget): string => target ? `${target.protocol}//${target.authority}` : app.origin ?? `http://127.0.0.1:${app.address.port}`;
 /** What `{{name}}` resolves to: `{{origin}}` (read per request, as a restart without `--origin` moves the loopback port) and the captured values. */
 const references = (host: FixtureHost, captured: ReadonlyMap<string,string> = new Map()): Map<string,string> => new Map([[ORIGIN, siteOrigin(host.app, host.target)], ...captured]);
 /** The Set-Cookie values of a single-request fixture's response, which no jar keeps, still never print. */
@@ -578,7 +568,7 @@ function extract(spec: { json: string } | { header: string }, headers: IncomingM
   if (text === undefined || !acceptable(text)) return undefined;
   return typeof value === 'string' ? { text } : { text, typed: value as number | boolean };
 }
-export function benchmarkTarget(value: string): BenchmarkTarget {
+export function deploymentTarget(value: string): DeploymentTarget {
   let url: URL;
   try { url=new URL(value); } catch { assert(false,'Target must be an absolute HTTP(S) origin'); }
   assert(['http:','https:'].includes(url.protocol) && url.origin===value.replace(/\/$/,'') && !url.username && !url.password,
@@ -586,7 +576,7 @@ export function benchmarkTarget(value: string): BenchmarkTarget {
   return {protocol:url.protocol,hostname:url.hostname,port:url.port || (url.protocol==='https:'?443:80),authority:url.host};
 }
 /** `cookie`, when given, replaces the case's own Cookie header: the fixture runner's merge of it with the jar. */
-export function hit(app: AuditableApp,test: RequestCase,agent: Agent,target?: BenchmarkTarget,cookie?: string): Promise<HitResult> {
+export function hit(app: AuditableApp,test: RequestCase,agent: Agent,target?: DeploymentTarget,cookie?: string): Promise<HitResult> {
   return new Promise(resolve => {
     const began=performance.now();
     const fail=()=>resolve({pass:false,status:0,durationMs:performance.now()-began,error:'transport'});
@@ -721,55 +711,4 @@ export async function auditProject(app: AuditableApp, {signals,expectRoutes,log=
   // host enforces, compiles or delegates each one. Refusals never get here.
   const notReadyReasons=[...(counts.active>0?[]:['no-active-routes']),...(countMatches?[]:['route-count-mismatch']),...(failed?['failed-checks']:[]),...(uncovered.length?['uncovered-route-methods']:[])];
   return {elapsedMs:performance.now()-began,ready:!notReadyReasons.length,notReadyReasons,counts,expectedRoutes:expected ?? null,expectedRoutesFrom,countMatches,checks,passed,failed,coveredRouteMethods:covered.size,unassertedCases,uncovered,impliedRouteMethods,waivedRouteMethods,ignoredWaivers,redundantWaivers,coverageNotes,policies:plan.policies ?? {},compliance:compliance?await runCompliance(app,compliance):null,advisories,deploymentAdvisories:deploymentAdvisories(plan.policies ?? {},deployment)};
-}
-export async function benchmarkProject(app: AuditableApp,{requests=1000,concurrency=2,maxP95Ms,seconds=30,warmup=0,target}: BenchmarkOptions={}): Promise<BenchmarkReport> {
-  assert(Number.isInteger(requests)&&requests>=1&&requests<=100000,'Requests must be 1–100000');
-  assert(Number.isInteger(concurrency)&&concurrency>=1&&concurrency<=32,'Concurrency must be 1–32');
-  assert(Number.isInteger(seconds)&&seconds>=1&&seconds<=300,'Seconds must be 1–300');
-  assert(Number.isInteger(warmup)&&warmup>=0&&warmup<=10000,'Warmup must be 0–10000 requests');
-  assert(maxP95Ms===undefined || (Number.isFinite(maxP95Ms)&&maxP95Ms>0),'Latency budget must be positive');
-  const destination=target?benchmarkTarget(target):undefined;
-  const plan=app.testPlan();const origin=new Map([[ORIGIN,siteOrigin(app,destination)]]);
-  const fixtures=(await readCases(app.root,true)).flatMap(test=>{const resolved=resolveStep(test,origin);return resolved?[resolved]:[];});
-  const cases=[...plan.cases,...fixtures].filter(c=>['GET','HEAD'].includes(c.method||'GET')&&c.status<400);
-  assert(cases.length>0,'No GET/HEAD workload: add representative successful request fixtures');
-  const workload=(index: number): RequestCase=>{const found=cases[index%cases.length];assert(found,'Empty workload');return found;};
-  // A deployment behind TLS or a proxy is a different system from a local
-  // snapshot; the workload is the same, the measurement is not interchangeable.
-  const agent=destination?.protocol==='https:'
-    ? new SecureAgent({keepAlive:true,maxSockets:concurrency})
-    : new Agent({keepAlive:true,maxSockets:concurrency});
-  const times: number[]=[],statuses: Record<string,number>={};
-  let next=0,failed=0,transportErrors=0,elapsedMs: number;
-  try {
-    // Warm-up requests are sent and discarded: a cold snapshot, an empty
-    // connection pool and a just-started worker are not what a budget is about.
-    let warmed=0;
-    await Promise.all(Array.from({length:Math.min(concurrency,Math.max(warmup,1))},async()=>{
-      while(warmed<warmup){const index=warmed++;await hit(app,workload(index),agent,destination);}
-    }));
-    const began=performance.now();
-    await Promise.all(Array.from({length:concurrency},async()=>{
-      while(next<requests && performance.now()-began<seconds*1000){
-        const index=next++;const result=await hit(app,workload(index),agent,destination);
-        times.push(result.durationMs);
-        if(!result.pass){failed++;if(result.status===0)transportErrors++;}
-        statuses[result.status]=(statuses[result.status]||0)+1;
-      }
-    }));
-    elapsedMs=performance.now()-began;
-  } finally {agent.destroy();}
-  times.sort((a,b)=>a-b);
-  const percentile=(q: number)=>times[Math.max(0,Math.ceil(times.length*q)-1)] ?? null;
-  const p95Ms=percentile(.95), complete=times.length===requests;
-  const shed=Object.entries(statuses).filter(([status])=>['503','504'].includes(status)).reduce((n,[,count])=>n+count,0);
-  return {pass:complete&&!failed&&(maxP95Ms===undefined||(p95Ms!==null&&p95Ms<=maxP95Ms)),requested:requests,completed:times.length,complete,failed,transportErrors,shedResponses:shed,concurrency,
-    workloadCases:cases.length,exercisedWorkloadCases:Math.min(times.length,cases.length),
-    workload:`${destination?'remote':'local'} GET/HEAD only; redirects not followed`,
-    target:destination?`${destination.protocol}//${destination.hostname}:${destination.port}`:null,
-    warmupRequests:warmup,elapsedMs,requestsPerSecond:times.length/elapsedMs*1000,
-    p50Ms:percentile(.5),p95Ms,p99Ms:percentile(.99),maxP95Ms:maxP95Ms??null,statuses,
-    // In target mode this process is the load generator, not the server: its
-    // memory says nothing about the deployment under test.
-    rssMiB:destination?null:process.memoryUsage().rss/2**20,node:process.version,platform:process.platform};
 }

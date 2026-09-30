@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import { EventEmitter } from 'node:events';
+import type { IncomingMessage } from 'node:http';
+import { readIncomingBody } from '../packages/core/src/host-request.ts';
 import { createVercelHandler, forwardedClient } from '../packages/core/src/vercel.ts';
 import { startServer } from '../packages/core/src/server.ts';
 import { project, redirect, request, param, approveBindings } from './helpers.ts';
@@ -110,4 +113,24 @@ test('request bodies stay bounded and route policy still applies', async t => {
   assert.equal((await request(adapted,'/go',{method:'POST',body:'small'})).status,302);
   assert.equal((await request(adapted,'/go',{method:'POST',body:'x'.repeat(200)})).status,413);
   assert.throws(() => createVercelHandler({project:root,maxBodyBytes:0}),/Request limit/);
+});
+
+// #1041: the Node server and this handler read a body with one function (host-request.ts), so both refuse the same
+// way; the Vercel copy had no `aborted` listener, so a client leaving mid-body surfaced as a 500 there.
+test('the shared node:http body reader bounds, refuses and reports an aborted client', async () => {
+  const incoming = (contentLength?: string) => Object.assign(new EventEmitter(), { headers: contentLength === undefined ? {} : { 'content-length': contentLength }, pause() {} }) as unknown as IncomingMessage;
+  await assert.rejects(readIncomingBody(incoming('65'), 64), { status: 413, message: 'Request body too large' });
+  const whole = incoming(), read = readIncomingBody(whole, 8);
+  whole.emit('data', Buffer.from('abc')); whole.emit('data', Buffer.from('de')); whole.emit('end');
+  assert.equal((await read).toString(), 'abcde');
+  assert.equal(['data', 'end', 'error', 'aborted'].reduce((sum, name) => sum + whole.listenerCount(name), 0), 0);
+  const long = incoming(), tooLong = readIncomingBody(long, 4);
+  long.emit('data', Buffer.from('abc')); long.emit('data', Buffer.from('de'));
+  await assert.rejects(tooLong, { status: 413, message: 'Request body too large' });
+  const gone = incoming(), aborted = readIncomingBody(gone, 8);
+  gone.emit('aborted');
+  await assert.rejects(aborted, { status: 400, message: 'Request aborted' });
+  const broken = incoming(), failed = readIncomingBody(broken, 8), cause = new Error('socket');
+  broken.emit('error', cause);
+  await assert.rejects(failed, (error: unknown) => error === cause);
 });

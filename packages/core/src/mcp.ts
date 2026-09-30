@@ -8,7 +8,7 @@ import {StdioServerTransport} from '@modelcontextprotocol/server/stdio';
 import type {ErrorObject} from 'ajv';
 import {ConfigError,describeError} from './errors.ts';
 import {buildBootstrap} from './bootstrap.ts';
-import {inspectProject,validateProject,explainRoute,getCapabilities,getCapability,getSchemaFragment,previewImport,previewExport,listRecipes,showRecipe,searchRecipes,searchExamples,describeExtensions,buildContext,buildTaskContext,planFeature,reviewProject} from './tooling.ts';
+import {inspectProject,validateProject,explainRoute,getCapabilities,getCapability,getSchemaFragment,listRecipes,showRecipe,searchRecipes,searchExamples,describeExtensions,buildContext,buildTaskContext,planFeature,reviewProject} from './tooling.ts';
 import {runProjectTests} from './project-tests.ts';
 import {loadOperatorHost} from './operator-host.ts';
 import {loadOperatorPolicy,prepareFunctionSnapshot} from './policy.ts';
@@ -16,7 +16,6 @@ import {loadDocument} from './config.ts';
 import {localReviewNote,localReviewOrigin} from './cli-command-metadata.ts';
 import {buildManifest} from './manifest.ts';
 import {buildOpenApi} from './openapi.ts';
-import type {InterchangeFormat} from './interchange.ts';
 import {authoringDefinitions,authoringAnnotations,callAuthoringTool} from './mcp-authoring.ts';
 // Only the public @jimhoyd/urlcode/agent-context surface is used here; scripts/package-smoke.ts proves that
 // subpath sufficient from the packed package (docs/TOOLING.md). A relative import keeps the source from loading
@@ -34,7 +33,6 @@ import {CORE_VERSION} from './release.ts';
 // The largest message the transport buffers and the largest tool result the server returns.
 const maxBytes=1048576;
 const text={type:'string',maxLength:8192};
-const format={enum:['csv','json','yaml','netlify','cloudflare','vercel','netlify-toml']};
 const deployTargetEnum={enum:['self-hosted','cloudflare','aws','vercel','static']};
 // `deployTarget` names a deployment target (self-hosted/cloudflare/aws/vercel/static); `explain`'s `target` is the
 // route-selecting path, an unrelated argument.
@@ -50,8 +48,6 @@ const definitions=[
  {name:'explain',description:'Explain the route a path selects from the compiled configuration: methods, handler, middleware, inputs, policies, cache outcome, bindings and target support. Nothing executes.',properties:{target:text},required:['target']},
  {name:'get_manifest',description:'The generated semantic manifest: routes, capabilities, extensions, external requirements, functions, target support and the revision digest.',properties:{}},
  {name:'get_openapi',description:'The OpenAPI 3.1 document for the project\'s declared HTTP operations, the same document `urlcode openapi` prints: paths, methods, parameters, per-method request bodies and only the responses URLCode itself writes. Handler-defined answers carry no schema; an extension mount is listed under x-urlcode.opaqueMounts unless the host file\'s registration describes it. Nothing executes and no binding is read.',properties:{}},
- {name:'preview_import',description:'Preview redirect conversion from supplied text; writes no files.',properties:{format,text:{type:'string',maxLength:524288},acceptProviderDifferences:{type:'boolean'}},required:['format','text']},
- {name:'preview_export',description:'Preview redirect export from this project; writes no files.',properties:{format,acceptProviderDifferences:{type:'boolean'}},required:['format']},
  {name:'list_recipes',description:'List bundled local recipes.',properties:{}},
  {name:'get_recipe',description:'Show a bundled local recipe without writing it; metadata (capabilities, targets, grants, inputs, expected behavior) comes before file contents.',properties:{name:{type:'string',maxLength:64}},required:['name']},
  {name:'search_recipes',description:'Search bundled recipes by id, description, tags and capabilities; local text matching, no service. Check here before generating a common route by hand.',properties:{text:{type:'string',maxLength:256}},required:['text']},
@@ -163,8 +159,6 @@ export async function serveMcp(options:McpOptions):Promise<void> {
    case 'explain':return explainRoute(project,args.target as string,base);
    case 'get_manifest':return buildManifest(project,base);
    case 'get_openapi':return buildOpenApi(project,base);
-   case 'preview_import':return previewImport({format:args.format as InterchangeFormat,text:args.text as string,acceptProviderDifferences:args.acceptProviderDifferences===true});
-   case 'preview_export':return previewExport(project,args.format as InterchangeFormat,args.acceptProviderDifferences===true);
    case 'list_recipes':return listRecipes();
    case 'get_recipe':return showRecipe(args.name as string);
    case 'search_recipes':return searchRecipes(args.text as string);

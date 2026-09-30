@@ -8,7 +8,7 @@ import { writeResponse, writeError } from './http-response.ts';
 import { StreamHost } from './http-stream.ts';
 import type { StreamLimits } from './http-stream.ts';
 import { contentLengthEnforcementIsSafe } from './server.ts';
-import { readHeaderLines } from './host-request.ts';
+import { readHeaderLines, readIncomingBody } from './host-request.ts';
 import { assert, HttpError } from './errors.ts';
 
 // See server.ts's contentLengthEnforcementIsSafe: this handler also writes
@@ -35,22 +35,6 @@ export function forwardedClient(headers: Headers, headerCounts: Record<string, n
   return headerCounts['x-vercel-forwarded-for'] === 1 ? (headers.get('x-vercel-forwarded-for') ?? '').split(',')[0]?.trim() || undefined : undefined;
 }
 
-function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
-  if (req.headers['content-length'] && Number(req.headers['content-length']) > limit) return Promise.reject(new HttpError(413,'Request body too large'));
-  return new Promise((resolve,reject) => {
-    let size = 0; const chunks: Buffer[] = [];
-    const cleanup = () => { req.off('data',data); req.off('end',end); req.off('error',error); };
-    const error = (cause: Error) => { cleanup(); reject(cause); };
-    const data = (chunk: Buffer) => {
-      size += chunk.length;
-      if (size > limit) { req.pause(); error(new HttpError(413,'Request body too large')); }
-      else chunks.push(chunk);
-    };
-    const end = () => { cleanup(); resolve(Buffer.concat(chunks)); };
-    req.on('data',data); req.once('end',end); req.once('error',error);
-  });
-}
-
 // Builds a Vercel Node function handler. The runtime is created once per
 // instance and reused across warm invocations; a failed activation is not
 // cached, so a fixed deployment recovers without a code change.
@@ -70,7 +54,7 @@ export function createVercelHandler({ project = process.cwd(), origin, aliasOrig
       runtime = await ready();
       const { headers, headerCounts } = readHeaderLines(req.rawHeaders);
       const limit = Math.min(maxBodyBytes, runtime.requestLimit(target, method) ?? maxBodyBytes);
-      const body = await readBody(req,limit);
+      const body = await readIncomingBody(req,limit);
       const forwarded = forwardedClient(headers, headerCounts);
       const publicOrigin = resolveOrigin(origin,environment,platformOrigins) ?? 'http://localhost';
       const result = await runtime.handle({ target, method, headers, headerCounts, body, requestId, signal: controller.signal,

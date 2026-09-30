@@ -162,7 +162,7 @@ export default await composeHost(import.meta.url, [
 
 Every collection lives in one SQLite database (`node:sqlite`, so Node only):
 `store({ database })`, else `STORE_DATABASE`, else `data/store.sqlite` beside
-`host.mjs`; it must be outside `app/`. `urlcode test`, `audit` and `benchmark`,
+`host.mjs`; it must be outside `app/`. `urlcode test` and `audit`,
 and a `--local-review` `validate` or `routes` with no operator pin, use a fresh
 database per run instead; `test` and `audit` write the membership members the
 project's `tests/seed.json` declares (`{"store": {"members": {"reviewers": ["alice"]}}}`)

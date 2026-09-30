@@ -590,7 +590,7 @@ export interface HostContext {
    */
   data:string;
   /**
-   * True for a run that replays requests: `test`, `audit` and `benchmark`, and the MCP server's `run_tests`, and for
+   * True for a run that replays requests: `test` and `audit`, and the MCP server's `run_tests`, and for
    * a local review: `validate` or `routes` with `--local-review` and no operator pin (RIM-EXT-HERMETIC-001). This
    * obligation is what extension contract 2 added (#976): a contract-1 extension is refused. The run must never read or
    * write the site's live data, and must start from nothing on

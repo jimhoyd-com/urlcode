@@ -6,8 +6,8 @@ import { assert } from './errors.ts';
 import { isRecord } from './object-guards.ts';
 import { createRuntime } from './runtime.ts';
 import type { RuntimeOptions } from './runtime.ts';
-import { benchmarkTarget, hit, readFixtures, runFixtures, isStepsFixture, probeAgent } from './readiness.ts';
-import type { AuditableApp, BenchmarkTarget, RequestCase } from './readiness.ts';
+import { deploymentTarget, hit, readFixtures, runFixtures, isStepsFixture, probeAgent } from './readiness.ts';
+import type { AuditableApp, DeploymentTarget, RequestCase } from './readiness.ts';
 import { runCompliance, severities } from './compliance.ts';
 import type { ComplianceOptions, ComplianceReport, Severity } from './compliance.ts';
 import { loadDocument } from './config.ts';
@@ -62,7 +62,7 @@ const tlsCode = /CERT|TLS|SSL|SELF_SIGNED/;
 // destroyed rather than left to keep streaming into a discard loop: this
 // probe only ever needs a bounded snippet, never the rest of an oversized
 // or endless body.
-function probe(target: BenchmarkTarget, { path, method = 'GET', headers = {} }: Probe, agent: Agent, timeoutMs: number): Promise<Answer> {
+function probe(target: DeploymentTarget, { path, method = 'GET', headers = {} }: Probe, agent: Agent, timeoutMs: number): Promise<Answer> {
   return new Promise(resolve => {
     let settled = false;
     const finish = (answer: Answer): void => { if (settled) return; settled = true; clearTimeout(deadline); resolve(answer); };
@@ -130,7 +130,7 @@ function deniedAgent(agents: PolicyInventory['agents']): string | undefined {
 }
 
 export async function verifyDeployment(project: string, { target, origin, expectRoutes, timeoutMs = 10000, expectMetrics = false, failOn = 'high', compliance, complianceWarn = false, log = () => {}, permissions }: VerifyOptions): Promise<VerifyReport> {
-  const destination = benchmarkTarget(target);
+  const destination = deploymentTarget(target);
   const targetOrigin = target.replace(/\/$/, '');
   assert(failLevels.includes(failOn), `Use --fail-on ${failLevels.join('|')}`);
   assert(Number.isInteger(timeoutMs) && timeoutMs >= 100 && timeoutMs <= 120000, 'Timeout must be 100-120000 ms');

@@ -7,7 +7,7 @@ import Ajv from 'ajv/dist/2020.js';
 import type { ErrorObject } from 'ajv';
 import { assert, ConfigError } from './errors.ts';
 import type { ErrorDetails } from './errors.ts';
-import { reservedResponseHeaders } from './http-policy.ts';
+import { reservedResponseHeaders } from './reserved-headers.ts';
 import { declaredPrincipalProviders } from './addon-manifest.ts';
 import { loadProjectSchemas } from './project-schemas.ts';
 import type { ProjectSchemas } from './project-schemas.ts';

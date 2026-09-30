@@ -244,12 +244,10 @@ test('artifacts install inert, and a tarball that does not match its pin rolls b
   assert.equal(added.status, 0, added.stderr);
   const listed = await urlcode(t, dir, ['artifacts', 'list', '--strict']);
   assert.equal(listed.status, 0, listed.stdout + listed.stderr);
-  // #857: add recorded every installed file; verify compares them offline, and --online against the pinned tarballs.
-  for (const args of [['artifacts', 'verify'], ['artifacts', 'verify', '--online']]) {
-    const verified = await urlcode(t, dir, args);
-    assert.equal(verified.status, 0, verified.stdout + verified.stderr);
-    assert.ok((JSON.parse(verified.stdout) as { addons: { files: { status: string } }[] }).addons.every(item => item.files.status === 'match'), verified.stdout);
-  }
+  // #857: add recorded every installed file; verify compares them offline.
+  const verified = await urlcode(t, dir, ['artifacts', 'verify']);
+  assert.equal(verified.status, 0, verified.stdout + verified.stderr);
+  assert.ok((JSON.parse(verified.stdout) as { addons: { files: { status: string } }[] }).addons.every(item => item.files.status === 'match'), verified.stdout);
   const schema = JSON.parse(await readFile(join(dir, 'node_modules', '@jimhoyd', 'urlcode-store-schema', 'schemas', 'config.json'), 'utf8')) as { type: string };
   assert.equal(schema.type, 'object');
 
@@ -413,17 +411,13 @@ test('an independent artifact package installs from a pinned local tarball, insp
   assert.ok(inspection.documents[0]!.refs.some(ref => ref.target === 'schemas/pet.json#'), 'the OpenAPI document resolves its local file $ref');
   assert.deepEqual(inspection.referencedFiles.map(item => item.path), ['schemas/pet.json']);
 
-  // #857: a hand edit to an installed file is caught offline, and --online names it against the published tarball.
+  // #857: a hand edit to an installed file is caught offline.
   const petFile = join(installed, 'schemas', 'pet.json'), pet = await readFile(petFile);
   await writeFile(petFile, '{"edited":true}');
   const offline = await urlcode(t, dir, ['artifacts', 'verify', 'petstore-docs']);
   assert.equal(offline.status, 1, offline.stdout + offline.stderr);
   assert.match(offline.stdout, /installed files differ from addon-files\.lock\.json \(changed schemas\/pet\.json\)/);
   assert.notEqual((await urlcode(t, dir, ['artifacts', 'inspect', 'petstore-docs'])).status, 0);
-  const online = await urlcode(t, dir, ['artifacts', 'verify', 'petstore-docs', '--online']);
-  assert.equal(online.status, 1, online.stdout + online.stderr);
-  const onlineReport = JSON.parse(online.stdout) as { addons: { online: { integrity: string; installed: { changed: string[] }; recorded: { counts: { changed: number } } } }[] };
-  assert.deepEqual([onlineReport.addons[0]!.online.integrity, onlineReport.addons[0]!.online.installed.changed, onlineReport.addons[0]!.online.recorded.counts.changed], ['match', ['schemas/pet.json'], 0]);
   await writeFile(petFile, pet);
 
   // Replace the locked tarball: npm's recorded integrity no longer describes it, so inspection and list --strict refuse.

@@ -1,5 +1,6 @@
 import { validateHeaderName, validateHeaderValue } from './header-validation.ts';
 import { assert, HttpError } from './errors.ts';
+import { reservedResponseHeaders } from './reserved-headers.ts';
 import { byteLength } from './http-response.ts';
 import type { HandlerResult, HeaderPair } from './http-response.ts';
 import type { HeadersLike } from './match.ts';
@@ -45,7 +46,6 @@ export interface HttpRoute {
   bodySchemas?: Partial<Record<string, CompiledBodySchema>> | undefined;
 }
 
-export const reservedResponseHeaders = new Set(['connection','keep-alive','transfer-encoding','content-length','upgrade','trailer','proxy-authenticate','proxy-authorization','te','location','allow','content-range','accept-ranges','etag','last-modified','content-encoding','x-request-id','x-content-type-options']);
 export function compileHttp(route: HttpRoute): void {
   const seen = new Set<string>(); let size = 0;
   const responseHeaders: HeaderPair[] = route.responseHeaders = [];

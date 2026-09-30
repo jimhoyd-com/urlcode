@@ -10,7 +10,7 @@ import { materializeSourceAssets, stageSourceAssets } from './source-stage.ts';
 import type { MaterializeResult, SourceStageReport } from './source-stage.ts';
 
 type Print = (value: unknown) => boolean;
-interface AddonCliOptions { site?: string | undefined; json?: boolean | undefined; strict?: boolean | undefined; online?: boolean | undefined; ack?: string[] | undefined; example?: boolean | undefined; materialize?: boolean | undefined; into?: string | undefined; 'allow-app'?: boolean | undefined }
+interface AddonCliOptions { site?: string | undefined; json?: boolean | undefined; strict?: boolean | undefined; ack?: string[] | undefined; example?: boolean | undefined; materialize?: boolean | undefined; into?: string | undefined; 'allow-app'?: boolean | undefined }
 
 export const addonCommands = ['available', 'add', 'remove', 'list', 'verify', 'outdated', 'inspect', 'stage'] as const;
 const artifactOnly = new Set<string>(['inspect', 'stage']);
@@ -26,7 +26,6 @@ export async function runAddonCommand(command: 'extensions' | 'artifacts', opera
   if (values.ack?.length && operation !== 'add') throw new ConfigError(`--ack is only supported by ${command} add`);
   if (values.example && (operation !== 'add' || kind !== 'extension')) throw new ConfigError('--example is only supported by extensions add');
   if ((values.materialize || values.into !== undefined || values['allow-app']) && !(operation === 'stage' && kind === 'artifact')) throw new ConfigError('--materialize, --into and --allow-app are only supported by artifacts stage');
-  if (values.online && operation !== 'verify') throw new ConfigError(`--online is only supported by ${command} verify`);
   if (values.strict && operation !== 'list' && !(operation === 'inspect' && kind === 'artifact')) throw new ConfigError(`--strict is only supported by ${command} list${kind === 'artifact' ? ' and inspect' : ''}`);
   switch (operation) {
     case 'available': {
@@ -76,8 +75,8 @@ export async function runAddonCommand(command: 'extensions' | 'artifacts', opera
       return values.strict && report.problems.length ? 1 : undefined;
     }
     case 'verify': {
-      if (names.length > 1) throw new ConfigError(`Use urlcode ${command} verify [<name>] [--online] [--json] [--site directory]`);
-      const report = await verifyAddons(site, kind, names[0], { online: values.online === true });
+      if (names.length > 1) throw new ConfigError(`Use urlcode ${command} verify [<name>] [--json] [--site directory]`);
+      const report = await verifyAddons(site, kind, names[0]);
       print(values.json ? report : renderVerify(command, report));
       return report.problems.length ? 1 : undefined;
     }
@@ -116,18 +115,9 @@ export async function runAddonCommand(command: 'extensions' | 'artifacts', opera
 /** Text form of `verify`: package paths come from installed package listings, so they are JSON-quoted in drift lists. */
 function renderVerify(command: string, report: VerifyReport): string {
   const status = (item: VerifyReport['addons'][number]): string => ({ match: 'files match addon-files.lock.json', modified: 'MODIFIED since recorded', stale: 'STALE: package-lock.json moved it', unrecorded: 'NOT RECORDED', linked: 'linked directory, not hashed', missing: 'not installed' })[item.files.status];
-  const online = (item: VerifyReport['addons'][number]): string[] => {
-    if (!item.online) return [];
-    if ('skipped' in item.online) return [`    online: skipped, ${item.online.skipped}`];
-    if ('error' in item.online) return [`    online: failed, ${item.online.error}`];
-    const check = item.online;
-    return [`    online: downloaded ${check.url} (${check.bytes} bytes); sha512 ${check.integrity === 'match' ? 'matches package-lock.json' : 'DOES NOT MATCH package-lock.json'}`,
-      ...(check.installed ? [`    installed vs published: ${describeDrift(check.installed) || 'identical'}`] : []),
-      ...(check.recorded ? [`    recorded vs published: ${describeDrift(check.recorded) || 'identical'}`] : [])];
-  };
   return [
-    `${command === 'extensions' ? 'Extensions' : 'Artifacts'} in ${report.site}${report.online ? ' (--online: a network operation that downloaded each locked tarball)' : ' (offline: compared with addon-files.lock.json)'}:`,
-    ...(report.addons.length ? report.addons.flatMap(item => [`  ${item.name} ${item.version ?? '(no version)'} ${item.package}: ${status(item)}${item.files.drift ? ` (${describeDrift(item.files.drift)})` : ''}`, ...online(item)]) : ['  none']),
+    `${command === 'extensions' ? 'Extensions' : 'Artifacts'} in ${report.site} (offline: compared with addon-files.lock.json):`,
+    ...(report.addons.length ? report.addons.map(item => `  ${item.name} ${item.version ?? '(no version)'} ${item.package}: ${status(item)}${item.files.drift ? ` (${describeDrift(item.files.drift)})` : ''}`) : ['  none']),
     ...report.problems.map(problem => `Problem: ${problem}`),
   ].join('\n') + '\n';
 }

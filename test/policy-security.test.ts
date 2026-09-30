@@ -9,6 +9,7 @@ import { createRuntime } from '../packages/core/src/runtime.ts';
 import { buildCloudflare } from '../packages/core/src/build-cloudflare.ts';
 import { createFetchHandler } from '../packages/core/src/cloudflare.ts';
 import { profiles, compile, onResponse, describe, reservedHeaders } from '../packages/core/src/policies/security.ts';
+import { reservedResponseHeaders } from '../packages/core/src/reserved-headers.ts';
 import { project, redirect, request } from './helpers.ts';
 import type { TestContext } from 'node:test';
 import type { Server, ServerOptions } from '../packages/core/src/server.ts';
@@ -33,6 +34,10 @@ test('profile tables are frozen, ordered and consistent with each other', () => 
   assert.ok(!profileNames(profile('oshp')).includes('x-content-type-options'));
   assert.ok(!profileNames(profile('oshp')).includes('cache-control'));
   assert.ok(reservedHeaders.has('cache-control') && reservedHeaders.has('content-type'));
+  // #1041: the set is built from the route-level reserved set (reserved-headers.ts) instead of a copy of it; pin both.
+  assert.deepEqual([...reservedResponseHeaders], ['connection','keep-alive','transfer-encoding','content-length','upgrade','trailer','proxy-authenticate','proxy-authorization','te','location','allow','content-range','accept-ranges','etag','last-modified','content-encoding','x-request-id','x-content-type-options']);
+  assert.deepEqual([...reservedHeaders], [...reservedResponseHeaders, 'content-type','set-cookie','cache-control','vary','ratelimit','ratelimit-policy','retry-after','age']);
+  assert.ok(Object.isFrozen(reservedHeaders));
   // Every profile value passes the same header rules the wire enforces.
   for (const [key, value] of profile('oshp')) assert.doesNotMatch(key + value, /[\u0000-\u001f\u007f]/u);
 });

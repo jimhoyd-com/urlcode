@@ -129,7 +129,6 @@
     "doctor": "node packages/core/src/cli.ts doctor",
     "routes": "node packages/core/src/cli.ts routes --project starters/default/app",
     "audit:routes": "node packages/core/src/cli.ts audit --project starters/default/app",
-    "benchmark:project": "node packages/core/src/cli.ts benchmark --project starters/default/app",
     "measure:plumbing": "node scripts/docs/measure-plumbing.ts",
     "bench:store": "npm run build --workspace @jimhoyd/urlcode-audit && node --conditions=development --disable-warning=ExperimentalWarning packages/store/bench/store-throughput.ts",
     "docs:reference": "node scripts/generate-yaml-reference.ts",

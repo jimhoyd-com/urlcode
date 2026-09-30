@@ -105,8 +105,8 @@ The CLI and the embedding JS API accept `--workers`/`workers` (1–32),
 (response limit, 1–16 MiB), `--max-body-bytes`/`maxBodyBytes` (request limit, 1–16 MiB),
 `--max-in-flight`/`maxInFlightRequests` (1–1,024; default 64) and
 `--max-in-flight-health`/`maxInFlightHealthRequests` (1–1,024; default 16). Measure the effect with
-[load testing](LOAD-TESTING.md) rather than guessing; `shedResponses` names the
-limit that bound. These are
+[load testing](LOAD-TESTING.md) rather than guessing; a 503 or 504 count shows a
+limit binding. These are
 operator deployment controls on `urlcode serve`/`dev` and `startServer`, not
 supported YAML fields; without them the CLI and the API use the defaults in the
 table above. `urlcode --help` lists the flags under `capacity`.
@@ -435,8 +435,8 @@ TLS and logging configuration; no universal performance ratio applies.
    capacity for a replica loss. Verify the service recovers after load stops.
 6. Record the accepted load, error and latency budgets and repeat after changes.
 
-The built-in local benchmark is a quick correctness-aware signal, not the above
-production exercise. The readiness endpoint can stay 200 while all worker slots
+URLCode ships no load generator: run a general one, such as autocannon, against
+`urlcode serve` or the deployment ([load testing](LOAD-TESTING.md)). The readiness endpoint can stay 200 while all worker slots
 are busy. Use error/latency signals too. No universal safe RPS can be derived
 from the route count or these defaults alone. See [resilience](RESILIENCE.md).
 

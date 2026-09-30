@@ -1,6 +1,6 @@
 ---
 name: urlcode-operations
-description: Deploy, verify, monitor and operate a URLCode project — process/container deployment, release readiness, verifying a live deployment against the project, capacity/audit/benchmark, observability, DDoS/overload resilience, and operator binding grants. Use when the user asks to deploy, check readiness, verify a running deployment, size/benchmark a project, monitor it, plan for overload, or manage bindings. Reports operational limits and unimplemented capabilities as gaps instead of inventing mitigations.
+description: Deploy, verify, monitor and operate a URLCode project — process/container deployment, release readiness, verifying a live deployment against the project, capacity/audit/load testing, observability, DDoS/overload resilience, and operator binding grants. Use when the user asks to deploy, check readiness, verify a running deployment, size or load-test a project, monitor it, plan for overload, or manage bindings. Reports operational limits and unimplemented capabilities as gaps instead of inventing mitigations.
 ---
 
 # Operating a URLCode deployment
@@ -26,11 +26,13 @@ does not duplicate the repository's authored documentation tree.
 2. `docs/DEPLOYMENT-CHECKS.md` — `verify-deployment`: what it checks against a
    live target and what it deliberately does not.
 3. `docs/READINESS.md` and the production-readiness section of
-   `docs/RELEASE-OPERATIONS.md` — local coverage (`routes`, `audit`,
-   `benchmark`) and the production gates a release does not close.
+   `docs/RELEASE-OPERATIONS.md` — local coverage (`routes`, `audit`)
+   and the production gates a release does not close.
 4. `docs/CAPACITY.md` — the enforced limits table: routes, connections,
    in-flight requests, sandbox concurrency, deadlines. Four different
-   quantities; never conflate them when reasoning about sizing.
+   quantities; never conflate them when reasoning about sizing. `docs/LOAD-TESTING.md`
+   — URLCode ships no load generator; measure `urlcode serve` or the
+   deployment with a general load tester such as autocannon.
 5. `docs/RESILIENCE.md` — the operator/runtime responsibility split for
    overload and DDoS; what layer each defense belongs to.
 6. `docs/MONITORING.md` and `docs/OBSERVABILITY.md` — health/ready probes,
@@ -66,7 +68,7 @@ project-aware `urlcode mcp` server. Its machine-readable entry point is
   project YAML; extensions' same-origin checks admit those origins
   (`docs/OPERATIONS.md`, process deployment). Better Auth's base URL is the
   canonical `--origin`.
-- Distinguish local checks (`validate`, `test`, `audit`, `benchmark` — all
+- Distinguish local checks (`validate`, `test`, `audit` — all
   activate a local snapshot only) from `verify-deployment` (probes a live
   target over HTTP, read-only, no credential, no redirect following). Do not
   claim a local check proves anything about a running deployment.
@@ -77,7 +79,6 @@ project-aware `urlcode mcp` server. Its machine-readable entry point is
 urlcode validate --local --project ./my-links/app
 urlcode routes --project ./my-links/app
 urlcode audit --project ./my-links/app --expect-routes <actual intended count>
-urlcode benchmark --project ./my-links/app --requests 1000 --concurrency 2 --max-p95-ms 50
 urlcode verify-deployment --project ./my-links/app --target https://links.example \
   --expect-routes <actual intended count> --compliance baseline --fail-on medium
 ```

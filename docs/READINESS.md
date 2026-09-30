@@ -1,20 +1,20 @@
 # Test every route, then measure it
 
-The runtime includes a local coverage gate and an assertion-aware project benchmark.
-These validate a local snapshot, not the reachability of external redirect
-services or the correctness of an entire production deployment.
+The runtime includes a local route inventory and coverage gate. These validate
+a local snapshot, not the reachability of external redirect services or the
+correctness of an entire production deployment. Measure throughput and latency
+with a general load tester ([load testing](LOAD-TESTING.md)).
 
 ```sh
 urlcode routes --project ../my-links/app
 urlcode audit --project ../my-links/app --expect-routes 2
-urlcode benchmark --project ../my-links/app --requests 1000 --concurrency 2 --max-p95-ms 50
 ```
 
-All three activate/validate the project with the same runtime that serves it --
+Both activate/validate the project with the same runtime that serves it --
 each route in its own declared trust mode, trusted in-process unless it declares
 `sandbox: true` -- and use local environment loading like `test`. Pass an
 external `--policy` for explicitly authorized bindings. No destination redirects are followed, credentials are not
-printed, and no remote load-test target is accepted.
+printed.
 
 ## Inventory and count reconciliation
 
@@ -361,9 +361,7 @@ or `failed`, and gets the next case number after the generated cases (a restart 
 not a case). A step covers a route and method exactly as a single fixture does: it
 passes, asserts a body or header, and the route is the one its filled-in path
 matched. A step with no assertion appears in `unassertedCases`. A skipped step
-counts as failed, so `failed-checks` makes the audit not ready. The benchmark
-replays only single-request GET/HEAD fixtures, never `steps`, because a step may
-depend on earlier state.
+counts as failed, so `failed-checks` makes the audit not ready.
 
 **Deployment checks.** `verify-deployment` sends the fixtures to a live deployment,
 which it cannot close and restart, so it never restarts one. A fixture containing a
@@ -432,7 +430,7 @@ user's record.
 
 ## Test data and seeds
 
-`urlcode test`, `audit` and `benchmark` (and the MCP server's `run_tests`)
+`urlcode test` and `audit` (and the MCP server's `run_tests`)
 never use the site's live data. With `--host-file`, each run composes the
 operator host on a fresh, empty temporary directory and removes it when the run
 ends: every first-party extension keeps its database there (whatever
@@ -457,7 +455,7 @@ mistakes and version skew, not a host file written to evade it.
 The run's temporary directories are named
 `urlcode-hermetic-<pid>-XXXXXX` and `urlcode-data-<pid>-XXXXXX` under the OS
 temporary directory (#977). They are removed when the run ends, when `test`,
-`audit`, `benchmark`, `validate` or `routes` is stopped by SIGINT or SIGTERM
+`audit`, `validate` or `routes` is stopped by SIGINT or SIGTERM
 (exit 130 or 143), and when an unhandled rejection ends the process. The MCP
 server's runners send SIGTERM and wait 5 seconds before SIGKILL. A process
 killed outright cannot clean up, so the next run removes a directory another
@@ -513,26 +511,6 @@ third-party extension accepts a seed by declaring a `seedSchema` on the
 registration it builds for a hermetic host
 ([extension contract](EXTENSIONS.md#hermetic-runs-and-test-seeds)). The
 project's own `URLCODE_DATA_DIR` ([restart](#multi-step-fixtures)) is a separate directory.
-
-## Benchmark your actual project
-
-The benchmark cycles generated checks and explicit successful GET/HEAD fixtures.
-POST/PUT/PATCH/DELETE/OPTIONS and expected error cases are excluded. Function
-GET/HEAD handlers still execute: use synthetic test data and reviewed bindings.
-The workload is case-weighted, not a simulation of real user traffic. A short run
-may not reach every case; compare `exercisedWorkloadCases` with `workloadCases`.
-
-Output includes requested/completed count, assertion failures, status histogram,
-startup time, throughput, p50/p95/p99 response time, process RSS, Node and OS.
-Any wrong status/header/body, incomplete run or exceeded `--max-p95-ms` budget
-exits nonzero. Warmup is zero and is reported explicitly. Client/server share one
-process; RSS and latency are local measurements, not server-only production SLAs.
-
-Defaults: 1,000 requests, concurrency 2, 30-second scheduling budget. Bounds:
-1–100,000 requests, 1–32 concurrent requests, `--seconds` 1–300. In-flight requests
-may finish after the scheduling budget, bounded by their timeout. Higher function
-concurrency can legitimately cause 503 because the default pool has two workers.
-Choose a latency budget from repeatable measurements on your intended host.
 
 ## What a release should prove
 
