@@ -53,6 +53,21 @@
   on `auth.sqlite.server-lock`, and a second serving process is refused
   before it opens the database. The lock detects a misconfiguration, not an
   adversary who can write the files.
+- **An owner database is the owner's.** When host.mjs passes Better Auth its
+  own database (`auth({database: <adapter or pool>})`), the SQLite file's
+  guarantees do not apply: no one-server lock, no WAL, file-permission or
+  network-filesystem check, no table check before serving and no migrations.
+  Its schema and migration state, backups, access control, and whether several
+  servers may write it are the owner's, and activation logs one warning
+  saying so. The `urlcode-auth` commands refuse. The mount's own guarantees
+  still hold: the path allowlist, the body and header bounds, `503
+  auth_unavailable` on a storage failure and the confirmed sign-out (both read
+  the session back through Better Auth's API, whatever the adapter).
+- **Hermetic runs never reach live accounts.** With an owner database, a
+  hermetic run serves only the operator's `testDatabase`, and is refused
+  without one, or when it returns the live database object. It never falls back
+  to `database`. The factory is trusted operator code: one that returns
+  another handle on the live data cannot be detected, so keep it isolated.
 - **Route code never sees the cookie.** The route's own code never receives
   the session cookie or `Authorization` (core strips them), only the user id,
   which core stamps as the request principal. A client-supplied
