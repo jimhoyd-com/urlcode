@@ -18,10 +18,13 @@ npm run dev
 npm test
 ```
 
-`npm test` has no cases until you add `app/tests/requests.json`. `npm run
-audit` intentionally reports `no-active-routes` until you add the first route.
-The included GitHub workflow permits only that initial audit result; remove
-`allow-empty-project: true` after adding a route.
+`npm test` has no cases until you add `app/tests/requests.json`. While the
+site has no active route, `npm run audit` intentionally reports
+`no-active-routes`, and the included GitHub workflow's `allow-empty-project:
+true` permits only that result. An extension's mount counts as a route:
+`urlcode extensions add` removes that line (and `extensions remove` puts it
+back) when the site gains its first route or loses its last. When you add the
+first route yourself, remove it by hand.
 
 Add, remove and upgrade extensions and artifacts released with this runtime
 from the site directory:

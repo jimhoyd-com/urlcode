@@ -24,7 +24,7 @@ export const releaseUrlBase = (version: string): string => `https://github.com/j
 export async function releasePack(out: string): Promise<{ version: string; files: string[] }> {
   const version = await check();
   await rm(out, { recursive: true, force: true });
-  const packed = await packAddons(out, { urlBase: releaseUrlBase(version), pinCore: true });
+  const packed = await packAddons(out, { urlBase: releaseUrlBase(version) });
   const pinned = JSON.parse(await readFile(packed.manifest, 'utf8')) as { addons: Record<string, { integrity: string | null; url: string }> };
   for (const [name, pin] of Object.entries(pinned.addons)) assert(pin.integrity && pin.url.startsWith('https://'), `${name} is not pinned to a release URL`);
   const shipped = JSON.parse(execFileSync('tar', ['-xOzf', packed.core, 'package/dist/addons.json'], { encoding: 'utf8' })) as unknown;

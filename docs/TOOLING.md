@@ -362,6 +362,14 @@ installed inert artifact status, a deliberately small route/config outline where
 recipe defines one, application-code boundaries, explicit gaps, and the next
 bounded calls. It never returns generated application code.
 
+Planning can come before `urlcode init` (#1000): run from a directory that is
+not a project, with no `--project` and no `--host-file`, it plans from this
+core's recipe and extension catalogs alone. `project` is then `null`, and
+`withoutProject` says what was not read and names the `urlcode init
+<directory> --with ...` that installs the extensions the goal needs; plan again
+inside the site for the project-specific parts. A `--project` that names no
+project is still an error.
+
 Recipes are ranked declarative first: one that runs no project code (no
 `function` or `middleware`) comes before one that does, then more matched goal
 terms win. Each listed recipe carries the goal terms it `matched` (its planner

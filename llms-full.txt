@@ -6394,6 +6394,10 @@ from a newer checkout while the new site pins the registry release of the same
 core version. Point the site's `@jimhoyd/urlcode` dependency at the core tarball
 packed beside those add-ons, or unset `URLCODE_ADDONS`, then run
 `urlcode init <directory>` and `urlcode extensions add <names>` separately.
+When the catalog pins local add-on tarballs and `jimhoyd-urlcode-<version>.tgz`
+lies beside them (as `scripts/pack-addons.ts` writes it), `extensions add` and
+`init --with` point a site that names core by its bare version at that tarball
+themselves, and say so (#1002).
 
 `urlcode upgrade` moves core and every installed add-on to one version
 together: the latest stable release (npm's `latest` dist-tag, which only a
