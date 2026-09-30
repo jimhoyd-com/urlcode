@@ -141,6 +141,9 @@ test('review reports in-process global mutable state as a gap and names the rest
   assert.equal(found!.category,'gap');
   assert.match(found!.note,/restart/);
   assert.match(found!.note,/multiple instances/);
+  // #1052 S6: the store is named as one owner, and the native path (an npm database library in a trusted function) as another.
+  assert.match(found!.note,/store extension/);
+  assert.match(found!.note,/trusted \(non-sandbox\) function .* ordinary npm database library/);
   assert.doesNotMatch(found!.note.toLowerCase(),/core (currently )?supports? durable counters/);
 });
 
@@ -152,6 +155,7 @@ test('review reports global mutable state as extension-alternative once store is
   assert.equal(found!.category,'extension-alternative');
   assert.equal(found!.extension,'store');
   assert.match(found!.note,/registered/);
+  assert.match(found!.note,/ordinary npm database library/);
 });
 
 test('review flags a direct outbound network call for manual review, not as core support for webhook idempotency',async t=>{

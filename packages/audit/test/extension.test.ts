@@ -48,7 +48,7 @@ test('the definition shares the runtime schema, needs nothing and scaffolds conf
   assert.equal(definition.schema, auditConfigSchema);
   assert.deepEqual(definition.requires ?? [], []);
   assert.equal(definition.example, undefined);
-  const scaffolded = await definition.scaffold!({ site: '/tmp/site', project: '/tmp/site/app', installed: ['audit'], acknowledgements: [] });
+  const scaffolded = await definition.scaffold!({ site: '/tmp/site', project: '/tmp/site/app', installed: ['audit'], principalProviders: [], acknowledgements: [] });
   assert.deepEqual(scaffolded.config, { retention: 100000 });
   assert.deepEqual(scaffolded.routes, {});
   assert.equal(scaffolded.files, undefined, 'the database is created on open');

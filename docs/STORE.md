@@ -79,20 +79,25 @@ npx urlcode serve --host-file host.mjs --policy /etc/urlcode/policy.json --origi
 curl -X POST -H 'Content-Type: application/json' -d '{"title":"first"}' https://todo.example.com/api/todos
 ```
 
-With `auth` installed (`--with auth,store --example` in any order, or `urlcode
-extensions add auth` before `store --example`) the example adds `auth: true` to
-the API mount, so only signed-in callers reach it, and
+With a sign-in provider installed (the bundled `auth`: `--with auth,store
+--example` in any order, or `urlcode extensions add auth` before `store
+--example`; or any installed extension whose descriptor declares
+`providesPrincipal`) the example adds `auth: true` to the API mount, so only
+signed-in callers reach it, and
 declares the `todos` collection `ownership: owner`, so each signed-in user sees
 and changes only their own todos ([per-record ownership](#per-record-ownership));
-no acknowledgement is needed. `auth: true` admits the API's JSON writes with the
+no acknowledgement is needed. With several providers installed, `auth: true`
+would be ambiguous, so the mount names the first by
+`policies.extensions.<name>` instead. The provider decides how writes are
+admitted: the bundled `auth` admits the API's JSON writes with the
 session cookie and same-origin provenance, and refuses a cross-origin write with
 `403`. When `audit` is installed too, the example collection also declares
-`audit: true` ([audited writes](#audited-writes)). Without `auth` the example
-collection stays shared, because there is no principal to own a record.
+`audit: true` ([audited writes](#audited-writes)). Without a sign-in provider the
+example collection stays shared, because there is no principal to own a record.
 
-Without `auth` the mount would be a public writable endpoint, so adding `store`
-refuses, rolls back, and names the two ways forward: add
-`auth` first, or re-run the exact command it prints, which ends in `--ack
+Without a sign-in provider the mount would be a public writable endpoint, so
+adding `store` refuses, rolls back, and names the two ways forward: add one
+first (the bundled `auth`), or re-run the exact command it prints, which ends in `--ack
 store:public-write`, when public writes are really intended. Core's generic
 `--ack <extension>:<id>` flag (see [extensions](EXTENSIONS.md)) is visible in
 command history and rejected when no scaffold consumes it; the command's

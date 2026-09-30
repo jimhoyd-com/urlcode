@@ -556,6 +556,12 @@ export interface ScaffoldRequest {
   /** Every extension installed in the site after this add, including this one, sorted. */
   installed:readonly string[];
   /**
+   * The installed extensions, a subset of `installed` and sorted, whose descriptors declare `providesPrincipal`: the
+   * sign-in providers a scaffold can protect a mount with (`auth: true`). Check this rather than a package name, so
+   * an independent principal provider serves a scaffold as well as the bundled `auth` does.
+   */
+  principalProviders:readonly string[];
+  /**
    * Operator acknowledgements from repeated `--ack <extension>:<id>` flags, sorted and de-duplicated; empty when none. Core treats
    * them as opaque strings and never invents one. An extension reads only the ones qualified with its own name. To require one, throw
    * an Error carrying `acknowledgement: '<name>:<id>'` whose message states the risk; core appends the exact re-run command with

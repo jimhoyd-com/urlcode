@@ -473,7 +473,7 @@ async function boot(t: test.TestContext) {
   t.after(() => rm(site, { recursive: true, force: true }));
   const project = join(site, 'app');
   await mkdir(project);
-  const scaffolded = await ${camel}.definition.scaffold!({ site, project, installed: ['${name}'], acknowledgements: [] });
+  const scaffolded = await ${camel}.definition.scaffold!({ site, project, installed: ['${name}'], principalProviders: [], acknowledgements: [] });
   await writeFile(join(project, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { '${name}': { version: '1', config: scaffolded.config } }, routes: scaffolded.routes }));
   const previous = process.env.PROJECT_SHA256;
   process.env.PROJECT_SHA256 = await inspectExtensionRevision(project);
@@ -487,7 +487,7 @@ async function boot(t: test.TestContext) {
 test('the definition shares the runtime schema and scaffolds a route for its own mount', async () => {
   assert.equal(${camel}.definition.name, '${name}');
   assert.equal(${camel}.definition.schema, ${camel}ConfigSchema);
-  const scaffolded = await ${camel}.definition.scaffold!({ site: '/tmp/site', project: '/tmp/site/app', installed: ['${name}'], acknowledgements: [] });
+  const scaffolded = await ${camel}.definition.scaffold!({ site: '/tmp/site', project: '/tmp/site/app', installed: ['${name}'], principalProviders: [], acknowledgements: [] });
   assert.deepEqual(Object.keys(scaffolded.routes), ['/${name}/*']);
 });
 
