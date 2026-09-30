@@ -226,7 +226,7 @@ export async function mergeRecipe(name: string,project: string,{dryRun=false}: {
           else clashes.push(`extensions.${extension}.config.${section} in ${label(file)} differs`);
         }
       }else if(raw[key]===undefined){insert(base,key,value);merged.added.push(key);}
-      else if(same(raw[key],value))merged.unchanged.push(key);
+      else if(same(raw[key],value)){if(key!=='version')merged.unchanged.push(key);}
       else clashes.push(`extensions.${extension}.${key} in ${label(file)} differs`);
     }
     // urlcode.yaml is the only file this command edits in place.

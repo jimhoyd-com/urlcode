@@ -1,4 +1,4 @@
-import {buildContext,estimateTokens} from './context.ts';
+import {buildContext,estimateTokens,shellWord} from './context.ts';
 import {getCapabilities,normalizeCapabilityTarget} from './capabilities.ts';
 import type {CapabilityName,CapabilityTarget} from './capabilities.ts';
 import {listRecipes,runsProjectCode} from './recipes.ts';
@@ -16,14 +16,20 @@ export const featurePlanMaxGoalLength=512;
  * `extensions`: registrations from a loaded operator host file (an empty array when it registers none); leave it undefined when no host file is loaded, and `next` omits `get_extensions`.
  * `origin`: the canonical origin the operator supplied (`--origin`), compiled into the project exactly as `context` does; never guessed.
  */
-export interface FeaturePlanOptions { target?:string; extensions?:readonly RuntimeExtension[]|undefined; origin?:string|undefined; }
+export interface FeaturePlanOptions { target?:string; extensions?:readonly RuntimeExtension[]|undefined; origin?:string|undefined; /** How `commands` names the project (`--project`); default the path given. */ projectFlag?:string|undefined; }
 export interface FeaturePlan {
  format:1; goalTerms:string[]; target:CapabilityTarget;
  /** Null when there is no project yet (#1000): the plan then comes from this core's catalogs alone, and `withoutProject` says what was skipped. */
  project:{routes:number;extensions:string[]}|null; withoutProject?:string;
  applicable:{capabilities:{name:CapabilityName;support:string;reason:string}[];recipes:{name:string;description:string;matched:string[]}[]};
  extensions:{required:{name:string;reason:string;declared:boolean;registered:boolean;target:string;artifact:'none'|'installed'|'unpinned'|'modified'|'invalid'}[];surfaces:PlannedSurface[];ordering:{status:'operator-resolved';names:string[];note:string}};
- outline:{kind:string;note:string}[]; applicationCode:{requirement:string;reason:string}[]; unsupported:{requirement:string;reason:string}[]; next:string[]; estimatedTokens:number;
+ outline:{kind:string;note:string}[]; applicationCode:{requirement:string;reason:string}[]; unsupported:{requirement:string;reason:string}[]; next:string[];
+ /**
+  * Shell commands for the next step when a recipe applies (#1014): `urlcode extensions add` for the extensions it needs
+  * that the project does not declare (run in the site directory), then `urlcode recipes add <recipe> --project <dir>`,
+  * which merges the first applicable recipe into this project. Empty when no recipe applies.
+  */
+ commands:string[]; estimatedTokens:number;
 }
 
 /**
@@ -167,6 +173,14 @@ function selectedRecipes(goalTerms:string[], recipes:Recipe[], surfaceTerms:Read
   .sort((a,b)=>Number(a.code)-Number(b.code)||b.own-a.own||a.services-b.services||b.matched-a.matched||a.index-b.index).map(item=>item.recipe).slice(0,4);
 }
 
+/** Adopting the first applicable recipe: the extensions it names that the project lacks, then merging it in (#1014). */
+function recipeCommands(recipe:Recipe|undefined,declared:ReadonlySet<string|undefined>,project:string|undefined):string[] {
+ if(!recipe)return [];
+ const needed=[...new Set(recipeExtensions(recipe))].sort(),missing=needed.filter(name=>!declared.has(name));
+ // Before a site exists (#1000), init creates it with the extensions the recipe needs, and app/ is its project.
+ if(project===undefined)return [`urlcode init <directory>${needed.length?` --with ${needed.join(',')}`:''}`,`urlcode recipes add ${recipe.name} --project <directory>/app`];
+ return [...(missing.length?[`urlcode extensions add ${missing.join(' ')}`]:[]),`urlcode recipes add ${recipe.name} --project ${shellWord(project)}`];
+}
 /**
  * Plans only from the current compiled project, package-owned catalogs, locked
  * inert artifacts, installed add-on descriptors, and registrations passed by the
@@ -235,6 +249,7 @@ export async function planFeature(project:string|undefined,goal:string,options:F
   outline:[...(listQuery?[listQueryOutline]:[]),...surfaces.map(surface=>({kind:`${surface.extension} ${surface.surface}`,note:`${surface.description}${surface.path?` (${surface.path})`:''}`})),...recipes.map(recipe=>outline[recipe.name]??{kind:runsProjectCode(recipe)?`${recipe.name} (runs project code)`:`${recipe.name} (declarative)`,note:recipe.description})],applicationCode,unsupported,
   // get_extensions exists only when an operator host file was loaded (extensions passed, even empty).
   next:['get_context','search_recipes','get_capability',...(options.extensions===undefined?[]:['get_extensions']),'get_extension_artifacts'],
+  commands:recipeCommands(recipes[0],declared,options.projectFlag??project),
  };
  const estimatedTokens=estimateTokens(JSON.stringify(plan)); const result={...plan,estimatedTokens};
  if(Buffer.byteLength(JSON.stringify(result))>featurePlanMaxBytes)throw new Error('Feature plan exceeds output limit');

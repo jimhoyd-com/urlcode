@@ -55,10 +55,11 @@ caller only where the story needs it.
 The auth extension serves exactly one mount, so the recipe carries it:
 `routes/auth.yaml`, included from `urlcode.yaml`, is the file
 `urlcode extensions add auth` writes. In a site created with
-`urlcode init <site>` and `urlcode extensions add auth store`, copy
-`urlcode.yaml`, `tests/requests.json` and `tests/seed.json` into `app/`
-unchanged (the site already has `routes/auth.yaml`) and set
-`expectRoutes` in `app/tests/audit.json` to 2. The site's own `host.mjs` is
+`urlcode init <site>` and `urlcode extensions add auth store`, run
+`urlcode recipes add store-booking --project app` in the site: it merges the
+collections, the route, the fixtures and the seed into `app/` (the site's
+`routes/auth.yaml` is the same file) and moves `expectRoutes` in
+`app/tests/audit.json` to 2. The site's own `host.mjs` is
 the host:
 
 ```js

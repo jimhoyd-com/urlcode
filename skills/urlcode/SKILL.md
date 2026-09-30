@@ -65,8 +65,9 @@ field inventory in `llms-full.txt`; search only for the key you need.
    an installed extension, prefer declarative config and UI copy/theme/template/
    CSS overrides, then a hook listed in `get_extensions`. Extension hook
    contract v1 runs trusted in-process and rejects `sandbox: true`. If a
-   recipe from `recipes list` is close, `urlcode recipes add NAME --out DIR`
-   and adapt the copy into the project's layout.
+   recipe from `recipes list` is close, `urlcode recipes add NAME --project app`
+   merges it into the site's project (every clash is refused and named, nothing
+   written); `--out DIR` instead copies it into a new standalone project.
 3. Only then write a function or middleware: one exported handler, validated `args`,
    and a `Response`. They run trusted and unsandboxed by default with Node, npm,
    filesystem and `fetch` access. Use `sandbox: true` only when that route's own

@@ -4,6 +4,7 @@ import {join} from 'node:path';
 import assert from 'node:assert/strict';
 import {artifactSite,project,redirect} from './helpers.ts';
 import {planFeature,featurePlanMaxBytes,featurePlanMaxGoalLength} from '../packages/core/src/feature-plan.ts';
+import {shellWord} from '../packages/core/src/context.ts';
 import type {RuntimeExtension} from '../packages/core/src/extensions.ts';
 import {isAuthoringGoals} from '../packages/core/src/addon-manifest.ts';
 
@@ -156,6 +157,11 @@ test('feature planning does not require an extension for one incidental word, an
  assert.ok(booking.extensions.required.some(item=>item.name==='store'));
  assert.ok(booking.extensions.surfaces.some(item=>item.extension==='store'&&item.surface==='intervals'));
  assert.match(booking.outline.find(item=>item.kind==='declarative booking')!.note,/interval_conflict/);
+ // #1014: the next step adds the extensions the project lacks, then merges the recipe into this project.
+ assert.deepEqual(booking.commands,['urlcode extensions add auth store',`urlcode recipes add store-booking --project ${shellWord(root)}`]);
+ assert.deepEqual((await planFeature(root,'Let users book a room',{projectFlag:'app'})).commands.at(-1),'urlcode recipes add store-booking --project app');
+ assert.deepEqual((await planFeature(undefined,'Let users book a room')).commands,['urlcode init <directory> --with auth,store','urlcode recipes add store-booking --project <directory>/app']);
+ assert.deepEqual((await planFeature(root,'update the homepage copy')).commands,[]);
  // The credits plan names the issuer pattern: a negative min with members.
  const credits=await planFeature(root,'Users hold credits in wallets and pay each other');
  assert.equal(credits.applicable.recipes[0]?.name,'store-credits');

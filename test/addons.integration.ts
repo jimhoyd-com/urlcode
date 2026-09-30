@@ -216,6 +216,27 @@ test('the packed core carries its add-on pins, so init --with from it installs t
   assert.match(dependencies['@jimhoyd/urlcode-auth'] ?? '', /^file:.*\.tgz$/, 'the add-on is the pinned tarball, not a source directory');
 });
 
+// #1014: a recipe is adopted into a real site with one command, not by copying its files into app/ by hand. The site's
+// routes/auth.yaml (written by `extensions add auth`) is the recipe's own, and its tests/audit.json count moves.
+test('recipes add --project merges each store recipe into an init + extensions add auth store site that validates, tests and audits ready', { timeout: 900000 }, async t => {
+  const { root, dir } = await site(t);
+  const added = await urlcode(t, dir, ['extensions', 'add', 'auth', 'store']);
+  assert.equal(added.status, 0, added.stderr);
+  for (const name of ['store-booking', 'store-credits', 'store-approval']) {
+    const copy = join(root, name);
+    await cp(dir, copy, { recursive: true, verbatimSymlinks: true });
+    const merged = await urlcode(t, copy, ['recipes', 'add', name, '--project', 'app']);
+    assert.equal(merged.status, 0, merged.stderr);
+    const report = JSON.parse(merged.stdout) as { includes: { added: string[]; unchanged: string[] }; expectRoutes: { to: number } };
+    assert.deepEqual(report.includes, { added: [], unchanged: ['routes/auth.yaml'] });
+    for (const command of [['validate', '--local'], ['test'], ['audit']]) {
+      const result = await urlcode(t, copy, [...command, '--project', 'app', '--host-file', 'host.mjs', '--local-review']);
+      assert.equal(result.status, 0, `${name} ${command.join(' ')}: ${result.stdout}${result.stderr}`);
+      if (command[0] === 'audit') { assert.match(result.stdout, /"ready":true/); assert.match(result.stdout, new RegExp(`"expectedRoutes":${report.expectRoutes.to},"expectedRoutesFrom":"tests/audit.json","countMatches":true`)); }
+    }
+  }
+});
+
 test('artifacts install inert, and a tarball that does not match its pin rolls back', { timeout: 600000 }, async t => {
   const { dir } = await site(t);
   const artifacts = (await addons()).filter(addon => addon.kind === 'artifact').map(addon => addon.name);

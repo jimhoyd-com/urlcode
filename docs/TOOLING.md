@@ -353,7 +353,13 @@ operator-owned extension prerequisites and their registration/target status,
 the extension authoring surfaces the goal names,
 installed inert artifact status, a deliberately small route/config outline where a
 recipe defines one, application-code boundaries, explicit gaps, and the next
-bounded calls. It never returns generated application code.
+bounded calls. When a recipe applies, `commands` is the next step as shell
+commands: `urlcode extensions add` for the extensions the recipe needs that the
+project does not declare, then `urlcode recipes add NAME --project DIR`, which
+merges the first applicable recipe into the project
+([adding a recipe to an existing project][docs/RECIPES.md#adding-a-recipe-to-an-existing-project]);
+before a site exists they are `urlcode init <directory> --with ...` and the merge
+into `<directory>/app`. It never returns generated application code.
 
 Planning can come before `urlcode init` (#1000): run from a directory that is
 not a project, with no `--project` and no `--host-file`, it plans from this
@@ -1365,6 +1371,8 @@ What it can do, all inside the selected project root (resolved with realpath):
 - `add_recipe {name, destination, dryRun?}` runs `recipes add` into a new
   directory under the project. The parent must exist; an existing destination
   is refused, never merged. `dryRun` reports the destination and writes nothing.
+  To merge a recipe into the project itself, run
+  `urlcode recipes add NAME --project DIR` from the CLI.
 - `scaffold_feature {dryRun?}` runs `urlcode scaffold`: placeholder modules,
   pages and directories for references the YAML makes and the disk lacks.
   Existing files are preserved, never overwritten.
@@ -1482,5 +1490,6 @@ and [MCP tools](https://modelcontextprotocol.io/specification/2025-11-25/server/
 [docs/EXTENSIONS.md#inspecting-artifact-documents]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#inspecting-artifact-documents
 [docs/EXTENSIONS.md#staging-source-assets]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#staging-source-assets
 [docs/RECIPES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RECIPES.md
+[docs/RECIPES.md#adding-a-recipe-to-an-existing-project]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RECIPES.md#adding-a-recipe-to-an-existing-project
 [docs/EXTENSIONS.md#the-local-review-loop]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-local-review-loop
 <!-- urlcode-current-version:end -->
