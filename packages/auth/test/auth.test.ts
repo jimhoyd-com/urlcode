@@ -147,6 +147,27 @@ test('a server that lost the auth database\'s host lease answers 503 until it ho
   assert.deepEqual(await (await call('/me')).json(), { identity: { userId }, cookie: null });
 });
 
+test('a Better Auth write after another host took over is refused under its own lock, not only at the request check (#1010)', async t => {
+  const at = await project(t), userId = await withUser(at);
+  // This server's monotonic clock never moves: its per-request check keeps trusting its last heartbeat, as it would
+  // after a stall between that check and Better Auth's statements (SIGSTOP, a paused VM, a blocked event loop).
+  const { call } = await serve(at, { probe: { hostname: () => 'web-1', bootId: async () => 'boot-1', monotonic: () => 0 } });
+  const signIn = () => call('/api/auth/sign-in/email', { method: 'POST', body: { email: 'ann@example.test', password: 'ann-local-password' } });
+  assert.equal((await signIn()).status, 200);
+  const db = new DatabaseSync(at.database, { timeout: 5000 }); at.defer(() => { if (db.isOpen) db.close(); });
+  const sessions = () => (db.prepare('SELECT count(*) AS n FROM session').get() as { n: number }).n;
+  const before = sessions();
+  // Another host took the lease over meanwhile.
+  db.exec("DELETE FROM auth_servers; INSERT INTO auth_servers(instance, host, boot, pid, heartbeat_at, expires_at) VALUES ('other', 'web-9', 'boot-9', 1, 1, 1)");
+  const refused = await signIn();
+  assert.equal(refused.status, 503);
+  assert.deepEqual(await refused.json(), { error: 'auth_unavailable' });
+  assert.equal(refused.headers.getSetCookie().length, 0, 'no session cookie');
+  assert.equal(sessions(), before, 'Better Auth wrote no session');
+  assert.deepEqual(db.prepare('SELECT host FROM auth_servers').all().map(row => row.host), ['web-9']);
+  assert.equal((db.prepare('SELECT count(*) AS n FROM session WHERE userId = ?').get(userId) as { n: number }).n, before);
+});
+
 test('an activation that fails after joining the host lease releases it (#979)', async t => {
   const at = await project(t);
   const registration = createAuthExtension({ projectSha256: at.projectSha256, database: at.database, secret, hermetic: true });

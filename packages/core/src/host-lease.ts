@@ -70,9 +70,8 @@ export async function refuseNetworkFilesystem(directory: string, what: string, p
 /**
  * The lease's timing. A serving process renews its row every `heartbeatMs`. A row an observer watched stay unchanged for
  * `ttlMs` on the observer's own monotonic clock is dead, and the observer deletes it. A joiner watches another host's row
- * every `pollMs`. A holder writes only while its last committed heartbeat began less than `writeMs` ago, or after
- * reading its row under the write's own lock: a peer needs `ttlMs` of silence to take over, so no write of the old
- * holder can follow the take-over.
+ * every `pollMs`. A holder writes only after reading the lease rows under the write's own lock (`verify`), so no clock
+ * decides whether a write may happen. `writeMs` only bounds how long `renew` trusts the last committed heartbeat.
  */
 export const SERVER_LEASE = { heartbeatMs: 5_000, ttlMs: 20_000, pollMs: 1_000, writeMs: 10_000 } as const;
 /**
@@ -86,14 +85,16 @@ export interface HostLease {
   /** Whether this process held the lease at its last heartbeat. */
   readonly held: boolean;
   /**
-   * Throws unless this process may write now. Call it inside the write's own transaction, after `BEGIN IMMEDIATE`: when
-   * the last heartbeat is older than `SERVER_LEASE.writeMs`, it reads the lease table under that write lock instead.
+   * Throws unless this process may write now. Call it inside the write's own transaction, after `BEGIN IMMEDIATE` (or
+   * from a trigger of a write statement): it reads the lease table under that write lock every time, and passes only
+   * while this process's row is there and no other host's is. No clock is trusted, so a holder whose clock stopped (a
+   * suspended VM) is refused once another host took over (#1010).
    */
   verify(): void;
   /**
-   * For writes the extension cannot wrap in a transaction of its own (Better Auth's): whether this process may serve
-   * now, running a heartbeat first (at most once a second) when the lease is lost or its last renewal is older than
-   * `SERVER_LEASE.writeMs`.
+   * A cheap per-request gate, not a write check: whether this process may serve now, running a heartbeat first (at
+   * most once a second) when the lease is lost or its last renewal is older than `SERVER_LEASE.writeMs`. Writes still
+   * need `verify`.
    */
   renew(): boolean;
   close(): void;
@@ -125,6 +126,13 @@ export interface HostLeaseOptions {
 
 function statements(db: HostLeaseStatements | HostLeaseConnection): HostLeaseStatements {
   if ('transaction' in db) return db;
+  // Prepared once each: `verify` reads the table on every write (#1010).
+  const cache = new Map<string, ReturnType<HostLeaseConnection['prepare']>>();
+  const prepared = (sql: string): ReturnType<HostLeaseConnection['prepare']> => {
+    let statement = cache.get(sql);
+    if (!statement) { statement = db.prepare(sql); cache.set(sql, statement); }
+    return statement;
+  };
   return {
     transaction(work) {
       // BEGIN outside the try: when it fails (the connection already has a transaction open, or the lock stayed busy)
@@ -133,8 +141,8 @@ function statements(db: HostLeaseStatements | HostLeaseConnection): HostLeaseSta
       try { const result = work(); db.exec('COMMIT'); return result; }
       catch (error) { try { db.exec('ROLLBACK'); } catch { /* The original error wins. */ } throw error; }
     },
-    run: (sql, ...values) => db.prepare(sql).run(...values),
-    all: <T>(sql: string, ...values: LeaseValue[]) => db.prepare(sql).all(...values) as T[],
+    run: (sql, ...values) => prepared(sql).run(...values),
+    all: <T>(sql: string, ...values: LeaseValue[]) => prepared(sql).all(...values) as T[],
   };
 }
 
@@ -249,8 +257,8 @@ export async function joinHostLease(db: HostLeaseStatements | HostLeaseConnectio
     get held() { return held && !closed; },
     verify() {
       if (closed || !held) throw refusal();
-      if (fresh()) return;
-      // Under the caller's write lock: no peer can delete this row before that transaction ends.
+      // Always under the caller's write lock, never skipped on this process's clock (#1010): no peer can delete this
+      // row, or insert its own, before that transaction ends. One read of a table of a few rows.
       const rows = sql.all<Pick<Peer, 'instance' | 'host' | 'boot'>>(`SELECT instance, host, boot FROM ${table}`);
       if (!rows.some(row => row.instance === instance) || rows.some(row => row.instance !== instance && foreign(row))) throw refusal();
     },

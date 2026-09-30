@@ -190,6 +190,22 @@ function databaseOf(options: BetterAuthOptions): DatabaseSync | undefined {
   return options.database instanceof DatabaseSync ? options.database : undefined;
 }
 
+/**
+ * Checks the host lease inside every Better Auth write (#1010). Better Auth's statements cannot be wrapped in a
+ * transaction of ours, and many run outside any transaction, so a TEMP trigger (this connection's only) before every
+ * INSERT, UPDATE and DELETE on each of its tables calls `lease.verify()`. A trigger runs under its statement's write
+ * lock, so the lease rows it reads cannot change before that statement (or the transaction around it) commits, and a
+ * refusal fails the statement, which Better Auth answers with its 500 (the mount's 503). The lease's own table has no
+ * trigger. Tables created after activation (a migration while serving) are not covered.
+ */
+function guardWrites(database: DatabaseSync, lease: HostLease): void {
+  database.function('urlcode_auth_lease', () => { lease.verify(); return null; });
+  const tables = database.prepare("SELECT name FROM main.sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\' AND name <> 'auth_servers' ORDER BY name").all() as { name: string }[];
+  tables.forEach(({ name }, index) => {
+    for (const event of ['INSERT', 'UPDATE', 'DELETE']) database.exec(`CREATE TEMP TRIGGER urlcode_auth_lease_${index}_${event.toLowerCase()} BEFORE ${event} ON main."${name.replaceAll('"', '""')}" BEGIN SELECT urlcode_auth_lease(); END`);
+  });
+}
+
 /** The URLCode registration for one Better Auth instance, pinned to the reviewed project revision. */
 export function createAuthExtension(settings: AuthSettings & { projectSha256: string; /** A test seam; never set by an operator. */ probe?: Partial<HostProbe> | undefined }): RuntimeExtension {
   if (!/^[a-f0-9]{64}$/.test(settings.projectSha256)) throw new Error('auth extension requires an explicit operator revision pin');
@@ -216,7 +232,10 @@ export function createAuthExtension(settings: AuthSettings & { projectSha256: st
         if (pending.length) throw new Error(`auth: Better Auth's tables are not initialized (${pending.join(', ')}); run npx urlcode-auth migrate`);
         // The host lease (#941): `auth_servers` in the auth database, one row per activation. A live peer serving this
         // database from another host refuses activation; processes on one host do not refuse each other.
-        if (database) lease = await joinHostLease(database, { table: 'auth_servers', what: 'auth', probe: settings.probe });
+        if (database) {
+          lease = await joinHostLease(database, { table: 'auth_servers', what: 'auth', probe: settings.probe });
+          guardWrites(database, lease);
+        }
         auth = betterAuth(options);
         // Better Auth starts a schema check on construction without awaiting it (#1013). Awaited here, it has finished
         // before a short run (validate) closes the connection, which it would otherwise report as a failed check, and
@@ -233,7 +252,8 @@ export function createAuthExtension(settings: AuthSettings & { projectSha256: st
       // would set (a session cookie, a cleared one) is sent.
       const failed = (): HandlerResult => jsonResponse(503, { error: 'auth_unavailable' }, [['retry-after', '1']]);
       // A process that lost the auth database's host lease to another host serves nothing until it holds it again (#978).
-      // Better Auth's own statements cannot be wrapped, so the lease is checked once per request, before it runs.
+      // Checked once per request before Better Auth runs (a quick 503, and the rejoin heartbeat); every Better Auth write
+      // is also verified under its own write lock (`guardWrites`), so a stall after this check writes nothing.
       const serving = (): boolean => lease === undefined || lease.renew();
       /**
        * Whether the session the request's cookie names is gone, read from the database (never the cookie cache) without

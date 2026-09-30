@@ -151,18 +151,44 @@ test('a crashed host whose wall clock was a day ahead blocks a joiner for the TT
   assert.match(said[0]!, /watching its heartbeat for up to 20 s/);
 });
 
-test('a write checks the lease under its own lock once the heartbeat is stale, and a failed heartbeat keeps the lease', async t => {
+test('a holder whose monotonic clock stopped (a suspended VM) is refused once another host took over (#1010)', async t => {
+  const dir = await directory(t), dbA = connect(t, dir), dbB = connect(t, dir);
+  dbA.exec('CREATE TABLE data(v TEXT)');
+  // A's clock stands still while its VM is paused; B's runs on, so B times 20 s of A's silence and joins.
+  const frozen = clock(), running = clock();
+  const A = await lease(dbA, { hostname: () => 'host-a', bootId: async () => 'boot-a', ...frozen.probe });
+  t.after(() => A.close());
+  const B = await lease(dbB, { hostname: () => 'host-b', bootId: async () => 'boot-b', ...running.probe });
+  t.after(() => B.close());
+  assert.equal(B.held, true);
+  // A resumes one second (of its own time) after its last heartbeat: it still believes its lease fresh, and it is not.
+  frozen.now += 1000;
+  assert.equal(A.held, true, 'no heartbeat of A has run yet');
+  dbA.exec('BEGIN IMMEDIATE');
+  assert.throws(() => A.verify(), /does not hold/);
+  dbA.exec('ROLLBACK');
+  // B writes; A wrote nothing.
+  dbB.exec('BEGIN IMMEDIATE'); B.verify(); dbB.prepare("INSERT INTO data VALUES ('B')").run(); dbB.exec('COMMIT');
+  assert.deepEqual(dbA.prepare('SELECT v FROM data').all().map(row => row.v), ['B']);
+});
+
+test('every write reads the lease under its own lock, fresh heartbeat or not, and a failed heartbeat keeps the lease', async t => {
   const dir = await directory(t), db = connect(t, dir), other = connect(t, dir);
   const shared = clock(), said: string[] = [];
   const held = await lease(db, { ...here, ...shared.probe }, { log: message => said.push(message) });
   t.after(() => held.close());
-  // Stale, but the row is there and no other host has one: the write may proceed.
+  // The row is there and no other host has one: the write may proceed, stale heartbeat or not.
+  db.exec('BEGIN IMMEDIATE'); held.verify(); db.exec('ROLLBACK');
   shared.now += SERVER_LEASE.writeMs;
   db.exec('BEGIN IMMEDIATE'); held.verify(); db.exec('ROLLBACK');
-  // Another host's row appears beside it (a protocol violation, or a joiner that deleted it): refused.
+  // Another host's row appears beside it (a protocol violation, or a joiner that deleted it): refused at once, even
+  // with a heartbeat that has just succeeded.
+  shared.now += 1000;
+  assert.equal(held.renew(), true);
   peer(other, 'web-9', '22222222-2222-4222-8222-222222222222', Date.now() + SERVER_LEASE.ttlMs);
   db.exec('BEGIN IMMEDIATE'); assert.throws(() => held.verify(), /does not hold/); db.exec('ROLLBACK');
   other.exec("DELETE FROM t_servers WHERE host = 'web-9'");
+  shared.now += SERVER_LEASE.writeMs;
   // A heartbeat that cannot take the lock (another connection holds a transaction open on this one) keeps the lease.
   db.exec('BEGIN');
   assert.equal(held.renew(), false, 'no fresh heartbeat while the lock cannot be taken');
