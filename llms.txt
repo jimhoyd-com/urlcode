@@ -107,7 +107,7 @@ Function handler shape: a module whose `export default` is `(request, { args, en
 (write `args: {}` to bind none). `sandbox: true` is a separate route option. `route.pattern` is the matched pattern; `env` holds route-scoped values only; `requestId` is the response's `X-Request-Id`.
 Search the docs with bounded output using `npx --no --package @jimhoyd/urlcode urlcode docs search "TEXT" --project app` (MCP `search_docs`)
 rather than grepping llms-full.txt. It covers the core agent docs plus the guides and `urlcode.json` schemas of add-ons
-installed and pin-verified in the site, reports which sources it did and did not search, and names one section or
+installed and verified in the site (core-pinned, or independent with lock integrity and recorded files), reports which sources it did and did not search, and names one section or
 config path to read next; no match means no match in those sources, not an unsupported feature.
 Draft `tests/requests.json` from `urlcode fixtures suggest --json` (MCP `suggest_fixtures`): it reads urlcode.yaml and its
 includes, covers only routes the YAML alone determines and lists function, middleware, proxy, extension, pattern and

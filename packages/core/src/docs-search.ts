@@ -1,9 +1,10 @@
 import { lstat, readFile, realpath } from 'node:fs/promises';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseDescriptor, readAddonCatalog, readAddonManifest } from './addon-manifest.ts';
+import { installedProviders, parseDescriptor, readAddonCatalog, readAddonManifest } from './addon-manifest.ts';
 import type { AddonCatalog, AddonDescriptor, AddonKind, AddonManifest } from './addon-manifest.ts';
-import { lockPackages, pinProblem, readJson } from './addon-install.ts';
+import { independentReadProblem, lockPackages, pinProblem, readJson } from './addon-install.ts';
+import { readFilesLock } from './package-files.ts';
 import type { PackageJson } from './addon-install.ts';
 import { isCode, isRecord } from './object-guards.ts';
 import { getSchemaFragment } from './schema-query.ts';
@@ -14,9 +15,10 @@ import { getSchemaFragment } from './schema-query.ts';
  * Three kinds of source, kept apart in the result:
  * - core: a fixed list of documents packaged with this runtime;
  * - installed: the guides and static `urlcode.json` descriptors of add-ons installed in the project's site
- *   (`<site>/node_modules/@jimhoyd/urlcode-<name>`), only for add-ons core's own manifest pins and whose lock entry
- *   matches that pin. Each file is read as text or JSON data; no add-on module is imported or activated, no host file
- *   is loaded and no binding or secret is read;
+ *   (`<site>/node_modules/<package>`): an add-on core's own manifest pins, when its lock entry matches that pin, and an
+ *   independent package (#844, #1090), when npm's lock integrity and the files addon-files.lock.json recorded match.
+ *   An unverified one is listed as not searched. Each file is read as text or JSON data; no add-on module is imported
+ *   or activated, no host file is loaded and no binding or secret is read;
  * - catalog: this release's add-on catalog, which says an add-on exists, never that the project has it.
  *
  * Every answer states which sources were searched and which were not, and a focused next step. An empty answer means
@@ -35,6 +37,8 @@ export const coreDocs = [
 export const docsSearchScope = {
   core: coreDocs.map(doc => doc.file),
   installed: ['urlcode.json', 'README.md', 'descriptor agent references (.md/.json)'],
+  /** Which installed packages are read: core-pinned ones, and independent ones verified by lock integrity and recorded files (#1090). */
+  installedProviders: ['core-pinned', 'independent'],
   catalog: 'dist/addon-catalog.json',
   maxResults: 3,
   maxCatalogMatches: 5,
@@ -64,7 +68,7 @@ export interface DocsSearch {
   results: DocsSearchResult[];
   catalog: DocsCatalogMatch[];
   coverage: {
-    searched: { core: string[]; installed: { package: string; version: string | null; files: string[] }[]; catalog: string | null };
+    searched: { core: string[]; installed: { package: string; version: string | null; files: string[]; independent?: true }[]; catalog: string | null };
     notSearched: DocsCoverageGap[];
   };
   next: string[];
@@ -79,7 +83,7 @@ function parseQuery(query: string): Query {
   return { raw: query, phrase, words, tokens };
 }
 
-interface Candidate { id: string; title: string; source: DocsSource; path: string; summary: string; text: string; json?: unknown; package?: string; version?: string | null; kind?: AddonKind; addon?: string; descriptorFile?: boolean }
+interface Candidate { id: string; title: string; source: DocsSource; path: string; summary: string; text: string; json?: unknown; package?: string; version?: string | null; kind?: AddonKind; addon?: string; descriptorFile?: boolean; independent?: boolean }
 interface Scored { candidate: Candidate; matched: string[]; score: number }
 
 function occurrences(haystack: string, needle: string): number {
@@ -214,7 +218,8 @@ function nextFor(candidate: Candidate, section: string | undefined, configPath: 
   const location = `node_modules/${candidate.package}/${candidate.path}`;
   if (candidate.descriptorFile) return `${configPath ? `The schema for ${configPath} is at ${section} in ${location}. ` : `See ${section ?? 'the descriptor'} in ${location}. `}With the operator host file, get_extensions (or urlcode extensions --host-file host.mjs --json) returns the registered schema and checks; then validate the project.`;
   if (candidate.kind === 'artifact') return `Read ${candidate.path} of the installed artifact with get_extension_artifact {name: "${candidate.addon}", path: "${candidate.path}"}.`;
-  return section ? `Read only the "${section}" section of ${location} (this site's installed, pin-verified copy).` : `Read only the matching part of ${location} (this site's installed, pin-verified copy).`;
+  const copy = candidate.independent ? 'this site\'s installed independent package, verified by its lock integrity and recorded files' : 'this site\'s installed, pin-verified copy';
+  return section ? `Read only the "${section}" section of ${location} (${copy}).` : `Read only the matching part of ${location} (${copy}).`;
 }
 
 async function readBounded(directory: string, path: string): Promise<{ text: string } | { problem: string }> {
@@ -228,48 +233,68 @@ async function readBounded(directory: string, path: string): Promise<{ text: str
   return { text: await readFile(file, 'utf8') };
 }
 
-interface Installed { candidates: Candidate[]; searched: DocsSearch['coverage']['searched']['installed']; gaps: DocsCoverageGap[]; names: Set<string> }
-/** Guides and descriptors of add-ons installed, and pinned by core, in the site around `project`. Reads data only. */
+interface Installed { candidates: Candidate[]; searched: DocsSearch['coverage']['searched']['installed']; gaps: DocsCoverageGap[]; names: Set<string>; independent: Map<string, string> }
+/** One installed add-on package search may read: a core-pinned one, or an independent one (#844, #1090). */
+interface Source { name: string; package: string; independent: boolean }
+/**
+ * Guides and descriptors of add-ons installed in the site around `project`: those core's own manifest pins, verified
+ * against the pin, and independent packages (#1090), verified by npm's lock integrity and the files
+ * addon-files.lock.json recorded. Anything unverified is reported under notSearched, not read. Reads data only.
+ */
 async function installedSources(project: string, manifest: AddonManifest): Promise<Installed> {
-  const site = dirname(resolve(project)), result: Installed = { candidates: [], searched: [], gaps: [], names: new Set() };
+  const site = dirname(resolve(project)), result: Installed = { candidates: [], searched: [], gaps: [], names: new Set(), independent: new Map() };
   let pkg: PackageJson;
   try { pkg = await readJson<PackageJson>(join(site, 'package.json')); }
   catch (error) { if (isCode(error, 'ENOENT') || error instanceof SyntaxError) { result.gaps.push({ source: 'installed add-on guides and descriptors', reason: `${site} has no readable package.json, so no installed add-on was found` }); return result; } throw error; }
   const lock = await lockPackages(site), dependencies = pkg.dependencies ?? {};
+  const sources: Source[] = [];
   for (const [name, pin] of Object.entries(manifest.addons).sort(([left], [right]) => left.localeCompare(right))) {
     if (!Object.hasOwn(dependencies, pin.package)) continue;
     const problem = pinProblem(lock, pin);
     if (problem) { result.gaps.push({ source: pin.package, reason: `installed but not pin-verified (${problem}); not read` }); continue; }
-    const directory = join(site, 'node_modules', pin.package);
+    sources.push({ name, package: pin.package, independent: false });
+  }
+  const { providers, problems } = await installedProviders(site, manifest);
+  result.gaps.push(...problems.map(problem => ({ source: 'installed add-on descriptors', reason: problem.message })));
+  const recorded = await readFilesLock(site);
+  for (const provider of [...providers.values()].filter(item => !item.catalog)) {
+    if (sources.some(source => source.name === provider.name)) { result.gaps.push({ source: provider.package, reason: `independent package also providing ${provider.name}; the core-pinned package was read instead` }); continue; }
+    const problem = await independentReadProblem(site, lock, recorded, provider);
+    if (problem) { result.gaps.push({ source: provider.package, reason: `independent package providing ${provider.name}, installed but not verified (${problem}); not read. get_addon_agent_tooling and urlcode extensions list report it` }); continue; }
+    sources.push({ name: provider.name, package: provider.package, independent: true });
+  }
+  for (const source of sources) {
+    const directory = join(site, 'node_modules', source.package);
     let descriptor: AddonDescriptor;
     try {
       const read = await readBounded(directory, 'urlcode.json');
-      if ('problem' in read) { result.gaps.push({ source: pin.package, reason: read.problem }); continue; }
-      descriptor = parseDescriptor(JSON.parse(read.text), `${pin.package}/urlcode.json`);
-      if (descriptor.name !== name) { result.gaps.push({ source: pin.package, reason: `its urlcode.json names ${descriptor.name}, not ${name}` }); continue; }
+      if ('problem' in read) { result.gaps.push({ source: source.package, reason: read.problem }); continue; }
+      descriptor = parseDescriptor(JSON.parse(read.text), `${source.package}/urlcode.json`);
+      if (descriptor.name !== source.name) { result.gaps.push({ source: source.package, reason: `its urlcode.json names ${descriptor.name}, not ${source.name}` }); continue; }
       const manifestFile = await readBounded(directory, 'package.json');
       let installedVersion: string | null = null;
       if ('text' in manifestFile) { try { const parsedPackage: unknown = JSON.parse(manifestFile.text); if (isRecord(parsedPackage) && typeof parsedPackage.version === 'string') installedVersion = parsedPackage.version.slice(0, 64); } catch { /* version stays unknown */ } }
-      const version = lock[`node_modules/${pin.package}`]?.version ?? installedVersion, files: string[] = [];
+      const version = lock[`node_modules/${source.package}`]?.version ?? installedVersion, files: string[] = [];
       const references = new Map((descriptor.agent?.references ?? []).map(reference => [reference.path, reference]));
       const paths = [...new Set(['urlcode.json', 'README.md', ...references.keys()])].slice(0, maxFilesPerAddon);
       for (const path of paths) {
         const content = path === 'urlcode.json' ? read : await readBounded(directory, path);
-        if ('problem' in content) { if (!(path === 'README.md' && content.problem.endsWith('is missing'))) result.gaps.push({ source: `${pin.package}/${path}`, reason: content.problem }); continue; }
+        if ('problem' in content) { if (!(path === 'README.md' && content.problem.endsWith('is missing'))) result.gaps.push({ source: `${source.package}/${path}`, reason: content.problem }); continue; }
         const reference = references.get(path), isJson = path.endsWith('.json');
         let json: unknown;
-        if (isJson) { try { json = JSON.parse(content.text); } catch { result.gaps.push({ source: `${pin.package}/${path}`, reason: 'not valid JSON' }); continue; } }
+        if (isJson) { try { json = JSON.parse(content.text); } catch { result.gaps.push({ source: `${source.package}/${path}`, reason: 'not valid JSON' }); continue; } }
         result.candidates.push({
-          id: `${name}:${path}`, source: 'installed', path, package: pin.package, version, kind: descriptor.kind, addon: name,
-          title: reference?.name ?? (path === 'urlcode.json' ? `${name} ${descriptor.kind} descriptor and schema` : `${name} ${path}`),
-          summary: reference?.description ?? (path === 'urlcode.json' ? descriptor.description : `${pin.package} ${path}`),
+          id: `${source.name}:${path}`, source: 'installed', path, package: source.package, version, kind: descriptor.kind, addon: source.name, independent: source.independent,
+          title: reference?.name ?? (path === 'urlcode.json' ? `${source.name} ${descriptor.kind} descriptor and schema` : `${source.name} ${path}`),
+          summary: reference?.description ?? (path === 'urlcode.json' ? descriptor.description : `${source.package} ${path}`),
           text: content.text, ...(isJson ? { json } : {}), ...(path === 'urlcode.json' ? { descriptorFile: true } : {}),
         });
         files.push(path);
       }
-      result.names.add(name);
-      result.searched.push({ package: pin.package, version, files });
-    } catch (error) { result.gaps.push({ source: pin.package, reason: `descriptor unreadable: ${error instanceof Error ? error.message : String(error)}` }); }
+      result.names.add(source.name);
+      if (source.independent) result.independent.set(source.name, source.package);
+      result.searched.push({ package: source.package, version, files, ...(source.independent ? { independent: true as const } : {}) });
+    } catch (error) { result.gaps.push({ source: source.package, reason: `descriptor unreadable: ${error instanceof Error ? error.message : String(error)}` }); }
   }
   return result;
 }
@@ -297,7 +322,7 @@ export async function searchDocs(query: string, options: DocsSearchOptions = {})
 
   const manifest = await readAddonManifest().catch((error: unknown) => { notSearched.push({ source: 'installed add-on guides and descriptors', reason: `this core has no add-on manifest to verify installed add-ons against (${error instanceof Error ? error.message : String(error)})` }); return undefined; });
   const catalog: AddonCatalog | undefined = await readAddonCatalog().catch((error: unknown) => { notSearched.push({ source: 'release add-on catalog', reason: error instanceof Error ? error.message : String(error) }); return undefined; });
-  let installed: Installed = { candidates: [], searched: [], gaps: [], names: new Set() };
+  let installed: Installed = { candidates: [], searched: [], gaps: [], names: new Set(), independent: new Map() };
   if (options.project === undefined) notSearched.push({ source: 'installed add-on guides and descriptors', reason: 'no project was given, so no site was inspected; MCP search_docs and urlcode docs search --project DIR pass one' });
   else if (manifest) installed = await installedSources(options.project, manifest);
   candidates.push(...installed.candidates);
@@ -326,7 +351,8 @@ export async function searchDocs(query: string, options: DocsSearchOptions = {})
     const add = `urlcode ${entry.kind === 'artifact' ? 'artifacts' : 'extensions'} add ${entry.name}`;
     return {
       name: entry.name, kind: entry.kind, package: entry.package, description: entry.description, matched, availability: 'release-catalog' as const, installedInProject,
-      next: installedInProject === true ? `Installed in this site: its guide and descriptor are among the searched sources; search a specific field or section name.`
+      next: installed.independent.has(entry.name) ? `This site's ${entry.name} is the independent package ${installed.independent.get(entry.name)}, not ${entry.package}: its guide and descriptor were searched, the catalog package's were not.`
+        : installedInProject === true ? `Installed in this site: its guide and descriptor are among the searched sources; search a specific field or section name.`
         : `Listed in this release's catalog, which is not evidence this project has it. Only if the task needs it, install it (${add}); its guide and descriptor are then searched here.`,
     };
   });
