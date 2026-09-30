@@ -14,7 +14,7 @@ import { addons } from '../scripts/workspaces.ts';
 
 interface Step { id?: string; if?: string; run?: string; env?: Record<string, string>; 'continue-on-error'?: boolean }
 interface Job { if?: string; needs?: string | string[]; outputs?: Record<string, string>; strategy?: { matrix: Record<string, unknown> }; steps?: Step[] }
-const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8')) as { jobs: Record<string, Job> };
+const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8')) as { on: Record<string, unknown>; jobs: Record<string, Job> };
 const step = (id: string): Step => workflow.jobs.plan!.steps!.find(candidate => candidate.id === id)!;
 const ci = readFilters();
 const filters = (id: 'lanes' | 'packages') => ci[id];
@@ -112,15 +112,24 @@ test('classification fails closed: exact-commit events, a failed filter and an e
   for (const name of code) assert(truthy(evaluate(workflow.jobs[name]!.if!, context)), name);
 });
 
-test('exact-commit coverage is the full OS x Node matrix whatever changed', () => {
-  for (const scenario of [{ event: 'schedule' }, { event: 'workflow_dispatch' }, { event: 'merge_group' }, { event: 'push', release: true, paths: ['docs/CI.md'] }]) {
+// Every trigger other than a pull request is exact-commit coverage; `workflow_call` runs under its caller's event,
+// which publish.yml makes a push, so a release is the push with `release: true`.
+const EXACT = [
+  ...Object.keys(workflow.on).filter(event => event !== 'pull_request' && event !== 'workflow_call').map(event => ({ event })),
+  { event: 'push', release: true, paths: ['docs/CI.md'] },
+];
+
+test('exact-commit coverage is every lane on the full OS x Node matrix whatever changed (#1089)', () => {
+  assert.deepEqual(EXACT.map(scenario => scenario.event).sort(), ['merge_group', 'push', 'schedule', 'workflow_dispatch']);
+  const everyJob = Object.keys(workflow.jobs).filter(name => name !== 'plan' && name !== 'verify-complete');
+  for (const scenario of EXACT) {
     const selected = jobs(scenario);
+    assert.deepEqual(Object.keys(selected), everyJob, JSON.stringify(scenario));
     assert.deepEqual(selected.verify, shards(...EVERY_LEG));
     assert.deepEqual(selected.checks, EVERY_LEG);
     assert.equal(selected['workspace-verify']!.length, 9 * ALL.length);
-    // The packed integration runs on every OS before a release and on dispatch; the sweep and the queue skip it.
-    const integration = scenario.event === 'workflow_dispatch' || scenario.release ? ['ubuntu-latest/24', 'macos-latest/24', 'windows-latest/24'] : undefined;
-    assert.deepEqual(selected['workspace-integration'], integration, JSON.stringify(scenario));
+    // The packed integration and its application proofs run on every OS: the sweep and the queue included.
+    assert.deepEqual(selected['workspace-integration'], ['ubuntu-latest/24', 'macos-latest/24', 'windows-latest/24'], JSON.stringify(scenario));
   }
 });
 
