@@ -458,6 +458,15 @@ assistant file-write, guest-execution, deployment or network authority.
 
 ## Project review
 
+Review and inspection expose a bounded, non-executing `trustedDependencies`
+inventory alongside the revision: local file hashes, direct package imports,
+lockfile declarations and opaque reasons. These recorded dependencies participate
+in the operator pin. `complete` only describes the documented static-import
+inspection profile, never all code a trusted function can execute. See
+[trusted dependency review](FUNCTION-SECURITY.md#trusted-dependency-review) for
+coverage, limits and installed-package verification limitations. The HTML review
+report shows this inventory and flags incomplete coverage as needing attention.
+
 `urlcode review [--project DIR] [--target T] [--host-file F] [--policy F] [--json]` (MCP
 `review {deployTarget?}`)
 is an opt-in, read-only static review of the

@@ -82,10 +82,12 @@ Review findings, recorded as the test asserts them:
   an outbound network call: `app` is built from an imported `Hono`, so the
   member call is recognised as in-process. (It used to be a false positive;
   see [the review rule](../../docs/TOOLING.md#project-review).)
-- Neither `explain` nor `review` names the npm packages a trusted route
-  imports. The route is labelled trusted, and its dependency surface is
-  opaque to review. The operator approval digest also covers only the entry
-  file ([known gap](../../docs/FUNCTION-SECURITY.md#granting-selected-bindings)).
+- `review` names the directly imported npm packages and records bounded local
+  import dependencies and npm metadata in the approval digest. Package code,
+  dynamic loading and other opaque dependencies still need human review; the
+  lockfile does not attest installed bytes. See
+  [trusted dependency review](../../docs/FUNCTION-SECURITY.md#trusted-dependency-review).
+
 
 ## 2. Hono as a second host
 
