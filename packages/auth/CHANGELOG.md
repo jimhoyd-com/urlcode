@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The extension declares its credential for `urlcode openapi` as `openapiSecurity` (#1047): Better Auth's session
+  cookie, without a name, since the name is the operator's Better Auth configuration. The export no longer gives an
+  `auth: true` route a `urlcodeSession.auth` scheme with the placeholder cookie `session`, which a generated client
+  would have sent; the operation states the cookie under `x-urlcode.authentication` instead.
+
 - **Breaking: one serving process per database.** Each activation takes an exclusive OS-held lock on
   `auth.sqlite.server-lock` (core's `holdServerLock`) before it opens the database, and a second serving process is
   refused with `Another process is already serving this auth database`; the operating system releases the lock when

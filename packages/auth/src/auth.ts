@@ -11,7 +11,7 @@ import { getMigrations } from 'better-auth/db/migration';
 import { mkdir } from 'node:fs/promises';
 import { clientKey, ExtensionHttpError, holdServerLock, isSameOriginRequest, jsonResponse, principalIdPattern, readBody, refuseNetworkFilesystem } from '@jimhoyd/urlcode/extensions';
 import { maxRequestBodyBytes } from '@jimhoyd/urlcode/body-schema';
-import type { ExtensionAuthoringContract, ExtensionInstance, ExtensionRequest, HandlerResult, HostProbe, RuntimeExtension, ServerLock } from '@jimhoyd/urlcode/extensions';
+import type { ExtensionAuthoringContract, ExtensionInstance, ExtensionOpenApiSecurity, ExtensionRequest, HandlerResult, HostProbe, RuntimeExtension, ServerLock } from '@jimhoyd/urlcode/extensions';
 
 /** The Better Auth paths a mount serves by default: sign-in, sign-out and the session endpoints. */
 export const defaultPaths: readonly string[] = Object.freeze(['/sign-in/email', '/sign-out', '/get-session', '/list-sessions', '/revoke-session', '/revoke-sessions', '/revoke-other-sessions', '/change-password', '/ok']);
@@ -36,6 +36,12 @@ const pathPattern = /^\/[a-z0-9/-]+$/;
 
 export const authConfigSchema = { type: 'object', additionalProperties: false, properties: {} } as const;
 export const authPolicySchema = { type: 'object', additionalProperties: false, properties: {} } as const;
+/**
+ * How a client presents the credential `authorize()` verifies, for `urlcode openapi` (#1047): Better Auth's session
+ * cookie. Its name is Better Auth's operator configuration (a cookie prefix, per-cookie names, the secure prefix an
+ * https origin adds), so it is left out and the export states the cookie without publishing or inventing a name.
+ */
+export const authOpenApiSecurity: ExtensionOpenApiSecurity = Object.freeze({ type: 'apiKey', in: 'cookie', description: 'The Better Auth session cookie that signing in under the auth mount sets; a browser sends it with each same-site request. Its name is the operator\'s Better Auth configuration and is not published.' });
 /**
  * The test seed a hermetic run accepts (`tests/seed.json` under `auth`, RIM-EXT-HERMETIC-001): accounts created with
  * the id a store membership or fixture can name, and a password a fixture signs in with. Never accepted on `serve`.
@@ -228,6 +234,7 @@ export function createAuthExtension(settings: AuthSettings & { projectSha256: st
     name: 'auth', version: '1', projectSha256: settings.projectSha256, targets: ['node'],
     schema: authConfigSchema, policySchema: authPolicySchema, authoring: authAuthoring,
     providesPrincipal: true,
+    openapiSecurity: authOpenApiSecurity,
     capabilities: ['identity'],
     ...(settings.hermetic === true ? { seedSchema: authSeedSchema } : {}),
     async activate(_config, activation): Promise<ExtensionInstance> {

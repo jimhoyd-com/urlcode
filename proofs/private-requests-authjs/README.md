@@ -75,7 +75,10 @@ extension whose `urlcode.json` declares `providesPrincipal: true`, here
 ([extensions](../../docs/EXTENSIONS.md#protecting-a-route-the-auth-short-form)).
 The expansion is part of the reviewed project revision, so `explain` shows
 `extensions.authjs`, and `urlcode openapi` gives a route it gates the `401` and
-`403` answers and the `urlcodeSession.authjs` scheme. `urlcode review`'s
+`403` answers; since `authjs` declares no `openapiSecurity`, the operation
+states its transport as unknown (`x-urlcode.authentication`) rather than
+inventing a cookie
+([OpenAPI export](../../docs/TOOLING.md#openapi-export)). `urlcode review`'s
 session-cookie hint names `authjs`. The first-party name `auth` stays reserved:
 `urlcode extensions add` refuses an independent package that names itself
 `auth` (the test shows the refusal), and nothing here needs it.
