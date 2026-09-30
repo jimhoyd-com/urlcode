@@ -27,7 +27,8 @@ principal a protected route receives and what `urlcode-store members add
 a private `data/auth.secret`, and adds `auth()` to `host.mjs`. `migrate`
 creates Better Auth's tables in `data/auth.sqlite`, including the `rateLimit`
 table its limiter counts in; the extension refuses to activate until they all
-exist. Both files stay out of the route project; keep them private and backed
+exist, and until Better Auth's own schema check against the database has
+passed. Both files stay out of the route project; keep them private and backed
 up.
 
 `data/auth.sqlite` is created `0600` and must stay a private regular file. It
