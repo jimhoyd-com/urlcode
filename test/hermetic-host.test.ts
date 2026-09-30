@@ -92,6 +92,9 @@ test('a seed is refused for an unknown extension, one that accepts none, and one
     [{ other: {} }, { type: 'object' }, /tests\/seed\.json seeds other, which is not a declared extension this host registers/],
     [{ vault: {} }, undefined, /tests\/seed\.json seeds vault, whose registration accepts no seed.*hermetic run/],
     [{ vault: { greeting: 1 } }, { type: 'object', properties: { greeting: { type: 'string' } } }, /tests\/seed\.json vault\.greeting: must be string/],
+    // SQLite would store an unpaired surrogate as U+FFFD, so a seed is refused like a request body (#1016).
+    [{ vault: { greeting: 'hi\ud800' } }, { type: 'object' }, /tests\/seed\.json vault: a string or key holds an unpaired surrogate escape/],
+    [{ vault: { ['\udc00']: [] } }, { type: 'object' }, /tests\/seed\.json vault: a string or key holds an unpaired surrogate escape/],
   ];
   for (const [seed, schema, message] of cases) {
     const app = await project(t, routes, { 'tests/seed.json': JSON.stringify(seed) }, declarations);

@@ -43,6 +43,15 @@ export function holdsIllFormedString(value: unknown): boolean {
   }
   return false;
 }
+/**
+ * The name of the first member of an arguments object (MCP tool or prompt arguments, #1016) whose name or value
+ * `holdsIllFormedString`, or `undefined` when every member is well-formed. A caller quoting the name with
+ * `JSON.stringify` gets an escape for an unpaired surrogate, never the surrogate itself.
+ */
+export function illFormedMember(value: Readonly<Record<string, unknown>>): string | undefined {
+  for (const [key, entry] of Object.entries(value)) if (!key.isWellFormed() || holdsIllFormedString(entry)) return key;
+  return undefined;
+}
 
 const types: readonly BodySchemaType[] = ['object', 'array', 'string', 'integer', 'number', 'boolean', 'null'];
 /** How each supported keyword's value is checked; see `bodySchemaProfile` for the published list. */

@@ -132,6 +132,16 @@ The mount forwards only these Better Auth paths; everything else under it is
 | `GET /ok` | Health |
 | `POST /sign-up/email` | Only with `auth({signUp: true})` |
 
+A request body on these paths passes core's JSON body reader
+([`readBody`][extensions-request-helpers]) before Better Auth sees it, and a
+refusal answers with core's status and code as `{"error": <code>}`: a string or
+key holding an unpaired UTF-16 surrogate escape (`"\ud800"` alone) is
+`400 invalid_unicode`, where Better Auth would have stored it as U+FFFD
+(#1016); a repeated key or `Content-Type`, nesting past 32, invalid UTF-8 or
+JSON is `400`, and any media type but `application/json` is `415`. Better Auth
+then parses the unchanged bytes. `urlcode-auth create-user` refuses the same
+strings in its input, and core refuses them in `tests/seed.json`.
+
 ## Operator options
 
 Everything about the Better Auth instance is `host.mjs` code, never YAML:
@@ -237,6 +247,7 @@ Fast checks: `urlcode validate --project app`, `urlcode validate --local --proje
 <!-- extension-reference:end -->
 
 <!-- urlcode-current-version:start -->
+[extensions-request-helpers]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#request-helpers
 [readiness-authenticated-routes]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#authenticated-routes-auth-true
 [readiness-seeds]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#test-data-and-seeds
 [store-several-processes]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#several-serving-processes-on-one-host

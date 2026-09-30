@@ -1,6 +1,6 @@
 import { extensionHookContext, extensionHookReferenceSchema, isSameOriginRequest, loadExtensionHooks } from '@jimhoyd/urlcode/extensions';
 import type { ExtensionAuthoringContract, ExtensionHookContext, ExtensionHookContract, ExtensionHookConfig, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
-import { bodySchemaIssues, bodySchemaLine, compileBodySchema } from '@jimhoyd/urlcode/body-schema';
+import { bodySchemaIssues, bodySchemaLine, compileBodySchema, illFormedMember } from '@jimhoyd/urlcode/body-schema';
 import type { BodySchema } from '@jimhoyd/urlcode/body-schema';
 import { createMcpHandler, ProtocolError, ProtocolErrorCode, Server } from '@modelcontextprotocol/server';
 
@@ -296,6 +296,15 @@ function toolContent(value: unknown): { content: [{ type: 'text'; text: string }
   return { content: [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value ?? null) }], isError: false };
 }
 const invalid = (message: string, data?: unknown): ProtocolError => new ProtocolError(ProtocolErrorCode.InvalidParams, message, data);
+/**
+ * Refuses arguments holding a string or key that is not well-formed UTF-16 (an unpaired `\uD800`-`\uDFFF` escape),
+ * as core's JSON body reader does (#988, #1016): the SDK parses the body itself, so this is the one place to check.
+ * The protocol error names the argument; the handler never runs.
+ */
+function refuseIllFormed(args: Readonly<Record<string, unknown>>, what: string): void {
+  const argument = illFormedMember(args);
+  if (argument !== undefined) throw invalid(`Invalid params: argument ${JSON.stringify(argument)} of ${what} holds an unpaired surrogate escape (\\uD800-\\uDFFF)`, { argument, code: 'invalid_unicode' });
+}
 
 /**
  * One SDK server for one HTTP request (the SDK serves every request statelessly). The official SDK owns the
@@ -340,6 +349,7 @@ function serverFor(server: ActiveServer, options: McpExtensionOptions, request: 
     const name = call.params.name, tool = server.tools.get(name);
     if (!tool) throw invalid(`Unknown tool: ${name}`);
     const args = call.params.arguments ?? {};
+    refuseIllFormed(args, `tool ${name}`);
     const issues = bodySchemaIssues(tool.input, args);
     // An input validation failure is a tool execution error the model can act on (SEP-1303); the handler never runs.
     if (issues.length) return { content: [{ type: 'text' as const, text: boundedText(`Invalid arguments for tool ${name}: ${issues.map(bodySchemaLine).join('; ')}`) }], isError: true };
@@ -413,6 +423,7 @@ function serverFor(server: ActiveServer, options: McpExtensionOptions, request: 
       const name = get.params.name, prompt = server.prompts.get(name);
       if (!prompt) throw invalid(`Unknown prompt: ${name}`);
       const args = get.params.arguments ?? {};
+      refuseIllFormed(args, `prompt ${name}`);
       const issues = bodySchemaIssues(prompt.argumentsSchema, args);
       if (issues.length) throw invalid('Invalid params: arguments failed the declared prompt arguments', { issues: issues.map(bodySchemaLine) });
       const { context, report } = invocation('prompt', name, ctx.mcpReq.signal);
