@@ -466,6 +466,57 @@ What was added over the same span:
 The MCP SDK swap removed 501 lines from `packages/mcp` and moved core's
 authoring server onto `@modelcontextprotocol/server`.
 
+### After the reuse audit
+
+[#1041](https://github.com/jimhoyd-com/urlcode/issues/1041) audited what
+URLCode still owned after #841. Library swaps would have saved about 2% of the
+owned code: the rest is URLCode's contract (the declarative vocabulary,
+bounded parsers with exact refusals, request-smuggling and encoding guards,
+sandbox isolation). The reductions came from redesigns and cuts instead, with
+[#1052](https://github.com/jimhoyd-com/urlcode/issues/1052) making the bundled
+store and auth defaults the owner can replace:
+
+- one serving process per database, an OS lock in place of the host lease (#1050);
+- `import`/`export`, `benchmark` and `verify --online` removed (#1048);
+- the audit log moved into the store, with a tap in core, and the `audit`
+  package deleted (#1066);
+- CI lanes planned by a built-in changed-files step in place of `ci-plan.ts` (#1049);
+- shared body reader, reserved headers and operator lock poll (#1045, #1074).
+
+**Commits.** The baseline is `df0cfd52`, main before the first #1041 change.
+The result is `7fb55353`. `git diff --shortstat` over the whole repository
+reports 263 files changed, 6,301 insertions and 8,221 deletions. The method is
+the one above.
+
+| Package | Source before | Source after | Tests before | Tests after |
+|---|---:|---:|---:|---:|
+| core | 23,685 | 23,631 | 26,122 | 26,053 |
+| auth | 499 | 640 | 614 | 845 |
+| store | 4,189 | 4,127 | 6,923 | 6,791 |
+| audit (deleted) | 930 | — | 904 | — |
+| mcp | 595 | 595 | 1,126 | 1,126 |
+| **Total** | **29,898** | **28,993** | **35,689** | **34,815** |
+
+`scripts/**/*.ts` fell from 6,604 to 6,337 lines; `.github/` grew from 1,047
+to 1,084. Across every tracked `.ts` file the count fell from 71,513 to 69,467.
+The same span added the owner's Better Auth database (#1057), hermetic seeds
+(#1059), lost-event reporting for the audit tap (#1070) and operator lock
+polling (#1071, #1073), which is why auth grew.
+
+**Evaluated and not adopted.** The audit reports give the reasons; do not
+reopen these without new evidence:
+
+- store: Kysely, Drizzle, umzug, PocketBase, idempotency and etag libraries;
+- CLI: commander, citty and yargs; Hurl and newman;
+- runtime: Hono and `@hono/node-server` as the core, find-my-way/rou3,
+  helmet, pino, prom-client, http-cache-semantics, negotiator, piscina
+  (sandbox isolation must stay exact), the Better Auth admin and organization
+  plugins, `@better-auth/cli`, size-limit and changesets;
+- tried and withdrawn because the dependency outweighed the lines saved: a
+  third-party link checker (166 dev packages, #1044), ipaddr.js for CIDR
+  matching (17 lines, #1045) and release-please (177 packages, #1049).
+  Third-party GitHub Actions are also outside the repository's allowlist.
+
 ## Agent workflow trial
 
 On 2026-09-29, for [#841](https://github.com/jimhoyd-com/urlcode/issues/841)
