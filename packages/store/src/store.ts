@@ -373,9 +373,13 @@ function dropStaleIndexes(db: StoreDatabase, wanted: ReadonlySet<string>): void 
     });
   } catch { /* Retried by the next activation. */ }
 }
-/** Records `collections`' declarations as the ones served (the fence, #927) and switches their writes to check it. */
+/**
+ * Records `collections`' declarations as the ones served (the fence, #927) and switches their writes to check it. In the
+ * same transaction, before recording, every stored balance is checked against these declarations' transfers
+ * (`Collection.balancesHeld`), so no row written under another declaration can slip in between the check and the fence.
+ */
 function record(db: StoreDatabase, collections: readonly Collection[]): void {
-  recordDeclarations(db, new Map(collections.map(collection => [collection.name, collection.fingerprint])), Date.now());
+  recordDeclarations(db, new Map(collections.map(collection => [collection.name, collection.fingerprint])), Date.now(), () => { for (const collection of collections) collection.balancesHeld(db); });
   for (const collection of collections) collection.fence = 'serving';
 }
 /** The registration's one connection while any activation holds it, and its server lease (topology.ts). */

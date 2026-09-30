@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createAudit } from '@jimhoyd/urlcode-audit';
 import type { AuditExports } from '@jimhoyd/urlcode-audit';
-import { StoreError, deleteOwnerless, normalize } from '../src/index.ts';
+import { StoreError, createStore, deleteOwnerless, normalize } from '../src/index.ts';
 import type { CollectionSpec } from '../src/index.ts';
 import { cleanup } from './cleanup.ts';
 import { direct, pin, race } from './direct.ts';
@@ -398,6 +398,53 @@ test('#973: a credit a row stored outside the declaration cannot take answers on
   assert.equal(refused.status, 409); assert.equal(code(refused), 'transfer_conflict');
   assert.deepEqual(refused.body!.error, { code: 'transfer_conflict', message: 'The credited record cannot take this transfer' });
   assert.deepEqual(records(store.database, 'wallets'), before, 'nothing moved');
+});
+
+test('activation refuses stored balances outside the declaration: a redeclared collection holds its old rows to every transfer rule', async t => {
+  const refused = (pattern: RegExp) => ({ message: pattern });
+  const owned = (extra: Record<string, unknown>) => ({ collections: { treasurers, wallets: { ...wallets, ...extra } } });
+  // A balance the new declaration adds to records stored without one.
+  const { balance: _balance, ...plainProperties } = balanceSchema(-1_000_000).properties;
+  const before = { mount: '/api/wallets', ownership: 'owner', schema: { type: 'object', additionalProperties: false, required: ['name'], properties: plainProperties } };
+  const added = await direct(t, { collections: { treasurers, wallets: before } }, { mounts: ['/api/wallets'] });
+  const legacy = (await added.call('POST', '/api/wallets', { who: 'erin', body: { name: 'erin' } })).body!.id as string;
+  await assert.rejects(added.open(owned({})), refused(new RegExp(`Collection wallets: record ${legacy} holds no whole-number balance, which a transfer moves; set it in the database \\(0 for a record that never held a balance\\) or delete the record first`)));
+  execute(added.database, `UPDATE store_records SET data = json_set(data, '$.balance', 0) WHERE id = '${legacy}'`);
+  await added.open(owned({}));
+  assert.equal((await added.call('GET', `/api/wallets/${legacy}`, { who: 'erin' })).body!.balance, 0);
+
+  // A record stored under a larger maxRecordBytes than the new declaration leaves room for at the widest balance.
+  const sized = await direct(t, { collections: { treasurers, wallets: { ...wallets, schema: { ...balanceSchema(-1_000_000), properties: { ...balanceSchema(-1_000_000).properties, name: { type: 'string', maxLength: 300 } } } } } }, { mounts: ['/api/wallets'] });
+  const big = (await sized.call('POST', '/api/wallets', { who: 'bob', body: { name: 'b'.repeat(300) } })).body!.id as string;
+  const smaller = { schema: { ...balanceSchema(-1_000_000), properties: { ...balanceSchema(-1_000_000).properties, name: { type: 'string', maxLength: 300 } } }, maxRecordBytes: 400 };
+  await assert.rejects(sized.open(owned(smaller)), refused(new RegExp(`Collection wallets: record ${big} exceeds maxRecordBytes \\(400\\) with its transfer amounts at their widest; shorten it in the database or raise maxRecordBytes first`)));
+  await sized.open(owned({ ...smaller, maxRecordBytes: 600 }));
+
+  // Balances issued under a lower min than the new declaration's: together they could outgrow the safe integers.
+  const issuing = { maxRecords: 900, schema: balanceSchema(-10_000_000_000_000), transfers: { pay: { amount: 'balance' }, issue: { amount: 'balance', min: -10_000_000_000_000, members: 'treasurers' } } };
+  const supply = await direct(t, owned(issuing), { mounts: ['/api/wallets'] });
+  supply.first.records('treasurers').create(null, { userId: 'tess' });
+  const wallet = async (who: string) => (await supply.call('POST', '/api/wallets', { who, body: { name: who } })).body!.id as string;
+  const mint = await wallet('tess'), erin = await wallet('erin');
+  assert.equal((await supply.call('POST', '/api/wallets/transfers/issue', { who: 'tess', body: { from: mint, to: erin, amount: 10_000_000_000_000 } })).status, 200);
+  const lower = (maxRecords: number) => owned({ ...issuing, maxRecords, transfers: { pay: { amount: 'balance' }, issue: { amount: 'balance', min: -1_000_000_000_000, members: 'treasurers' } } });
+  // 9007 x 1e12 is within the safe integers, so the declaration alone is accepted; the stored 1e13 is what does not fit.
+  assert.doesNotThrow(() => normalize('wallets', lower(9007).collections.wallets as unknown as CollectionSpec));
+  await assert.rejects(supply.open(lower(9007)), refused(/Collection wallets: the stored balance balances could grow past 9007199254740991 under this declaration \(how far each stored balance stands above the lowest min, -1000000000000, plus that min for every record maxRecords still allows\); move balances back to the issuer, raise the lowest min or lower maxRecords first/));
+  // (1e13 + 1e12) + 8988 x 1e12 fits.
+  await supply.open(lower(8990));
+  assert.equal(sum(supply.database, 'wallets'), 0);
+
+  // A refused activation records nothing: the previous declaration still serves its writes.
+  const kept = await direct(t, owned(issuing), { mounts: ['/api/wallets'] });
+  kept.first.records('treasurers').create(null, { userId: 'tess' });
+  const keptMint = (await kept.call('POST', '/api/wallets', { who: 'tess', body: { name: 'tess' } })).body!.id as string;
+  const keptErin = (await kept.call('POST', '/api/wallets', { who: 'erin', body: { name: 'erin' } })).body!.id as string;
+  assert.equal((await kept.call('POST', '/api/wallets/transfers/issue', { who: 'tess', body: { from: keptMint, to: keptErin, amount: 10_000_000_000_000 } })).status, 200);
+  const retiring = createStore({ database: kept.database, projectSha256: pin });
+  cleanup(t, () => retiring.close());
+  await assert.rejects(async () => retiring.registration.activate(lower(9007), kept.activation), /could grow past/);
+  assert.equal((await kept.call('POST', '/api/wallets/transfers/pay', { who: 'erin', body: { from: keptErin, to: keptMint, amount: 1 } })).status, 200);
 });
 
 test('#974: an owned collection refuses a negative min without members; a shared one leaves the gate to its route', () => {

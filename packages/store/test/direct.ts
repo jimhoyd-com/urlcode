@@ -30,7 +30,8 @@ export function answer(result: HandlerResult): Answer {
 
 /**
  * A temporary root and a store over `root/data/store.sqlite`, activated with `config`. `open()` activates it (again
- * after `close()`), so a test can restart it over the same database. Every handle is closed by the test's cleanup
+ * after `close()`), so a test can restart it over the same database; `open(next)` activates it with the declaration
+ * `next` instead, the way an operator redeploys a changed project. Every handle is closed by the test's cleanup
  * before the directory is removed.
  */
 export async function direct(t: TestContext, config: Record<string, unknown>, options: { mounts: string[]; principalMounts?: string[]; audit?: AuditExports }) {
@@ -42,10 +43,10 @@ export async function direct(t: TestContext, config: Record<string, unknown>, op
   let running: { store: ReturnType<typeof createStore>; instance: Awaited<ReturnType<ReturnType<typeof createStore>['registration']['activate']>> } | undefined;
   const close = async () => { const current = running; running = undefined; if (current) { await current.instance.close?.(); await current.store.close(); } };
   cleanup(t, close);
-  const open = async () => {
+  const open = async (next: Record<string, unknown> = config) => {
     await close();
     const store = createStore({ database, projectSha256: pin, ...(options.audit ? { audit: options.audit } : {}) });
-    running = { store, instance: await store.registration.activate(config, activation) };
+    try { running = { store, instance: await store.registration.activate(next, activation) }; } catch (error) { await store.close(); throw error; }
     return running.store.exports;
   };
   const exports = await open();

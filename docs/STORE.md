@@ -792,7 +792,7 @@ store.transaction(tx => {
 - It is trusted host code: reachable only from an operator-installed extension
   that requires the store, never from a route `function`, `middleware` or a
   `sandbox: true` route. `work` runs unsandboxed with full Node access, and the
-  principals it passes are taken as given.
+  principals it passes are taken as given, once checked to be principal ids.
 - **Retries** ([#902](https://github.com/jimhoyd-com/urlcode/issues/902)).
   `transaction(work, {idempotencyKey, fingerprint})` makes it retry-safe, the
   way `Idempotency-Key` makes an HTTP write retry-safe:
@@ -1176,9 +1176,25 @@ Idempotency-Key: 5f0c...
   with each amount property at its widest (17 bytes, `-9007199254740991`), so
   a credit can never push a record over the limit. A record near the limit is
   refused on the write that brings it there, by its owner, not on a later
-  credit. A credited record stored outside the declaration (a row from before
-  the amount property was declared, or edited in the database) answers one
-  fixed `409 transfer_conflict` with no detail.
+  credit. A credited record stored outside the declaration (a row edited in
+  the database) answers one fixed `409 transfer_conflict` with no detail.
+- **Stored balances at activation.** Rows written under an earlier
+  declaration, or by an earlier release, are held to the same rules. On a
+  collection declaring transfers, activation refuses while any stored record
+  lacks a whole-number amount property (for example one created before the
+  property was added), exceeds `maxRecordBytes` with its amounts at their
+  widest, or while the stored balances could together grow past 2^53 − 1: the
+  sum over stored records of how far each balance stands above the lowest
+  `min`, plus that `min`'s magnitude for every record `maxRecords` still
+  allows (under the declaration this is at most `-min` times `maxRecords`).
+  The error names the record, or the property and the bound, and the fix:
+  set a missing balance in the database (`0` for a record that never held
+  one), shorten the record or raise `maxRecordBytes`, or move balances back to
+  the issuer, raise the lowest `min` or lower `maxRecords`. The check runs in
+  the transaction that records the declaration (the
+  [fence](#several-serving-processes-on-one-host)), so no write through the previous
+  declaration lands between the check and the switch; a refused activation
+  records nothing and the previous one keeps serving.
 - **The answer.** `200 {from, to?}`: each record as the transfer left it, with
   `from`'s `ETag`. `to` is included only when the caller may read it: always on
   a shared collection, and on an owned one only when the caller owns it (a
@@ -1310,8 +1326,8 @@ the retained `Idempotency-Key` (a replay, or `422 idempotency_key_reused`);
 property's schema (`409 transfer_limit`) and the debited record's size
 (`413`); anything about the credited record (`409 transfer_conflict`, only for
 a row stored outside the declaration); then the two writes, the two audit
-events and the claim. A debited record without a whole balance (written before
-the property was declared) is `409 transfer_conflict` too. Every refusal
+events and the claim. A debited record without a whole balance (only a row
+edited in the database) is `409 transfer_conflict` too. Every refusal
 writes nothing.
 
 - **Audit.** On an audited collection each record gets a
@@ -1488,7 +1504,9 @@ rows are judged without `required` when they are read and at activation, so
 adding a required property does not stop a collection that already holds
 records without it; such a record's next write must supply it. A row that
 breaks any other rule refuses activation (and a request that meets one answers
-`503`).
+`503 storage_unavailable`, `A stored record does not match this collection's
+declaration`: a row written under another declaration during a reload overlap,
+or one changed in the database).
 
 *Why a declared schema rather than a derived one.* The alternative was to keep
 the store's own `fields:` vocabulary and derive an equivalent profile schema
@@ -2463,7 +2481,12 @@ it: `create(null, {userId})` adds a member.
 `create`, `get`, `update` and `transition` return `{record, etag}` (a record
 never includes its owner) and
 applies exactly the JSON API's rules: another owner's record and a missing id
-are the same `404`, no principal on an owned collection is `401`, a record
+are the same `404`, no principal on an owned collection is `401`, a principal
+whose `id` is not a principal id (core's `principalIdPattern`: 1 to 128 ASCII
+letters, digits, `.`, `_`, `:` or `-`, starting with a letter or digit) is
+`401 principal_required` on every call and every collection, before anything
+is read, stamped or recorded
+([#1015](https://github.com/jimhoyd-com/urlcode/issues/1015)), a record
 that breaks the schema is `422 invalid_record` with `issues`, `maxRecords` is `409 collection_full`, and
 a stale `ifMatch` is `412`. Failures are `StoreError`s with the same status and
 code as the HTTP answer. The export performs no request admission of its own:
