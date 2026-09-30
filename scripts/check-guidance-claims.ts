@@ -365,7 +365,7 @@ export function proseFailures(text: string, where: string): string[] {
       let previousInstance = false;
       for (const match of sentence.matchAll(pattern)) {
         const lead = sentence.slice(0, match.index);
-        const instance = INSTANCE_LEAD.test(lead) || (previousInstance && /\b(?:and|or|nor)\s+$/i.test(lead));
+        const instance: boolean = INSTANCE_LEAD.test(lead) || (previousInstance && /\b(?:and|or|nor)\s+$/i.test(lead));
         previousInstance = instance;
         if (instance || quoted(sentence, match.index)) continue;
         // "no `X` key" inside "there is no" or "has no" belongs to those patterns.
