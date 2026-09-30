@@ -11,6 +11,7 @@
  */
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
+import { principalIdPattern } from '@jimhoyd/urlcode/extensions';
 import type { ExtensionPrincipal } from '@jimhoyd/urlcode/extensions';
 import { OWNER_FIELD, StoreError, etagOf, storageFailure } from './collection.ts';
 import type { Collection, Ownership, RecordSchema, Scalar, Step, StoredRecord } from './collection.ts';
@@ -30,7 +31,7 @@ export interface StoreExports {
    * and is rethrown; a SQLite failure is a 503 `StoreError`. `work` must be synchronous: a returned promise is refused
    * and rolled back, and `tx` refuses every call once `work` has returned. Transactions do not nest, and calling
    * `records()` inside `work` is refused because it would open a second one. Trusted host code only: this is not a
-   * sandbox, `work` runs with full Node access, and the principals it passes are taken as given.
+   * sandbox, `work` runs with full Node access, and the principals it passes are taken as given (only checked to be principal ids).
    *
    * With `options.idempotencyKey` (#902) the transaction is retry-safe: the key's claim is read under the write lock,
    * so of racing calls with one key exactly one runs `work`. Its return value, which must then be a JSON value (or
@@ -80,7 +81,7 @@ export interface StoreTransferRequest { readonly from: string; readonly to: stri
 export interface StoreTransferResult { readonly from: StoreRecordResult; readonly to?: StoreRecordResult }
 /** A record as a caller sees it (never its stored owner) and its strong ETag. */
 export interface StoreRecordResult { readonly record: Readonly<StoredRecord>; readonly etag: string }
-/** The principal of the request being served (`request.principal`); `null`/`undefined` when it has none. */
+/** The principal of the request being served (`request.principal`); `null`/`undefined` when it has none. An id outside core's `principalIdPattern` is a 401 `principal_required`. */
 export type StorePrincipal = Pick<ExtensionPrincipal, 'id'> | null | undefined;
 export interface StoreRecords {
   readonly name: string;
@@ -122,7 +123,18 @@ const result = (record: StoredRecord): StoreRecordResult => Object.freeze({ reco
 /** A caller's transfer request as a plain object, so the generated body schema judges exactly what was passed. */
 const plain = (request: StoreTransferRequest): unknown => request !== null && typeof request === 'object' ? { ...request } : request;
 const transferResult = (from: StoredRecord, to: StoredRecord | undefined): StoreTransferResult => Object.freeze({ from: result(from), ...(to === undefined ? {} : { to: result(to) }) });
-const ownerOf = (principal: StorePrincipal): string | undefined => principal === null || principal === undefined ? undefined : principal.id;
+/**
+ * The principal's id, or undefined for none. A principal that is given must carry a principal id (core's
+ * `principalIdPattern`: 1 to 128 ASCII characters), exactly as core requires of one an extension's `authorize()` sets,
+ * or the call is the 401 the HTTP API answers without one (#1015): the id is stored as an owner, a stamped actor or
+ * an audit actor, and one the collection cannot serve back would break it.
+ */
+const ownerOf = (principal: StorePrincipal): string | undefined => {
+  if (principal === null || principal === undefined) return undefined;
+  const id: unknown = typeof principal === 'object' ? principal.id : undefined;
+  if (typeof id !== 'string' || !principalIdPattern.test(id)) throw new StoreError(401, 'principal_required', 'Sign in to use this collection');
+  return id;
+};
 /** The audit actor of a write: the principal's id, or `anonymous` (the HTTP API's rule). */
 const actorOf = (principal: StorePrincipal): string => ownerOf(principal) ?? 'anonymous';
 const known = (id: string): string => { if (typeof id !== 'string' || !UUID.test(id)) throw new StoreError(404, 'not_found', 'No such record'); return id; };
