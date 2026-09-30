@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { CORE_VERSION, docsUrl } from '../packages/core/src/release.ts';
-import { markdownAnchors } from '../scripts/check-local-links.ts';
+import { VFile } from 'vfile';
+import { checkLinks } from '../scripts/check-local-links.ts';
 
 const root = join(import.meta.dirname, '..');
 
@@ -21,11 +22,9 @@ test('every docsUrl page core names exists in this checkout, with its heading', 
     for (const match of (await readFile(join(source, file), 'utf8')).matchAll(/docsUrl\('([^']+)'\)/g)) pages.set(match[1]!, file);
   }
   assert.ok(pages.size >= 8, `expected the installed docs links, found ${pages.size}`);
-  for (const [page, file] of pages) {
-    if (file === 'release.ts') continue;
-    const [path, fragment] = page.split('#', 2) as [string, string | undefined];
-    const text = await readFile(join(root, 'docs', path), 'utf8').catch(() => undefined);
-    assert.ok(text !== undefined, `${file}: docsUrl('${page}') names docs/${path}, which does not exist`);
-    if (fragment) assert.ok(markdownAnchors(text).has(fragment), `${file}: docs/${path} has no heading #${fragment}`);
-  }
+  // Each link core ships, written as a Markdown link and checked the way check-local-links checks a pinned link.
+  const links = [...pages].filter(([, file]) => file !== 'release.ts').map(([page, file]) => `[${file}](${docsUrl(page)})`);
+  const { failures, links: checked } = await checkLinks(root, [new VFile({ path: join(root, 'docs-url.md'), value: links.join('\n\n') })]);
+  assert.ok(checked >= links.length, 'every docsUrl link is checked against the checkout');
+  assert.deepEqual(failures.map(failure => `${links[(failure.line - 1) / 2]}: ${failure.detail}`), []);
 });

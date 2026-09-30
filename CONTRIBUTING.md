@@ -160,7 +160,10 @@ are part of the documentation interface.
 
 Run `npm run check:docs` after documentation changes. It checks local links
 and their `#fragment` anchors (GitHub heading slugs or an explicit
-`<a id>`), retired repository references, guidance claims, generated
+`<a id>`) with remark-validate-links, offline; `scripts/check-local-links.ts`
+adds the URLCode-only rules (pinned `blob/v<current version>` links, shipped
+package links, retired repository references and historical markers). It also
+checks guidance claims, generated
 resources, and every fenced `yaml` block: each must parse with the runtime's
 YAML profile, and project YAML (a complete project, project-level keys or a
 route map) must pass the schema. Mark an intentionally partial block with a
