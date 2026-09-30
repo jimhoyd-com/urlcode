@@ -1045,6 +1045,21 @@ async function artifactPinProblem(site: string, lock: Record<string, LockEntry>,
   return independentLockProblem(lock, provider.package) ?? await localTarballProblem(site, lock, provider.package);
 }
 /**
+ * Why an independent installed package (#844) is not verified enough to read its inert guides and descriptor (#1090),
+ * or undefined: npm's sha512 lock integrity (and a local tarball's hash), then its installed files exactly as
+ * addon-files.lock.json recorded them. A linked directory, an unrecorded or modified package is refused. Offline; it
+ * imports nothing.
+ */
+export async function independentReadProblem(site: string, lock: Record<string, LockEntry>, recorded: AddonFilesLock, provider: InstalledProvider): Promise<string | undefined> {
+  if (provider.package.startsWith('@jimhoyd/urlcode')) return 'this core does not pin it';
+  const entry = lock[`node_modules/${provider.package}`];
+  if (entry?.link) return `${provider.package} is a linked directory, not locked by npm integrity`;
+  const lockProblem = independentLockProblem(lock, provider.package) ?? await localTarballProblem(site, lock, provider.package);
+  if (lockProblem) return lockProblem;
+  const files = await checkPackageFiles(site, provider.package, entry, recorded.packages[provider.package], provider.descriptor.kind);
+  return files.status === 'match' ? undefined : files.message ?? `its installed files are ${files.status}`;
+}
+/**
  * The artifacts installed in the site around `project` (its parent directory), for MCP and planning: released ones
  * checked against core's pin, independent ones (#844) against npm's lock integrity. Read-only and offline: it checks
  * each one is inert and pinned, and never imports or runs anything.

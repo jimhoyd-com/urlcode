@@ -1,4 +1,5 @@
 import {buildContext,estimateTokens,shellWord} from './context.ts';
+import {docsUrl} from './release.ts';
 import {getCapabilities,normalizeCapabilityTarget} from './capabilities.ts';
 import type {CapabilityName,CapabilityTarget} from './capabilities.ts';
 import {listRecipes,runsProjectCode} from './recipes.ts';
@@ -81,6 +82,15 @@ function terms(goal:string):string[] {
  return [...new Set(words)].slice(0,16);
 }
 const signatureTerms=['hmac','signature','signatures','signing','webhook','webhooks'];
+/**
+ * A write to several records at once (#1086): "bulk"/"batch" alone, or "every"/"all"/"each"/… with a write verb, on
+ * stored or owned records. The bundled store serves one record per transition call and two per transfer; it gives
+ * application code no request-bound capability, so a function cannot loop over the records server-side.
+ */
+const bulkTerms=['bulk','batch','mass'],everyTerms=['every','all','each','multiple','several','many'];
+const writeTerms=['mark','update','updates','set','change','edit','modify','complete','close','archive','delete','remove','clear','move','approve','reject','done','toggle','reset','cancel','write','writes'];
+const recordContextTerms=['own','owned','owner','owners','their','record','records','row','rows','item','items','collection','store','stored','database'];
+const multiRecordGap={requirement:'Multi-record store write from application code',reason:'The bundled store gives a function route no request-bound capability for its collections ('+docsUrl('EXTENSIONS.md#request-bound-capabilities')+'), so application code cannot update several of the caller\'s records server-side in one request. Nearest declarative options: a declared transition (POST <mount>/<id>/<name>) changes one record per call, so the client calls it once per record; a declared transfer (POST <mount>/transfers/<name>) moves an amount between two records in one transaction. For a true multi-record write the storage is the owner\'s choice: a trusted (non-sandbox) function over an independently owned database reading context.capabilities.auth.identity.userId (reference: URLCode\'s proofs/native-storage), or an extension that requires the store and runs the writes in one StoreExports.transaction (trusted host code; owner choice of storage: '+docsUrl('EXTENSIONS.md#native-independent-integration-or-bundled-default')+').'};
 /**
  * List, filter, sort and paging vocabulary (#834). These goals are declarations: a store collection's `filterable` and
  * `sortable` properties with limit/cursor paging, or query `parameters` on a route, never a handler that parses the
@@ -235,6 +245,8 @@ export async function planFeature(project:string|undefined,goal:string,options:F
  const unsupported:FeaturePlan['unsupported']=[];
  if(goalTerms.some(term=>['flow','workflow','multistep','multi-step','wizard'].includes(term)))unsupported.push({requirement:'Declarative form flow',reason:'No bundled core capability or recipe declares multi-step form state, transitions, or submission orchestration. Keep the steps in the application frontend and validate each JSON submission with request.body.POST.schema on a function route or a store mount.'});
  if(goalTerms.some(term=>['idempotent','idempotency'].includes(term)))unsupported.push({requirement:'Idempotent mutation',reason:'The core capability catalog has no idempotent mutation primitive. Require an installed extension contract that exposes it, or keep the idempotency key and mutation logic in application code.'});
+ const has=(list:readonly string[]):boolean=>goalTerms.some(term=>list.includes(term));
+ if((has(bulkTerms)||has(everyTerms)&&has(writeTerms))&&(wanted.has('store')||has(recordContextTerms)))unsupported.push(multiRecordGap);
  for(const capability of capabilities){const row=rows.get(capability);if(row?.targets[target]?.support==='refused')unsupported.push({requirement:capability,reason:row.targets[target]!.reason});}
  for(const extension of required)if(extension.target==='refused')unsupported.push({requirement:`${extension.name} extension on ${target}`,reason:extension.registered?'The already-registered extension does not declare support for this target.':'The extension does not declare support for this target (the targets in its release descriptor).'});
  const applicationCode:FeaturePlan['applicationCode']=[];

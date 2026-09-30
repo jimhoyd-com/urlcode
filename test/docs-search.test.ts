@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { TestContext } from 'node:test';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { access, cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { searchDocs } from '../packages/core/src/agent-context.ts';
 import { coreDocs, headingsOf } from '../packages/core/src/docs-search.ts';
 import type { DocsSearch } from '../packages/core/src/docs-search.ts';
+import { recordPackage, writeFilesLock } from '../packages/core/src/package-files.ts';
 import { renderAgentsGuide } from '../packages/core/src/agents-guide.ts';
 import { serveMcp } from '../packages/core/src/mcp.ts';
 import {byReplyId} from './helpers.ts';
@@ -204,7 +206,7 @@ test('MCP search_docs searches the operator-selected site and states its coverag
   await serveMcp({ project: join(root, 'app'), input: Readable.from([messages.map(value => JSON.stringify(value) + '\n').join('')]), output });
   const replies = text.trim().split('\n').map(line => JSON.parse(line) as { result: { tools?: { name: string; description: string }[]; content?: { text: string }[] } }).sort(byReplyId);
   const tool = replies[1]!.result.tools!.find(candidate => candidate.name === 'search_docs')!;
-  assert.match(tool.description, /installed and pin-verified/);
+  assert.match(tool.description, /installed and verified in this site \(core-pinned, or independent/);
   assert.match(tool.description, /not that a feature is unsupported/);
   const found = JSON.parse(replies[2]!.result.content![0]!.text) as DocsSearch;
   assert.equal(found.results[0]?.id, 'mcp:README.md');
@@ -291,4 +293,67 @@ test('a fence comment above a match does not rank it as opening a section (#826)
   // keeps the first occurrence, under the real Setup heading.
   assert.equal(guide.section, 'Setup');
   assert.match(guide.excerpt, /^## Setup/);
+});
+
+/**
+ * A site with an independent add-on package (#844) as `urlcode extensions add` leaves it: a lock entry carrying npm's
+ * sha512 integrity and, unless `record` is false, its installed files recorded in addon-files.lock.json.
+ */
+async function independentSite(t: TestContext, { pkg = '@audit/notes', name = 'notes', record = true } = {}): Promise<{ root: string; directory: string }> {
+  const root = await mkdtemp(join(tmpdir(), 'urlcode-docs-search-independent-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, 'app'));
+  await writeFile(join(root, 'app', 'urlcode.yaml'), 'version: "1"\nroutes: {}\n');
+  const directory = join(root, 'node_modules', ...pkg.split('/'));
+  await mkdir(directory, { recursive: true });
+  await writeFile(join(directory, 'package.json'), JSON.stringify({ name: pkg, version: '1.2.3' }));
+  await writeFile(join(directory, 'urlcode.json'), JSON.stringify({ kind: 'extension', name, description: `The ${name} extension from an independent publisher.`, contract: 2, requires: [], targets: ['node'], schema: { type: 'object' },
+    agent: { description: `How to use ${name}.`, references: [{ name: `${name} field guide`, description: 'Fields and limits.', path: 'GUIDE.md' }] } }));
+  await writeFile(join(directory, 'README.md'), `# ${name}\n\n## Quokkas\n\nThe quokkaunique option turns on marsupial mode.\n`);
+  await writeFile(join(directory, 'GUIDE.md'), `# ${name} fields\n\nwallabyfield limits the pouch.\n`);
+  const entry = { version: '1.2.3', resolved: `https://registry.example/${pkg}/-/package-1.2.3.tgz`, integrity: `sha512-${createHash('sha512').update(pkg).digest('base64')}` };
+  await writeFile(join(root, 'package.json'), JSON.stringify({ dependencies: { [pkg]: '^1.2.3' } }));
+  await writeFile(join(root, 'package-lock.json'), JSON.stringify({ lockfileVersion: 3, packages: { '': {}, [`node_modules/${pkg}`]: entry } }));
+  if (record) await writeFilesLock(root, { lockfileVersion: 1, packages: { [pkg]: await recordPackage(root, pkg, entry, { name, kind: 'extension', spec: pkg }) } });
+  return { root, directory };
+}
+
+test('a verified independent add-on\'s guide and agent references are searched and labelled as independent (#1090)', async t => {
+  const { root } = await independentSite(t);
+  const found = await searchDocs('quokkaunique', { project: join(root, 'app') });
+  bounded(found);
+  const guide = found.results.find(result => result.id === 'notes:README.md');
+  assert.ok(guide, 'the independent README is a result');
+  assert.deepEqual([guide.source, guide.package, guide.version, guide.section], ['installed', '@audit/notes', '1.2.3', 'Quokkas']);
+  assert.match(guide.next, /node_modules\/@audit\/notes\/README\.md \(this site's installed independent package/);
+  assert.deepEqual(found.coverage.searched.installed, [{ package: '@audit/notes', version: '1.2.3', files: ['urlcode.json', 'README.md', 'GUIDE.md'], independent: true }]);
+  assert.ok(!found.coverage.notSearched.some(gap => gap.source.startsWith('@audit/notes')), 'a verified package is not also listed as not searched');
+  // A declared agent reference is searched as well.
+  assert.equal((await searchDocs('wallabyfield', { project: join(root, 'app') })).results[0]?.id, 'notes:GUIDE.md');
+});
+
+test('an independent add-on whose installed files changed or were never recorded is reported as not searched (#1090)', async t => {
+  const { root, directory } = await independentSite(t);
+  await writeFile(join(directory, 'README.md'), '# notes\n\nquokkaunique, but tampered after install.\n');
+  const tampered = await searchDocs('quokkaunique', { project: join(root, 'app') });
+  assert.ok(!tampered.results.some(result => result.package === '@audit/notes'), 'modified files are not read');
+  assert.deepEqual(tampered.coverage.searched.installed, []);
+  const gap = tampered.coverage.notSearched.find(item => item.source === '@audit/notes');
+  assert.ok(gap, JSON.stringify(tampered.coverage.notSearched));
+  assert.match(gap.reason, /independent package providing notes, installed but not verified \(.*differ from addon-files\.lock\.json.*\); not read\. get_addon_agent_tooling/);
+  const { root: unrecorded } = await independentSite(t, { record: false });
+  const missing = await searchDocs('quokkaunique', { project: join(unrecorded, 'app') });
+  assert.deepEqual(missing.results.filter(result => result.source === 'installed'), []);
+  assert.match(missing.coverage.notSearched.find(item => item.source === '@audit/notes')?.reason ?? '', /no entry in addon-files\.lock\.json/);
+});
+
+test('an independent package in a first-party role is searched, and the catalog match names it rather than the bundled package (#1090)', async t => {
+  const { root } = await independentSite(t, { pkg: '@audit/store', name: 'store' });
+  const found = await searchDocs('quokkaunique store', { project: join(root, 'app') });
+  assert.ok(found.results.some(result => result.package === '@audit/store'), 'the independent store guide is read');
+  const store = found.catalog.find(match => match.name === 'store');
+  assert.ok(store, 'the release catalog still lists store');
+  assert.equal(store.installedInProject, true);
+  assert.match(store.next, /independent package @audit\/store, not @jimhoyd\/urlcode-store/);
+  assert.ok(!found.coverage.notSearched.some(gap => gap.names?.includes('store')), 'store is not reported as uninstalled');
 });

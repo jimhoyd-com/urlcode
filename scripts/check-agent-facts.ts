@@ -82,7 +82,7 @@ const hostedAi = {
 } as const;
 
 // Documentation search coverage (#759): what search_docs / urlcode docs search reads, from docs-search.ts.
-const docsSearch = { core: [...docsSearchScope.core], installedAddonGuides: docsSearchScope.installed.length > 0, maxResults: docsSearchScope.maxResults };
+const docsSearch = { core: [...docsSearchScope.core], installedAddonGuides: docsSearchScope.installed.length > 0, independentAddonGuides: (docsSearchScope.installedProviders as readonly string[]).includes('independent'), maxResults: docsSearchScope.maxResults };
 
 // Signal delivery in tests (#793, #917): the runtime skips a route's signals only for HEAD and for its own
 // health/readiness probes (`trace.probe`, set by server.ts), and `urlcode test` and `urlcode audit` give it a
@@ -243,6 +243,14 @@ if (docsSearch.installedAddonGuides) {
     fact: 'docsSearch.installedAddonGuides',
     test: sentence => DOCS_SEARCH.test(sentence) && /\b(?:small|fixed)\s+(?:packaged\s+)?(?:agent\s+)?(?:documentation\s+|docs\s+)?corpus\b|\bonly\s+(?:the\s+)?(?:small\s+)?packaged\s+(?:agent\s+)?doc(?:s|umentation)\b/i.test(sentence)
       ? 'says documentation search covers only the fixed core corpus, but packages/core/src/docs-search.ts also reads installed, pin-verified add-on guides and descriptors' : undefined,
+  });
+}
+// #1090: independent installed packages are searched once verified, so no sentence may limit search to core-pinned add-ons.
+if (docsSearch.independentAddonGuides) {
+  claims.push({
+    fact: 'docsSearch.independentAddonGuides',
+    test: sentence => DOCS_SEARCH.test(sentence) && /\bonly\b[^.]*\b(?:core-pinned|pinned by core|core's own (?:manifest )?pins?)\b|\bindependent (?:add-ons?|packages?)\b[^.]*\b(?:not|never) (?:searched|read)\b/i.test(sentence)
+      ? 'says documentation search reads only core-pinned add-ons, but packages/core/src/docs-search.ts also reads verified independent packages (#1090)' : undefined,
   });
 }
 claims.push({
