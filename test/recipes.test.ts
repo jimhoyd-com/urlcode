@@ -178,7 +178,7 @@ test('the middleware recipe serves every pattern and mirrors the cookbook module
   assert.equal((await request(app,'/downloads/report')).status,403);
   assert.equal((await request(app,'/profile',{method:'POST',headers:{'content-type':'application/json'},body:'{"name":""}'})).status,422);
   assert.equal((await request(app,'/inspect',{headers:{'x-debug':'1'}})).headers['content-type'],'application/json');
-  // The recipe and the runnable cookbook must not drift apart.
+  // The recipe's modules are generated from the runnable cookbook (npm run docs:cookbook-index); they must not drift apart.
   const recipe=await showRecipe('middleware'),cookbook=fileURLToPath(new URL('../examples/cookbook/',import.meta.url));
   for(const file of recipe.files.filter(f=>f.startsWith('middleware/')||f.startsWith('functions/')))assert.equal(recipe.content[file],await readFile(join(cookbook,file),'utf8'),file);
 });

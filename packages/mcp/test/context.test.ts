@@ -20,15 +20,26 @@ async function boot(t: test.TestContext, options: Omit<McpExtensionOptions, 'pro
   await writeFile(join(dir, 'record.mjs'), record);
   await writeFile(join(dir, 'boom.mjs'), 'export default function () { throw new Error("internal detail"); }\n');
   await writeFile(join(dir, 'text.mjs'), 'export default function (_input, context) { return `resource for ${context.requestId}`; }\n');
+  // Results that cannot be serialized: a BigInt, a cycle, a throwing toJSON and a function (serializes to nothing).
+  await writeFile(join(dir, 'bigint.mjs'), 'export default function () { return 1n; }\n');
+  await writeFile(join(dir, 'bigint-field.mjs'), 'export default function () { return { count: 1n }; }\n');
+  await writeFile(join(dir, 'cycle.mjs'), 'export default function () { const value = {}; value.self = value; return value; }\n');
+  await writeFile(join(dir, 'to-json.mjs'), 'export default function () { return { toJSON() { throw new Error("toJSON detail"); } }; }\n');
+  await writeFile(join(dir, 'fn.mjs'), 'export default function () { return () => 1; }\n');
   await writeFile(join(dir, 'prompt.mjs'), 'export default function (_input, context) { return `${context.kind}:${context.tool}:${context.env.SKILLS}`; }\n');
   const spec: McpServerSpec = {
     mount: '/mcp', serverName: 'ctx', serverVersion: '1.0.0',
     tools: {
       record: { description: 'Returns its context', inputSchema: { type: 'object', properties: { message: { type: 'string', maxLength: 20 } }, additionalProperties: false }, handler: './record.mjs' },
       boom: { description: 'Throws', inputSchema: { type: 'object', additionalProperties: false }, handler: './boom.mjs' },
+      bigint: { description: 'BigInt', inputSchema: { type: 'object' }, handler: './bigint.mjs' },
+      bigint_output: { description: 'BigInt under an outputSchema', inputSchema: { type: 'object' }, outputSchema: { type: 'object' }, handler: './bigint-field.mjs' },
+      cycle: { description: 'Cycle', inputSchema: { type: 'object' }, handler: './cycle.mjs' },
+      to_json: { description: 'Throwing toJSON', inputSchema: { type: 'object' }, handler: './to-json.mjs' },
+      fn: { description: 'Function', inputSchema: { type: 'object' }, handler: './fn.mjs' },
     },
-    resources: { readme: { uri: 'test://readme', name: 'readme', handler: './text.mjs' } },
-    prompts: { hello: { handler: './prompt.mjs' } },
+    resources: { readme: { uri: 'test://readme', name: 'readme', handler: './text.mjs' }, big: { uri: 'test://big', name: 'big', handler: './bigint-field.mjs' } },
+    prompts: { hello: { handler: './prompt.mjs' }, big: { handler: './bigint-field.mjs' } },
   };
   await writeFile(join(dir, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { mcp: { version: '1', config: { servers: { main: spec } } } },
     routes: { '/mcp/*': { extension: 'mcp', methods: ['POST', 'HEAD'], env: { SKILLS: { env: 'MCP_ENABLED_SKILLS' }, REGION: { value: 'eu-west-1' } } } } }));
@@ -100,4 +111,24 @@ test('a throwing onToolCall never changes the response', async t => {
   assert.ok(resource.json.result);
   const prompt = await call('prompts/get', { name: 'hello' });
   assert.ok(prompt.json.result);
+});
+
+// urlcode#1087: the result was serialized after success was reported, so a result that could not be
+// serialized was reported as both 'success' and 'error'. Exactly one outcome per invocation.
+test('a handler result that cannot be serialized is one error outcome, never success and error', async t => {
+  const calls: McpToolCallInfo[] = [];
+  const errors: string[] = [];
+  const call = await boot(t, { onToolCall: info => calls.push(info), onToolError: (_error, info) => errors.push(`${info.kind}:${info.tool}`) });
+  for (const name of ['bigint', 'bigint_output', 'cycle', 'to_json', 'fn']) {
+    const { json } = await call('tools/call', { name, arguments: {} });
+    assert.deepEqual(json.result, { content: [{ type: 'text', text: 'The tool could not complete the request.' }], isError: true }, name);
+  }
+  const resource = await call('resources/read', { uri: 'test://big' });
+  assert.equal(resource.json.error?.code, -32603);
+  const prompt = await call('prompts/get', { name: 'big' });
+  assert.equal(prompt.json.error?.code, -32603);
+  assert.deepEqual(calls.map(info => `${info.kind}:${info.tool}:${info.outcome}`), [
+    'tool:bigint:error', 'tool:bigint_output:error', 'tool:cycle:error', 'tool:to_json:error', 'tool:fn:error', 'resource:big:error', 'prompt:big:error',
+  ]);
+  assert.deepEqual(errors, ['tool:bigint', 'tool:bigint_output', 'tool:cycle', 'tool:to_json', 'tool:fn', 'resource:big', 'prompt:big']);
 });

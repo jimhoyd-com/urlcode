@@ -60,15 +60,16 @@ export interface AuditPage {
 export interface AuditTap {
   peek(limit: number): Promise<readonly AuditStoredEvent[]>;
   ack(ids: readonly string[]): Promise<number>;
-  /** The tap's gap: what the log pruned before it was acknowledged. A read; it never registers a consumer. */
+  /** The tap's gap: what the log pruned before any `peek` returned it. A read; it never registers a consumer. */
   status(): Promise<AuditTapStatus>;
 }
 /** What `AuditTap.status` reports. */
 export interface AuditTapStatus {
   /**
-   * How many events the log pruned while still unacknowledged since the tap first had a consumer (its first `peek` or
-   * `ack`): a counter that only grows. A sink compares it with the value it last saw; any increase is events it never
-   * received. Always 0 for a log whose tap nobody has consumed, since then pruning is only retention.
+   * How many events the log pruned, since the tap first had a consumer (its first `peek` or `ack`), that were neither
+   * acknowledged nor ever returned by a `peek`: a counter that only grows. An event peeked but pruned before its `ack`
+   * is not counted, since a sink received it. A sink compares the counter with the value it last saw; any increase is
+   * events it never received. Always 0 for a log whose tap nobody has consumed, since then pruning is only retention.
    */
   readonly lost: number;
 }

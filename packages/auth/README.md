@@ -235,7 +235,13 @@ unconfirmed sign-out), the path allowlist, and the body and header bounds.
 
 `BETTER_AUTH_SECRET` overrides the secret file. The extension always keeps
 Better Auth's rate limiter on, keyed by the client address URLCode admitted,
-and telemetry off; the `betterAuth` option cannot change either. By default
+and telemetry off; the `betterAuth` option cannot change either. It also
+keeps Better Auth's origin and CSRF checks on (`advanced.disableOriginCheck`
+and `advanced.disableCSRFCheck` pinned to `false`, on the bundled file and an
+owner database alike): Better Auth otherwise skips them, including
+`callbackURL` validation, whenever `NODE_ENV=test` or `TEST` is set, and the
+`betterAuth` option cannot turn them off either. To accept another origin, list
+it in `betterAuth.trustedOrigins`. By default
 the limiter allows 10 sign-in attempts per client address a minute and counts
 in the auth database (`rateLimit.storage: 'database'`), so a restart does
 not reset it. `betterAuth.rateLimit` can replace `storage`

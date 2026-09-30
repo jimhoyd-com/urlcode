@@ -55,7 +55,8 @@ export interface FunctionResult extends HandlerResult { nativeBody?: boolean }
 export type FunctionWorkerMessage =
   | { ready: true } | { startupError: true }
   | { id: string; status: number; headers: HeaderPair[]; body: Uint8Array; nativeBody: boolean; contentLength?: number }
-  | { id: string; error: true };
+  // `retire`: the guest ran the worker's WebAssembly memory to its cap. The pool replaces the worker (#1092).
+  | { id: string; error: true; retire?: true };
 
 interface Pending { id: string; timer: NodeJS.Timeout; resolve: (message: FunctionResult) => void; reject: (error: Error) => void }
 interface Slot { worker: Worker; ready: boolean; pending: Pending | null }
@@ -154,6 +155,14 @@ export class SandboxPool {
         if (!('id' in message)) return;
         const pending = slot.pending;
         if (!pending || pending.id !== message.id) return;
+        // A worker retired for exhausting its guest memory keeps its backoff:
+        // a guest that exhausts memory on every request must not respawn in a tight loop.
+        if ('retire' in message) {
+          clearTimeout(pending.timer); slot.pending = null; slot.ready = false;
+          pending.reject(new HttpError(502, 'Function execution failed'));
+          void worker.terminate(); // exit schedules the replacement
+          return;
+        }
         // Any answered invocation, success or guest error, proves this worker is
         // serving again; a worker that starts cleanly but dies on every request
         // must keep backing off rather than restarting in a tight loop.

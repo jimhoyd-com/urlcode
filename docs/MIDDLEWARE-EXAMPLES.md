@@ -5,7 +5,9 @@ exports both `bearer` and `basic`), each in
 [`examples/cookbook/middleware`](../examples/cookbook/middleware) with a route in
 [`routes/middleware.yaml`](../examples/cookbook/routes/middleware.yaml) and request
 fixtures in the cookbook tests. The same modules ship as the `middleware`
-[local recipe](RECIPES.md):
+[local recipe](RECIPES.md). The cookbook is the one authored copy: edit a module
+there and run `npm run docs:cookbook-index`, which regenerates the recipe's
+standalone copies (`npm run check` refuses a stale one):
 
 ```sh
 urlcode recipes add middleware --out ./my-middleware

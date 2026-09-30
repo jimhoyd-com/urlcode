@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -14,7 +14,7 @@ import { addons } from '../scripts/workspaces.ts';
 
 interface Step { id?: string; if?: string; run?: string; env?: Record<string, string>; 'continue-on-error'?: boolean }
 interface Job { if?: string; needs?: string | string[]; outputs?: Record<string, string>; strategy?: { matrix: Record<string, unknown> }; steps?: Step[] }
-const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8')) as { jobs: Record<string, Job> };
+const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8')) as { on: Record<string, unknown>; jobs: Record<string, Job> };
 const step = (id: string): Step => workflow.jobs.plan!.steps!.find(candidate => candidate.id === id)!;
 const ci = readFilters();
 const filters = (id: 'lanes' | 'packages') => ci[id];
@@ -81,7 +81,8 @@ const code = ['static', 'verify', 'checks', 'package-floor-smoke', 'workspace-ve
 const coreJobs = ['verify', 'checks', 'package-floor-smoke', 'audit', 'action', 'build-fidelity', 'container'];
 const shards = (...legs: string[]): string[] => legs.flatMap(leg => [1, 2, 3].map(shard => `${leg}/${shard}`));
 const EVERY_LEG = ['ubuntu-latest', 'macos-latest', 'windows-latest'].flatMap(os => ['22', '24', '26'].map(node => `${os}/${node}`));
-const ALL = ['auth', 'store', 'mcp'];
+// In filter order, which is the matrix order; the workspace test below proves it names every verified workspace.
+const ALL = Object.keys(filters('packages'));
 
 test('the prose lane is narrow: every changed path must be reviewed contributor prose', () => {
   for (const path of ['docs/CI.md', 'docs/nested/page.md', 'AGENTS.md', 'llms-full.txt', 'packages/auth/CONTRIBUTING.md']) {
@@ -111,15 +112,24 @@ test('classification fails closed: exact-commit events, a failed filter and an e
   for (const name of code) assert(truthy(evaluate(workflow.jobs[name]!.if!, context)), name);
 });
 
-test('exact-commit coverage is the full OS x Node matrix whatever changed', () => {
-  for (const scenario of [{ event: 'schedule' }, { event: 'workflow_dispatch' }, { event: 'merge_group' }, { event: 'push', release: true, paths: ['docs/CI.md'] }]) {
+// Every trigger other than a pull request is exact-commit coverage; `workflow_call` runs under its caller's event,
+// which publish.yml makes a push, so a release is the push with `release: true`.
+const EXACT = [
+  ...Object.keys(workflow.on).filter(event => event !== 'pull_request' && event !== 'workflow_call').map(event => ({ event })),
+  { event: 'push', release: true, paths: ['docs/CI.md'] },
+];
+
+test('exact-commit coverage is every lane on the full OS x Node matrix whatever changed (#1089)', () => {
+  assert.deepEqual(EXACT.map(scenario => scenario.event).sort(), ['merge_group', 'push', 'schedule', 'workflow_dispatch']);
+  const everyJob = Object.keys(workflow.jobs).filter(name => name !== 'plan' && name !== 'verify-complete');
+  for (const scenario of EXACT) {
     const selected = jobs(scenario);
+    assert.deepEqual(Object.keys(selected), everyJob, JSON.stringify(scenario));
     assert.deepEqual(selected.verify, shards(...EVERY_LEG));
     assert.deepEqual(selected.checks, EVERY_LEG);
     assert.equal(selected['workspace-verify']!.length, 9 * ALL.length);
-    // The packed integration runs on every OS before a release and on dispatch; the sweep and the queue skip it.
-    const integration = scenario.event === 'workflow_dispatch' || scenario.release ? ['ubuntu-latest/24', 'macos-latest/24', 'windows-latest/24'] : undefined;
-    assert.deepEqual(selected['workspace-integration'], integration, JSON.stringify(scenario));
+    // The packed integration and its application proofs run on every OS: the sweep and the queue included.
+    assert.deepEqual(selected['workspace-integration'], ['ubuntu-latest/24', 'macos-latest/24', 'windows-latest/24'], JSON.stringify(scenario));
   }
 });
 
@@ -175,6 +185,32 @@ test('the package filters encode every extension and the extensions that build a
   // The lane filters name the same extensions.
   const sets = JSON.stringify(filters('lanes')).match(/packages\/\{[a-z,]+\}/g)!.map(glob => glob.slice('packages/{'.length, -1).split(',').sort().join());
   assert.deepEqual(new Set(sets), new Set([extensions.map(addon => addon.name).sort().join()]));
+});
+
+test('every workspace with a verify script is in the workspace-verify package list, the filters and the fallback', async () => {
+  // package.json#workspaces is the source of truth: a new workspace must reach the workspace-verify matrix both
+  // through the package filters and through the plan's fail-closed fallback list, or this fails.
+  const { workspaces } = JSON.parse(readFileSync('package.json', 'utf8')) as { workspaces: string[] };
+  const verified: string[] = [];
+  for (const glob of workspaces) {
+    assert.match(glob, /^[\w-]+\/\*$/, `workspace glob ${glob}: teach this test to expand it`);
+    const parent = glob.slice(0, -2);
+    for (const entry of readdirSync(parent, { withFileTypes: true })) {
+      const manifest = join(parent, entry.name, 'package.json');
+      if (!entry.isDirectory() || !existsSync(manifest)) continue;
+      const pkg = JSON.parse(readFileSync(manifest, 'utf8')) as { name: string; scripts?: Record<string, string> };
+      if (!pkg.scripts?.verify) continue;
+      assert.equal(pkg.name, `@jimhoyd/urlcode-${entry.name}`, manifest);
+      verified.push(entry.name);
+    }
+  }
+  verified.sort();
+  const extensions = (await addons()).filter(addon => addon.kind === 'extension').map(addon => addon.name).sort();
+  assert.deepEqual(extensions, verified, 'every verified workspace is an extension add-on (packages/<name>/urlcode.json)');
+  assert.deepEqual([...ALL].sort(), verified, '.github/ci-filters.yml packages');
+  const fallback = /\|\| '(\[[^']*\])'$/.exec(unwrap(workflow.jobs.plan!.outputs!.packages!))?.[1];
+  assert(fallback, 'the plan packages output ends in a literal fallback list');
+  assert.deepEqual((JSON.parse(fallback) as string[]).sort(), verified, 'ci.yml plan packages fallback');
 });
 
 // #744: one representative path per high-impact area.

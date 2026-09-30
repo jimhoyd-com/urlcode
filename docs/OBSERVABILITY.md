@@ -167,7 +167,7 @@ and capped at 10 000 keys.
 | `signals.{accepted,delivered,failed,dropped,captured}` | counter | Best-effort webhook outcomes; exposed as `signals_total` with outcome labels. |
 | `logsDropped` | counter | Records the JSON logger shed. |
 | `observers.errors` | counter | Observer hooks that threw or rejected. |
-| `extensions[name][metric]` | counter or gauge | What the serving runtime's extensions report through `metrics()` ([extension metrics](EXTENSIONS.md#extension-metrics)), read afresh at each snapshot: a name ending in `_total` is a counter. For example `extensions.store.audit_pruned_unacked_total`, the store's [audit events pruned before a sink acknowledged them](STORE.md#when-a-sink-falls-behind). Present only for extensions that implement `metrics()`. |
+| `extensions[name][metric]` | counter or gauge | What the serving runtime's extensions report through `metrics()` ([extension metrics](EXTENSIONS.md#extension-metrics)), read afresh at each snapshot: a name ending in `_total` is a counter. For example `extensions.store.audit_lost_total`, the store's [audit events pruned before a sink acknowledged them](STORE.md#when-a-sink-falls-behind). Present only for extensions that implement `metrics()`. |
 
 Policy counters are derived from the `throttle`, `agents` and `cache` events
 as they pass through the sink, so the policies themselves have no metrics
@@ -189,7 +189,7 @@ are `status_class`, `route` and `outcome`. An extension's number is its own
 unlabelled metric, `urlcode_extension_<extension>_<metric>` (a `-` in the
 extension name becomes `_`), typed `counter` when its name ends in `_total` and
 `gauge` otherwise, such as
-`urlcode_extension_store_audit_pruned_unacked_total`.
+`urlcode_extension_store_audit_lost_total`.
 
 ```
 # HELP urlcode_requests_total Application requests answered since start, by status class.
@@ -205,7 +205,7 @@ urlcode_throttle_total{outcome="exceeded"} 14
 urlcode_cache_total{outcome="hit"} 511
 urlcode_logs_dropped_total 0
 urlcode_observer_errors_total 0
-urlcode_extension_store_audit_pruned_unacked_total 0
+urlcode_extension_store_audit_lost_total 0
 urlcode_uptime_seconds 86400
 urlcode_process_rss_bytes 71303168
 ```

@@ -54,10 +54,14 @@ uses `paths-ignore`.
 Routine pull request and `main` work is intentionally the fast feedback
 portfolio. Scheduled **Verify — sweep**, merge-queue, manually dispatched and
 release runs are exact-commit coverage: the full Linux/macOS/Windows × Node
-22/24/26 matrix, whatever the diff. A release run (`ci.yml` called with
-`release: true`) and a dispatch also run the cross-workspace integration on Linux, macOS and Windows
-with Node 24, so a version is published only after that proof passes on its
-exact commit. `build-fidelity` (`npm run ci:build-fidelity`) builds everything
+22/24/26 matrix, whatever the diff, and every job: none is ever planned away.
+Each of them also runs the cross-workspace packed integration and its
+application proofs on Linux, macOS and Windows with Node 24, so the merge queue
+and the nightly sweep prove what a release does, and a version is published
+only after that proof passes on its exact commit
+([#1089](https://github.com/jimhoyd-com/urlcode/issues/1089)).
+`test/ci-lanes.test.ts` evaluates the plan for every trigger in `ci.yml` other
+than `pull_request`, and for a release, and fails if any job or leg is missing. `build-fidelity` (`npm run ci:build-fidelity`) builds everything
 twice from clean builds and packs both with the release packer on the
 `.node-version` toolchain; the tarballs and add-on pins must be byte-identical.
 
@@ -79,6 +83,13 @@ extension builds against which). A core or shared path in the same diff
 therefore widens both legs to every extension. A core-only change adds no
 Windows extension suites; its Windows coverage comes from the high-impact core
 shards below and from release coverage.
+
+The extension names appear in three places: the `packages` filters and the
+`packages/{…}` lane globs in `.github/ci-filters.yml`, and the plan's
+fail-closed fallback list in `ci.yml`. `test/ci-lanes.test.ts` expands
+`package.json#workspaces` and fails when a workspace with a `verify` script is
+missing from any of them, so a new `packages/<name>` cannot silently skip
+`workspace-verify`.
 
 The Windows suites are entries of the existing `workspace-verify` matrix, not
 a separate job, so any failed Windows entry fails `verify-complete`. Main

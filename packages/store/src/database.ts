@@ -16,7 +16,7 @@ export const STORE_APPLICATION_ID = 0x55535452;
  * The schema version the baseline creates. Earlier versions were written only by releases before the baseline, and a
  * database at one of them is refused rather than upgraded: recreate the data directory.
  */
-const BASELINE_VERSION = 8;
+const BASELINE_VERSION = 9;
 /**
  * The current schema, created directly on an empty file.
  * `store_records`: one row per record of every collection. `seq` is creation order (an update keeps it), `owner` is the
@@ -32,8 +32,10 @@ const BASELINE_VERSION = 8;
  * version it was built for; every serving write checks its own against it under the write lock (the declaration fence).
  * `store_audit_events`: the audit log (#1052), each event written in the transaction of the change it records and
  * pruned to the configured retention there; `forwarded` is the tap's acknowledgement (`AuditTap.ack`).
- * `store_audit_tap`: the tap's gap (#1067), one row. `consumer` becomes 1 at the tap's first `peek` or `ack`; from then
- * on every prune adds the events it removed while still unforwarded to `lost`, in the same write transaction.
+ * `store_audit_tap`: the tap's gap (#1067), one row. `consumer` becomes 1 at the tap's first `peek` or `ack`; `peeked` is
+ * the highest `seq` a `peek` has returned (every unforwarded event at or below it was delivered at least once). From the
+ * first consumer on, every prune adds the events it removed while still unforwarded and above `peeked` to `lost`, in the
+ * same write transaction.
  */
 const BASELINE = `CREATE TABLE store_records(seq INTEGER PRIMARY KEY AUTOINCREMENT, collection TEXT NOT NULL, id TEXT NOT NULL,
      owner TEXT, key TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
@@ -56,7 +58,7 @@ const BASELINE = `CREATE TABLE store_records(seq INTEGER PRIMARY KEY AUTOINCREME
    CREATE INDEX store_audit_at ON store_audit_events(at);
    CREATE INDEX store_audit_unforwarded ON store_audit_events(seq) WHERE forwarded = 0;
    CREATE TABLE store_audit_tap(id INTEGER PRIMARY KEY CHECK (id = 1), consumer INTEGER NOT NULL DEFAULT 0 CHECK (consumer IN (0, 1)),
-     lost INTEGER NOT NULL DEFAULT 0 CHECK (lost >= 0));
+     peeked INTEGER NOT NULL DEFAULT 0 CHECK (peeked >= 0), lost INTEGER NOT NULL DEFAULT 0 CHECK (lost >= 0));
    INSERT INTO store_audit_tap(id) VALUES (1);`;
 /**
  * Forward-only steps on top of the baseline: `MIGRATIONS[n]` moves a database from `user_version` BASELINE_VERSION + n

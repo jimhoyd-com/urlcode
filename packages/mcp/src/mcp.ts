@@ -258,7 +258,7 @@ function resourceContent(uri: string, defaultMimeType: string | undefined, value
   if (typeof value === 'string') return { uri, ...(defaultMimeType ? { mimeType: defaultMimeType } : {}), text: value };
   if (isRecord(value) && typeof value.text === 'string') { const mimeType = mimeTypeOf(value.mimeType); return { uri, ...(mimeType ? { mimeType } : {}), text: value.text }; }
   if (isRecord(value) && typeof value.blob === 'string') { const mimeType = mimeTypeOf(value.mimeType); return { uri, ...(mimeType ? { mimeType } : {}), blob: value.blob }; }
-  return { uri, mimeType: mimeTypeOf(undefined) ?? 'application/json', text: JSON.stringify(value ?? null) };
+  return { uri, mimeType: mimeTypeOf(undefined) ?? 'application/json', text: jsonText(value) };
 }
 
 type PromptMessage = { role: 'user' | 'assistant'; content: { type: 'text'; text: string } };
@@ -279,10 +279,10 @@ function promptMessages(value: unknown): PromptMessage[] {
         if (typeof entry.text === 'string') return textMessage(entry.role, entry.text);
         if (isRecord(entry.content) && entry.content.type === 'text' && typeof entry.content.text === 'string') return textMessage(entry.role, entry.content.text);
       }
-      return textMessage('user', typeof entry === 'string' ? entry : JSON.stringify(entry ?? null));
+      return textMessage('user', typeof entry === 'string' ? entry : jsonText(entry));
     });
   }
-  return [textMessage('user', JSON.stringify(value ?? null))];
+  return [textMessage('user', jsonText(value))];
 }
 function promptArgumentsSchema(args: readonly McpPromptArgumentSpec[] | undefined): BodySchema {
   const properties: Record<string, BodySchema> = {};
@@ -293,8 +293,18 @@ function promptArgumentsSchema(args: readonly McpPromptArgumentSpec[] | undefine
 
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null && !Array.isArray(value); }
 function textError(status: number, message: string): HandlerResult { return { status, headers: [['content-type', 'text/plain; charset=utf-8']], body: message }; }
+/**
+ * Serializes a handler result to JSON text, throwing when it cannot be (a BigInt, a cycle, a throwing
+ * toJSON, or a function or symbol that serializes to nothing). Every handler result is serialized
+ * before its outcome is reported, so a failure here is the invocation's one `error` outcome (#1087).
+ */
+function jsonText(value: unknown): string {
+  const text = JSON.stringify(value ?? null) as string | undefined;
+  if (typeof text !== 'string') throw new TypeError('handler result does not serialize to JSON');
+  return text;
+}
 function toolContent(value: unknown): { content: [{ type: 'text'; text: string }]; isError: boolean } {
-  return { content: [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value ?? null) }], isError: false };
+  return { content: [{ type: 'text', text: typeof value === 'string' ? value : jsonText(value) }], isError: false };
 }
 const invalid = (message: string, data?: unknown): ProtocolError => new ProtocolError(ProtocolErrorCode.InvalidParams, message, data);
 /**
@@ -366,14 +376,16 @@ function serverFor(server: ActiveServer, options: McpExtensionOptions, request: 
     };
     try {
       const value = await tool.call(args, context);
-      if (!tool.output) { report('success'); return toolContent(value); }
+      // The result is serialized before success is reported: a result that cannot be is the one `error` outcome (#1087).
+      if (!tool.output) { const result = toolContent(value); report('success'); return result; }
       // Output schema declared: the MCP tools specification requires structuredContent conforming to it; a
       // non-conforming handler result is a server-side contract violation, answered like a thrown handler error.
       if (!isRecord(value)) return fail(new Error('tool handler result is not an object, but the tool declares an outputSchema'));
       const outputIssues = bodySchemaIssues(tool.output, value);
       if (outputIssues.length) return fail(new Error(`tool handler result failed its declared outputSchema: ${outputIssues.map(bodySchemaLine).join('; ')}`));
+      const result = { content: [{ type: 'text' as const, text: jsonText(value) }], structuredContent: value, isError: false };
       report('success');
-      return { content: [{ type: 'text' as const, text: JSON.stringify(value) }], structuredContent: value, isError: false };
+      return result;
     } catch (error) {
       if (!isMcpToolError(error)) return fail(error);
       // A handler-chosen, caller-facing failure: its own (bounded) message, never the generic one.

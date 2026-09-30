@@ -83,9 +83,10 @@ External/private extensions are also supported through the same public host cont
 for installation, AI discovery and validation outside the release catalog.
 
 A release channel is not an
-independent assessment: review, deployment
-evidence and an accessibility assessment are still pending
-([issue 58](https://github.com/jimhoyd-com/urlcode/issues/58)). Auth's
+independent assessment: no independent security review has been performed, and
+deployment evidence and an accessibility assessment are still pending; the
+[readiness register](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RELEASE-OPERATIONS.md#production-readiness) lists the open
+gates. Auth's
 [README](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth/README.md#not-included) lists what it
 does not include.
 The current version of each package is its own manifest, and the peer ranges it
@@ -170,7 +171,9 @@ library called from a function route is the alternative
 ([three ways](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#native-independent-integration-or-bundled-default)).
 Auth additionally needs the Node runtime its package documents (SQLite only
 for its bundled database file); mcp declares Node, AWS and Vercel targets (its opt-in streaming transport is
-self-hosted only), while store (its database is `node:sqlite`) is Node-only. See each package's README ([auth](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth/README.md),
+admitted on node and vercel and refused on aws; on Vercel delivery is delegated
+to the provider, and local adapter support is not a provider deployment proof, see
+[streamed responses](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#streamed-responses)), while store (its database is `node:sqlite`) is Node-only. See each package's README ([auth](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth/README.md),
 [store](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/store/README.md),
 [mcp](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/mcp/README.md)) for the exact requirement.
 
@@ -1153,7 +1156,11 @@ installed inert artifacts and registrations already available to the session. Re
 its operator prerequisites and explicit gaps as constraints, not as permission
 to select packages, storage, keys or grants in project YAML. A list, filter,
 sort or paging goal plans the store's `filterable`/`sortable` properties and
-route query `parameters`, not a handler that parses the query string. It also
+route query `parameters`, not a handler that parses the query string. A goal
+that writes several of the caller's records at once ("mark every one of my
+todos done") is an explicit gap: application code has no store capability for
+it, so the plan names a per-record transition, a transfer, or the owner-choice
+path of an independently owned database. It also
 matches the goal against the authoring surfaces installed and catalog
 extensions publish (`extensions.surfaces`): "their own notes" names store
 `ownership` behind auth, and an approval goal names store `transitions`
@@ -3167,9 +3174,13 @@ value does not authorize exposing it to a function; the policy still applies.
 
 A `sandbox: true` invocation has a fresh guest heap and module state every
 time. No cross-request counters, cached secrets or prototype mutation. QuickJS
-heap limit is 32 MiB, stack limit 512 KiB; outer worker and deployment limits
-are additional defenses, not a claim that total process RSS is capped at 32
-MiB. Two workers, no queue; saturation returns 503. The independent 5-second
+heap limit is 32 MiB, stack limit 512 KiB. The heap limit is enforced by each
+worker's WebAssembly memory maximum of 44 MiB (heap plus engine baseline); a
+guest whose allocations reach it answers 502, even if it caught the error, and
+its worker is replaced. The in-guest interrupt is polled between bytecode
+batches, so the worker termination deadline is the enforced bound for a loop of
+few, very expensive operations. Outer worker and deployment limits are
+additional defenses, not a claim that total process RSS is capped at 32 MiB. Two workers, no queue; saturation returns 503. The independent 5-second
 deadline terminates a worker and returns 504. Generic failures return 502;
 worker replacement is bounded. A trusted route has none of this: no fresh
 heap/module reset, no fixed worker-pool ceiling (bounded instead by ordinary
@@ -6891,8 +6902,8 @@ and the `AuditTap`, `AuditTapStatus`, `AuditLog`, `AuditEvent`, `AuditStoredEven
 `requires: [store]` forwards events anywhere by calling `peek(limit)`, writing
 the batch, then `ack(ids)`, at least once and deduplicated on the event id
 ([forwarding events to a sink](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#forwarding-events-to-a-sink)).
-`status()` reports how many events retention pruned before the sink
-acknowledged them, which the store also exposes as a metric and a warning
+`status()` reports how many events retention pruned before any sink peeked
+them, which the store also exposes as a metric and a warning
 ([when a sink falls behind](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#when-a-sink-falls-behind)). There
 is no first-party audit extension: a first-party sink would add a second
 database, a drain and a delivery guarantee to maintain, while the tap lets an
@@ -7540,6 +7551,15 @@ into it; only the default for routes that declare neither option has changed.
 - A fresh guest heap/module state per invocation prevents state crossing requests.
 - 32 MiB guest heap, 512 KiB stack, source/input/output/header limits, bounded
   concurrency, guest interruption and an independent worker termination deadline.
+  The heap is enforced by capping each sandbox worker's WebAssembly memory at
+  44 MiB (the 32 MiB guest heap plus the engine's own baseline and growth
+  step), not by QuickJS's allocation counter, which this build undercounts. A
+  guest whose allocations reach the cap fails with the generic 502 even if it
+  catches the error, and its worker is retired and replaced (logged as a
+  `function_worker` restart), because WebAssembly memory never shrinks. The
+  in-guest interrupt is polled between bytecode batches, so a loop of few, very
+  expensive operations can overrun it; the worker termination deadline is the
+  enforced bound for those.
 - The guest's result is recorded where guest code cannot rewrite it, and the
   host checks its shape before trusting it. A result that states a body length
   for any method other than HEAD is invalid and answers 502; the runtime frames
@@ -7744,9 +7764,10 @@ allocations, loops, unauthorized secret requests and stale/repo-local policies.
 These are regression tests, not a proof of complete security.
 
 The URLCode host, parser, QuickJS/WASM engine, native runtime and dependencies
-remain trusted computing components that need patching and review. Guest heap
-limits do not cap all host/WASM RSS; use OS/container memory/CPU/PID limits as an
-additional layer. Native engine bugs or resource exhaustion remain residual risks.
+remain trusted computing components that need patching and review. The per-worker
+WebAssembly memory cap bounds each guest, but not the host worker's own V8 and
+native memory or the rest of the process; use OS/container memory/CPU/PID limits
+as an additional layer. Native engine bugs or resource exhaustion remain residual risks.
 For a public arbitrary-code/multi-tenant service, require independent security
 review plus process/VM-level isolation and operational controls before launch.
 Do not advertise this release as an audited hostile multi-tenant hosting platform.

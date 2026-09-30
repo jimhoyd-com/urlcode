@@ -132,3 +132,18 @@ test('prose cannot claim Codex reads or discovers a project .mcp.json (#103)',as
  const clean=await scan('`urlcode init` writes `.mcp.json`, the project-scoped file Claude Code reads.\n\nCodex does not read `.mcp.json`: register the same command under `[mcp_servers.urlcode]` in `~/.codex/config.toml`, or with `codex mcp add`.\n\nA plugin-bundled `.mcp.json` is a separate Codex plugin integration, not a project registration.\n');
  assert.equal(clean.status,0,clean.stderr);
 });
+
+test('prose cannot limit documentation search to core-pinned add-ons once it reads verified independent ones (#1090)',async t=>{
+ const inventory=spawnSync(process.execPath,[script,'--inventory'],{encoding:'utf8',timeout:30000});
+ assert.equal(inventory.status,0,inventory.stderr);
+ assert.equal(JSON.parse(inventory.stdout).docsSearch.independentAddonGuides,true);
+ const dir=await mkdtemp(join(tmpdir(),'urlcode-agent-facts-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ const scan=async(text:string)=>{const file=join(dir,'README.md');await writeFile(file,text);return spawnSync(process.execPath,[script,'--files',file],{encoding:'utf8',timeout:30000});};
+ for(const text of ['`search_docs` reads only the guides of core-pinned add-ons.\n','`urlcode docs search` skips independent packages, which are never read.\n']){
+  const result=await scan(text);
+  assert.equal(result.status,1,`should reject: ${text}`);
+  assert.ok(result.stderr.includes('[docsSearch.independentAddonGuides'),result.stderr);
+ }
+ const clean=await scan('`search_docs` reads verified installed add-ons, core-pinned or independent, and lists an unverified one as not searched.\n');
+ assert.equal(clean.status,0,clean.stderr);
+});

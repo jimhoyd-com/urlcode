@@ -171,12 +171,12 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
   };
   const current = (): StoreDatabase | undefined => live.length && connection?.db?.open ? connection.db : undefined;
   const shared = storeExports(auditLog(current));
-  // The tap's gap (#1067): events pruned before the tap's consumer acknowledged them. This process warns when it first
+  // The tap's gap (#1067): events pruned before the tap's consumer peeked them. This process warns when it first
   // sees the count nonzero (through the activation warning when it already is at startup), then only each time the
   // count reaches another multiple of auditRetention, so a sink that stays behind yields one record per window lost.
   let warnedBucket: number | undefined;
   const lossBucket = (lost: number, retention: number): number => lost === 0 ? 0 : 1 + Math.floor(lost / retention);
-  const lossMessage = (lost: number, retention: number): string => `audit log: ${lost} ${lost === 1 ? 'event was' : 'events were'} pruned (auditRetention ${retention}) before the tap's consumer acknowledged them, so its sink never received them; StoreExports.audit.status() and the audit_pruned_unacked_total metric count them`;
+  const lossMessage = (lost: number, retention: number): string => `audit log: ${lost} ${lost === 1 ? 'event was' : 'events were'} pruned (auditRetention ${retention}) before the tap's consumer peeked them, so its sink never received them; StoreExports.audit.status() and the audit_lost_total metric count them`;
   const checkLoss = (): void => {
     const serving = live.at(-1), db = current();
     if (!serving || !db) return;
@@ -284,8 +284,8 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
       let closed = false;
       return {
         handle: request => dispatch({ byMount, shortByMount, transitionByMount, readersByMount }, context, request),
-        // The tap's gap as a counter (#1067): `urlcode_extension_store_audit_pruned_unacked_total` in Prometheus.
-        metrics() { const db = current(); return db ? { audit_pruned_unacked_total: auditTapStatus(db).lost } : {}; },
+        // The tap's gap as a counter (#1067): `urlcode_extension_store_audit_lost_total` in Prometheus.
+        metrics() { const db = current(); return db ? { audit_lost_total: auditTapStatus(db).lost } : {}; },
         async close() {
           if (closed) return;
           closed = true;

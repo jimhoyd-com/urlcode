@@ -5,6 +5,7 @@ import { cleanup } from './cleanup.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { TestContext } from 'node:test';
+import { randomUUID } from 'node:crypto';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -189,9 +190,10 @@ async function behind(t: TestContext, root: string) {
   let open = true;
   const close = async () => { if (open) { open = false; await served.close?.(); await instance.close(); } };
   cleanup(t, close);
-  let n = 0;
+  // Codes stay unique when the same database is activated again.
+  let n = 0; const run = randomUUID().slice(0, 8);
   // Each write is one audited create; the loss check runs in a microtask after its transaction, so settle it too.
-  const write = async (count: number) => { for (let i = 0; i < count; i++) { await instance.exports.records('notes').create({ id: 'alice' }, { code: `c${n++}`, destination: 'https://example.test/' }); await new Promise(resolve => setImmediate(resolve)); } };
+  const write = async (count: number) => { for (let i = 0; i < count; i++) { await instance.exports.records('notes').create({ id: 'alice' }, { code: `c${run}${n++}`, destination: 'https://example.test/' }); await new Promise(resolve => setImmediate(resolve)); } };
   return { tap: instance.exports.audit, metrics: () => served.metrics!(), warned, started, write, close };
 }
 
@@ -201,20 +203,20 @@ test('a sink behind the retention window is told what it lost: the tap status, t
   const site = await behind(t, root);
   await site.write(15);
   assert.deepEqual(await site.tap.status(), { lost: 0 }, 'with no consumer, pruning is only retention');
-  assert.deepEqual(site.metrics(), { audit_pruned_unacked_total: 0 });
-  // The sink arrives, reads the whole window and acknowledges only the oldest event.
-  const window = await site.tap.peek(100);
-  assert.equal(window.length, 10);
+  assert.deepEqual(site.metrics(), { audit_lost_total: 0 });
+  // The sink arrives, reads only the oldest event of the window and acknowledges it, then stalls.
+  const window = await site.tap.peek(1);
+  assert.equal(window.length, 1);
   assert.equal(await site.tap.ack([window[0]!.id]), 1);
   await site.write(5);
   assert.deepEqual(await site.tap.status(), { lost: 4 }, 'five events pruned, the acknowledged one not lost');
-  assert.deepEqual(site.metrics(), { audit_pruned_unacked_total: 4 });
+  assert.deepEqual(site.metrics(), { audit_lost_total: 4 });
   assert.equal(site.warned.length, 1, 'exactly one warning when the count first became nonzero');
-  assert.match(site.warned[0]!, /audit log: 1 event was pruned \(auditRetention 10\) before the tap's consumer acknowledged them/);
+  assert.match(site.warned[0]!, /audit log: 1 event was pruned \(auditRetention 10\) before the tap's consumer peeked them/);
   await site.write(4);
   assert.deepEqual(await site.tap.status(), { lost: 8 });
   assert.equal(site.warned.length, 1, 'growth within a retention window is not warned again');
-  assert.equal((await site.tap.peek(100)).length, 10, 'the log still holds its window: no write was refused');
+  assert.equal((await site.tap.query()).events.length, 10, 'the log still holds its window: no write was refused');
   await site.write(2);
   assert.deepEqual(await site.tap.status(), { lost: 10 });
   assert.equal(site.warned.length, 2, 'a whole retention window lost warns once more');
@@ -224,7 +226,7 @@ test('a sink behind the retention window is told what it lost: the tap status, t
   await site.close();
   const again = await behind(t, root);
   assert.deepEqual(await again.tap.status(), { lost: 10 });
-  assert.deepEqual(again.metrics(), { audit_pruned_unacked_total: 10 });
+  assert.deepEqual(again.metrics(), { audit_lost_total: 10 });
   assert.equal(again.started.length, 1);
   assert.match(again.started[0]!, /audit log: 10 events were pruned/);
 });
@@ -241,8 +243,39 @@ test('a sink that keeps up within the retention window loses nothing and hears n
   }
   assert.equal(forwarded, 30);
   assert.deepEqual(await site.tap.status(), { lost: 0 });
-  assert.deepEqual(site.metrics(), { audit_pruned_unacked_total: 0 });
+  assert.deepEqual(site.metrics(), { audit_lost_total: 0 });
   assert.deepEqual([site.warned, site.started], [[], []]);
+});
+
+test('an event a sink peeked is not lost when it is pruned before its ack; one never peeked is', async t => {
+  const root = await tempRoot(t);
+  await mkdir(join(root, 'app'));
+  const site = await behind(t, root);
+  await site.write(10);
+  // The sink peeks the whole window and is still forwarding it (no ack) when the next writes prune all of it.
+  const inFlight = await site.tap.peek(100);
+  assert.equal(inFlight.length, 10);
+  assert.deepEqual(await site.tap.peek(100), inFlight, 'peeking again before the ack returns the same batch');
+  await site.write(10);
+  assert.deepEqual(await site.tap.status(), { lost: 0 }, 'every pruned event had reached the sink');
+  assert.equal(await site.tap.ack(inFlight.map(event => event.id)), 0, 'the late ack finds nothing to mark');
+  assert.deepEqual([site.warned, site.started], [[], []]);
+  // The ten written meanwhile were never peeked: pruning five of them loses five.
+  await site.write(5);
+  assert.deepEqual(await site.tap.status(), { lost: 5 });
+  assert.deepEqual(site.metrics(), { audit_lost_total: 5 });
+  // The mark is the database's: after a restart, a peek of part of the window protects that part only.
+  await site.close();
+  const again = await behind(t, root);
+  const part = await again.tap.peek(3);
+  assert.equal(part.length, 3);
+  await again.write(5);
+  assert.deepEqual(await again.tap.status(), { lost: 7 }, 'three peeked events pruned uncounted, two never-peeked ones counted');
+  const rest = await again.tap.peek(100);
+  assert.deepEqual(rest.length, 10, 'the next peek resumes at the oldest event still held');
+  assert.equal(await again.tap.ack(rest.map(event => event.id)), 10);
+  await again.write(10);
+  assert.deepEqual(await again.tap.status(), { lost: 7 }, 'acknowledged events are never counted');
 });
 
 test('audit: true refuses a collection mount no principal-providing policy guards', async t => {

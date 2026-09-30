@@ -1,6 +1,6 @@
 import { parentPort, workerData } from 'node:worker_threads';
 import { posix } from 'node:path';
-import { getQuickJS, type QuickJSHandle } from 'quickjs-emscripten';
+import { newQuickJSWASMModule, newVariant, RELEASE_SYNC, type QuickJSHandle } from 'quickjs-emscripten';
 import { guestBootstrap } from './guest-api.ts';
 import type { FunctionWorkerData, FunctionWorkerMessage, FunctionWorkerRequest } from './functions.ts';
 import type { GuestResponsePayload } from './guest-api.ts';
@@ -9,7 +9,23 @@ if (!parentPort) throw new Error('Function worker requires a parent');
 const port = parentPort;
 const data = workerData as FunctionWorkerData; // trust boundary: set by FunctionPool.spawn
 const post = (message: FunctionWorkerMessage): void => port.postMessage(message);
-const engine = await getQuickJS();
+// The guest heap bound is this WebAssembly memory's maximum, not QuickJS's own
+// setMemoryLimit: the packaged build has no malloc_usable_size, so QuickJS
+// counts only a small overhead per allocation and would let the guest grow the
+// memory to Emscripten's 2 GiB ceiling (#1092). 256 pages is the build's 16 MiB
+// initial memory; the maximum leaves the engine's static data, stack and
+// runtime/context baseline plus Emscripten's growth step on top of the 32 MiB
+// guest heap, so a guest within 32 MiB never meets the cap.
+const guestHeapBytes = 32 * 1024 * 1024;
+const wasmPage = 65536;
+const memory = new WebAssembly.Memory({ initial: 256, maximum: (guestHeapBytes + 12 * 1024 * 1024) / wasmPage });
+// A refused grow means an allocation may have failed inside the engine. The
+// invocation then fails and the worker is retired, because WebAssembly memory
+// never shrinks and an engine that ran out is not trusted to serve again.
+let exhausted = false;
+const grow = memory.grow.bind(memory);
+memory.grow = (delta: number): number => { try { return grow(delta); } catch (error) { exhausted = true; throw error; } };
+const engine = await newQuickJSWASMModule(newVariant(RELEASE_SYNC, { wasmMemory: memory }));
 async function evaluate(entry: string | undefined, name: string | undefined, payload?: string, timeoutMs = 5000, chain: FunctionWorkerRequest['chain'] = []): Promise<string | undefined> {
   // New heap/module state for every invocation, including validation. No Node
   // objects/functions are injected. Only strings and JSON cross the boundary.
@@ -67,6 +83,7 @@ async function evaluate(entry: string | undefined, name: string | undefined, pay
       run('globalThis.__pump()');
       if (string('__state') === 'pending') await new Promise(resolve => setTimeout(resolve,2));
     }
+    if (exhausted) throw new Error('Guest memory exhausted');
     if (string('__state') !== 'done') throw new Error('Guest invocation failed');
     return payload === undefined ? undefined : string('__output');
   } finally { vm.dispose(); runtime.dispose(); }
@@ -77,6 +94,7 @@ async function evaluate(entry: string | undefined, name: string | undefined, pay
 const postAfterEvaluation = (message: FunctionWorkerMessage): void => { setImmediate(post, message); };
 try {
   for (const [source,name] of data.entries) await evaluate(source,name);
+  if (exhausted) throw new Error('Guest memory exhausted');
   postAfterEvaluation({ready:true});
 } catch { postAfterEvaluation({startupError:true}); }
 const isPair = (pair: unknown): pair is [string, string] => Array.isArray(pair) && pair.length === 2 && pair.every(v => typeof v === 'string');
@@ -110,5 +128,5 @@ port.on('message', async ({id,source,name,request,context,maxBytes,timeoutMs,cha
     if (bytes > 16384) throw new Error('Header limit');
     post({id,status:value.status,headers:value.headers,body,nativeBody:value.nativeBody === true,
       ...(typeof value.contentLength === 'number' ? {contentLength:value.contentLength} : {})});
-  } catch { post({id,error:true}); }
+  } catch { post(exhausted ? {id,error:true,retire:true} : {id,error:true}); }
 });
