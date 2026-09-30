@@ -98,7 +98,7 @@ whose diff touches one of these areas keeps the lane above and adds two things
 | Installer, upgrade and scaffolding | `packages/core/src/{addon-install,extensions-cli,init-with,scaffold,recipes}.ts`, `packages/core/src/upgrade*`, `scripts/create-extension*`, `starters/**` |
 | Package manifests and dependency wiring | every `package.json` and `package-lock.json`, `packages/*/urlcode.json`, `scripts/{workspaces,build-addon-manifest,check-workspace-links}.ts` |
 | Release tooling | `scripts/release-*.ts`, `scripts/pack-addons.ts`, `scripts/package-*.ts`, `scripts/npm-command.ts`, `.github/workflows/publish.yml` |
-| Integration and cleanup | `test/{addons,private-requests,authjs-provider,ecosystem}.integration.ts`, `proofs/**`, `scripts/test-addons*`, `packages/*/test/cleanup.ts` |
+| Integration and cleanup | `test/{addons,private-requests,authjs-provider,native-storage,ecosystem}.integration.ts`, `proofs/**`, `scripts/test-addons*`, `packages/*/test/cleanup.ts` |
 | Shared inputs (fail closed) | anything under `.github/`, any root-level file that is not admitted prose, and an empty or unclassifiable diff |
 
 - **Windows/Node 24 tests.** `verify` gains Windows entries for all three
@@ -157,7 +157,11 @@ and by a Hono host side by side;
 and the same application with Auth.js as an independent provider package
 (`npm run test:proof:authjs`, [#841](https://github.com/jimhoyd-com/urlcode/issues/841),
 [`proofs/private-requests-authjs`](../proofs/private-requests-authjs/README.md)),
-which installs `@auth/core` from the registry the same way. A change under
+which installs `@auth/core` from the registry the same way; and the
+owner-choice storage proof (`npm run test:proof:native`,
+[#1052](https://github.com/jimhoyd-com/urlcode/issues/1052),
+[`proofs/native-storage`](../proofs/native-storage/README.md)), which
+installs the same provider with no store or audit extension. A change under
 `proofs/` or to any of these tests is high-impact and selects this job.
 
 `disk-full` runs on Linux/Node 24 in every full-lane run, extension-only

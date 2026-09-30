@@ -1,0 +1,29 @@
+[
+  {"path": "/api/notes", "status": 401, "expectJson": {"/error": "authentication_required"}},
+  {"path": "/api/notes", "status": 401, "headers": {"cookie": "authjs.session-token=forged"}},
+  {"path": "/api/notes/00000000-0000-4000-8000-000000000000", "status": 401, "expectJson": {"/error": "authentication_required"}},
+  {"path": "/api/notes", "method": "POST", "headers": {"origin": "https://attacker.example", "content-type": "application/json"}, "body": "{\"title\":\"x\"}", "status": 403, "expectJson": {"/error": "cross_origin_refused"}},
+  {"path": "/api/notes", "method": "DELETE", "headers": {"origin": "{{origin}}"}, "status": 405},
+  {"path": "/api/auth/session", "status": 200, "expectBody": "null"},
+  {"path": "/api/auth/signin", "status": 404},
+  {"steps": [
+    {"path": "/api/auth/csrf", "status": 200, "capture": {"csrf": {"json": "csrfToken"}}},
+    {"path": "/api/auth/callback/credentials", "method": "POST", "headers": {"content-type": "application/x-www-form-urlencoded", "origin": "{{origin}}", "x-auth-return-redirect": "1"}, "body": "csrfToken={{csrf}}&email=ann%40example.test&password=ann-local-demo-password", "status": 200, "expectBody": "{\"url\":\"{{origin}}\"}"},
+    {"path": "/api/auth/session", "status": 200, "expectJson": {"/user/id": "ann"}},
+    {"path": "/api/notes", "status": 200, "expectJson": {"/total": 0}, "expectHeaders": {"cache-control": "no-store"}},
+    {"path": "/api/notes", "method": "POST", "headers": {"content-type": "application/json", "origin": "{{origin}}"}, "body": "{\"title\":\"Fixture note\",\"body\":\"kept by node:sqlite\"}", "status": 201, "expectJson": {"/title": "Fixture note"}, "capture": {"id": {"json": "id"}}},
+    {"path": "/api/notes", "method": "POST", "headers": {"content-type": "application/json", "origin": "{{origin}}"}, "body": "{\"title\":\"\"}", "status": 422},
+    {"path": "/api/notes", "method": "POST", "headers": {"content-type": "application/json", "origin": "{{origin}}"}, "body": "{\"title\":\"x\",\"owner\":\"bob\"}", "status": 422},
+    {"path": "/api/notes", "status": 200, "expectJson": {"/total": 1, "/items/0/id": "{{id}}"}},
+    {"path": "/api/notes/{{id}}", "status": 200, "expectJson": {"/body": "kept by node:sqlite"}},
+    {"path": "/api/notes/not-a-uuid", "status": 400},
+    {"restart": true},
+    {"path": "/api/notes/{{id}}", "status": 200, "expectJson": {"/title": "Fixture note"}},
+    {"path": "/api/auth/signout", "method": "POST", "headers": {"content-type": "application/x-www-form-urlencoded", "origin": "{{origin}}", "x-auth-return-redirect": "1"}, "body": "csrfToken={{csrf}}", "status": 200, "expectBody": "{\"url\":\"{{origin}}\"}"},
+    {"path": "/api/notes", "status": 401},
+    {"path": "/api/auth/csrf", "status": 200, "capture": {"csrf2": {"json": "csrfToken"}}},
+    {"path": "/api/auth/callback/credentials", "method": "POST", "headers": {"content-type": "application/x-www-form-urlencoded", "origin": "{{origin}}", "x-auth-return-redirect": "1"}, "body": "csrfToken={{csrf2}}&email=bob%40example.test&password=bob-local-demo-password", "status": 200, "expectBody": "{\"url\":\"{{origin}}\"}"},
+    {"path": "/api/notes", "status": 200, "expectJson": {"/total": 0}},
+    {"path": "/api/notes/{{id}}", "status": 404, "expectJson": {"/error": "not_found"}}
+  ]}
+]

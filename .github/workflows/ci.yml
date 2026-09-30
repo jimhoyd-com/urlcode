@@ -112,7 +112,7 @@ jobs:
               # Release tooling.
               - 'scripts/{release-*,pack-addons,package-*,npm-command}.ts'
               # Integration, proofs and per-package fixture cleanup.
-              - 'test/{addons,private-requests,authjs-provider,ecosystem}.integration.ts'
+              - 'test/{addons,private-requests,authjs-provider,native-storage,ecosystem}.integration.ts'
               - 'proofs/**'
               - 'scripts/test-addons*'
               - 'packages/*/test/cleanup.ts'
@@ -365,6 +365,8 @@ jobs:
       - run: npm run test:ecosystem
       # The same application with Auth.js, an independent provider package, in place of Better Auth (#841).
       - run: npm run test:proof:authjs
+      # Owner choice (#1052): node:sqlite called directly from trusted routes, auth: true through Auth.js, no store or audit.
+      - run: npm run test:proof:native
   # A really full filesystem (#902): `urlcode serve` with its data directory
   # (store, auth and audit) on a 16 MiB tmpfs that the harness fills to
   # ENOSPC, then frees. Linux only: it mounts a tmpfs with sudo, and PR CI is

@@ -1,0 +1,50 @@
+version: "1"
+extensions:
+  # Who is signed in: Auth.js through the independent @example/urlcode-authjs package. Its secret and providers
+  # belong to the operator's host.mjs and data directory, not here. No store or audit extension is declared.
+  authjs: {version: "1", config: {}}
+routes:
+  /api/auth/*:
+    description: Auth.js's own endpoints. @example/urlcode-authjs serves an exact allowlist of its actions.
+    extension: authjs
+    methods: [GET, POST]
+    policies:
+      # Auth.js has no rate limiter of its own; URLCode's throttle bounds sign-in attempts per client address.
+      throttle: {quota: 60, window: 60}
+  /api/notes:
+    description: The signed-in user's own notes. GET lists them; POST adds one. Stored by the application's own node:sqlite code.
+    methods: [GET, POST]
+    auth: true
+    request:
+      body:
+        POST:
+          required: true
+          maxBytes: 8192
+          contentTypes: [application/json]
+          format: json
+          schema:
+            type: object
+            additionalProperties: false
+            required: [title]
+            properties:
+              title: {type: string, minLength: 1, maxLength: 120}
+              body: {type: string, maxLength: 4000}
+    # The operator's data directory: granted in the reviewed policy for serving, and a fresh temporary directory
+    # for every `urlcode test` and `urlcode audit` run.
+    env:
+      DATA_DIR: {env: URLCODE_DATA_DIR}
+    function:
+      source: functions/notes.mjs
+  /api/notes/{id}:
+    description: One of the signed-in user's own notes; another user's note is 404, exactly as a missing one.
+    methods: [GET]
+    auth: true
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    env:
+      DATA_DIR: {env: URLCODE_DATA_DIR}
+    function:
+      source: functions/notes.mjs
+      export: note
+      args:
+        id: {from: path, name: id}

@@ -71,6 +71,10 @@
       "types": "./dist/types/host.d.ts",
       "default": "./dist/host.js"
     },
+    "./sqlite": {
+      "types": "./dist/types/sqlite.d.ts",
+      "default": "./dist/sqlite.js"
+    },
     "./sandbox": {
       "types": "./dist/types/sandbox.d.ts",
       "default": "./dist/sandbox.js"
@@ -115,10 +119,10 @@
     "test:shard": "node --no-wasm-code-gc --conditions=development --import ./test/scratch-tmpdir.ts --test",
     "lint": "eslint .",
     "check": "npm run check:code && npm run check:docs",
-    "check:code": "node --disable-warning=ExperimentalWarning scripts/check.ts && node scripts/check-core-boundaries.ts && node scripts/check-workspace-links.ts && node scripts/check-issue-labels.ts && node scripts/release-versions.ts check",
+    "check:code": "node --disable-warning=ExperimentalWarning scripts/check.ts && node scripts/check-conflict-markers.ts && node scripts/check-core-boundaries.ts && node scripts/check-workspace-links.ts && node scripts/check-issue-labels.ts && node scripts/release-versions.ts check",
     "test:workerd": "npm run build && node --import ./test/scratch-tmpdir.ts scripts/workerd-parity.ts",
     "verify": "npm run lint && npm run typecheck && npm run typecheck:tooling && npm run check && npm run build && npm test && npm run verify:workspaces",
-    "verify:workspaces": "node scripts/workspaces.ts run verify && node scripts/build-addon-manifest.ts --check && npm run audit:packages && npm run test:addons && npm run test:proof && npm run test:proof:authjs && npm run test:ecosystem",
+    "verify:workspaces": "node scripts/workspaces.ts run verify && node scripts/build-addon-manifest.ts --check && npm run audit:packages && npm run test:addons && npm run test:proof && npm run test:proof:authjs && npm run test:proof:native && npm run test:ecosystem",
     "audit:packages": "node scripts/package-audit.ts --all",
     "test:package": "npm run build && npm run test:package:built",
     "dev": "node packages/core/src/cli.ts dev --project starters/default/app",
@@ -154,6 +158,7 @@
     "test:addons": "node --import ./test/scratch-tmpdir.ts --test test/addons.integration.ts",
     "test:proof": "node --import ./test/scratch-tmpdir.ts --test test/private-requests.integration.ts",
     "test:proof:authjs": "node --import ./test/scratch-tmpdir.ts --test test/authjs-provider.integration.ts",
+    "test:proof:native": "node --import ./test/scratch-tmpdir.ts --test test/native-storage.integration.ts",
     "test:ecosystem": "node --import ./test/scratch-tmpdir.ts --test test/ecosystem.integration.ts",
     "test:disk-full": "node --import ./test/scratch-tmpdir.ts --test test/disk-full.integration.ts",
     "verify:addons": "npm run build && node scripts/workspaces.ts run build && npm run audit:packages && npm run test:addons"

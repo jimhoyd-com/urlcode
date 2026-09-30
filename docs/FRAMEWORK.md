@@ -11,7 +11,7 @@ claim here is implemented in the linked repository; nothing is roadmap.
 |---|---|---|---|
 | `@jimhoyd/urlcode` | this repository | The runtime: YAML routes, functions and middleware (trusted by default, `sandbox: true` opt-in), pages and assets, policies, site conventions, CLI, provider adapters, a fetch handler for hosting inside another Node framework, the extension contract | `urlcode.yaml` with `version: "1"` |
 | `@jimhoyd/urlcode-audit` | [`packages/audit`](../packages/audit) | The durable audit log: producers (audited store collections) write events into their own transactional outbox, and audit drains them into one bounded SQLite log with a query API, retention and an operator CLI | `extensions.audit`; no route |
-| `@jimhoyd/urlcode-auth` | [`packages/auth`](../packages/auth) | A thin adapter over [Better Auth](https://better-auth.com/): Better Auth owns accounts, passwords, sessions, cookies and its SQLite tables; the extension serves an allowlist of its endpoints on one mount, gates protected routes and hands their code the verified user id (`context.capabilities.auth.identity.userId`). No roles or permissions; Node only; requires nothing | `extensions.auth: {version: "1", config: {}}` plus an `/api/auth/*` mount (`methods: [GET, POST]`) and `auth: true` (`policies.extensions.auth: {}`) on protected routes |
+| `@jimhoyd/urlcode-auth` | [`packages/auth`](../packages/auth) | A thin adapter over [Better Auth](https://better-auth.com/): Better Auth owns accounts, passwords, sessions, cookies and its tables (in the bundled SQLite file, or the owner's own database); the extension serves an allowlist of its endpoints on one mount, gates protected routes and hands their code the verified user id (`context.capabilities.auth.identity.userId`). No roles or permissions; Node only; requires nothing | `extensions.auth: {version: "1", config: {}}` plus an `/api/auth/*` mount (`methods: [GET, POST]`) and `auth: true` (`policies.extensions.auth: {}`) on protected routes |
 | `@jimhoyd/urlcode-store` | [`packages/store`](../packages/store) | Durable bounded collections in one SQLite database exposed as a typed JSON CRUD API; a collection with `audit: true` records its writes through `audit` | `extensions.store` plus a protected collection mount |
 | `@jimhoyd/urlcode-mcp` | [`packages/mcp`](../packages/mcp) | Declarative [MCP](https://modelcontextprotocol.io) tool server over the official MCP SDK (stateless Streamable HTTP): a bounded, project-declared map of tools, resources and prompts with trusted handlers | `extensions.mcp` plus a `POST, HEAD` mount (streamed progress when the operator opts into `mcp({ streaming: true })`, not on aws); `urlcode extensions add mcp` wires the extension but leaves the server/tool declaration and its trusted handler module for the operator (every tool needs project code) |
 
@@ -98,7 +98,12 @@ reads the verified user id from
 `context.capabilities.auth.identity.userId`
 ([request-bound capabilities](EXTENSIONS.md#request-bound-capabilities)).
 Better Auth owns accounts and sessions; the application owns its business
-rules and authorization.
+rules and authorization. The
+[native-storage proof](../proofs/native-storage/README.md) is such an
+application with no store or audit extension installed: its function routes
+call `node:sqlite` directly, behind `auth: true` through the independent
+Auth.js provider, and store declarations in its `urlcode.yaml` are refused
+rather than emulated.
 
 Stored short links are a collection declared through the `store` extension
 above (see [docs/STORE.md](STORE.md)); core has no native `link` route.
@@ -258,7 +263,8 @@ Activation likewise carries the canonical `origin` and the operator's full
 `isSameOriginRequest`, so mcp, store and auth admit the same
 origins ([site origins](EXTENSIONS.md#site-origins-and-same-origin-checks)).
 A SQLite-backed extension refuses a network filesystem and a second serving
-process through core's `refuseNetworkFilesystem` and `holdServerLock`, an OS
+process through core's `refuseNetworkFilesystem` and `holdServerLock`
+(`@jimhoyd/urlcode/sqlite`, kept off the generic extension contract), an OS
 lock on a file beside its own database, so store, auth and audit enforce one
 rule: one serving process per database ([request helpers](EXTENSIONS.md#request-helpers)).
 An extension reports a startup condition the operator should act on through
@@ -269,7 +275,11 @@ Who a request is for travels the same generic way: an extension that declares
 `providesPrincipal` (auth) sets an opaque, bounded `ExtensionRequest.principal`
 from its `authorize()`, and another extension on the route (an owned store
 collection) reads it, without either knowing the other
-([request principal](EXTENSIONS.md#request-principal)). The route's own code
+([request principal](EXTENSIONS.md#request-principal)). Such an extension
+may also declare, as data, how a client presents the credential it verifies
+(`openapiSecurity`), which the OpenAPI export publishes as a standard security
+scheme instead of assuming a cookie
+([security scheme](EXTENSIONS.md#declaring-the-credentials-openapi-security-scheme)). The route's own code
 receives what an extension declares as a request-bound capability, such as
 auth's `context.capabilities.auth.identity.userId`
 ([request-bound capabilities](EXTENSIONS.md#request-bound-capabilities)). A long-lived answer

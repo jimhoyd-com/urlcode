@@ -205,7 +205,7 @@ const helpEntries: HelpEntry[] = [
   urlcode openapi --check [file.json] [--project directory] [--host-file ...] [--json]
     # --check validates the export (or a JSON document on disk) against the official OpenAPI 3.1 schema shipped with core, each Schema Object against JSON Schema 2020-12, and local $refs; exits 1 and lists the problems when invalid
     # OpenAPI 3.1 JSON for the declared HTTP operations: paths, methods, parameters, per-method request bodies (the 2020-12 schema) and only the responses URLCode itself writes
-    # handler-defined answers have no schema; static and /** mounts, and extension mounts no --host-file registration describes, are listed under x-urlcode.opaqueMounts; no binding, secret, cookie name or operator policy is included
+    # handler-defined answers have no schema; static and /** mounts, and extension mounts no --host-file registration describes, are listed under x-urlcode.opaqueMounts; no binding, secret, operator-configured cookie name or operator policy is included
 ` },
   { name:'docs', group:'Agent tooling', text:
 `  urlcode docs search <text> [--project DIR] [--json]  # same as MCP search_docs: at most three bounded excerpts from the core agent docs and the site's installed, pin-verified add-on guides and urlcode.json schemas, with what was and was not searched; instead of grepping llms-full.txt

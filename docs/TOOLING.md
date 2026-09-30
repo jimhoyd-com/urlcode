@@ -958,13 +958,24 @@ What it describes:
 - **Authentication.** A route gated by an extension that provides the request
   principal (`providesPrincipal`: the host file's registration, else the
   installed descriptor), whether written as `auth: true` or
-  `policies.extensions.<name>`, gets a `security` requirement on a generic
-  cookie scheme per provider, `urlcodeSession.<name>`, a 401 on every method,
+  `policies.extensions.<name>`, gets a 401 and a possible 503 on every method,
   and a 403 only on POST, PUT, PATCH and DELETE, the methods a provider refuses
   from another origin. Their bodies are extension-defined. The provider is never
-  inferred from the name `auth`. The cookie's real name is the operator's
-  configuration and is not published; the scheme's `name` is the placeholder
-  `session` and says so. Other gating extensions stay a handler-less `default`
+  inferred from the name `auth`. How a client presents the credential is what
+  the provider declares as `openapiSecurity`
+  ([its security scheme][docs/EXTENSIONS.md#declaring-the-credentials-openapi-security-scheme]),
+  read the same way: a complete declaration (a bearer token, a named header,
+  query value or cookie) is the provider's `components.securitySchemes` entry,
+  `urlcodePrincipal.<name>`, and the operation's `security` requirement. A
+  cookie whose name the operator configures (the first-party `auth`
+  extension's) has no scheme, since OpenAPI requires the name and it is never
+  published, and a provider that declares nothing has none either: the
+  operation states each under `x-urlcode.authentication`, as
+  `{extension, credential: "cookie", cookieName: "operator-defined"}` or
+  `{extension, credential: "unknown"}`. No placeholder credential is invented,
+  so a generated client never sends one the provider does not read, and one
+  that declares no requirement leaves the transport to the caller (a browser
+  sends its cookies). Other gating extensions stay a handler-less `default`
   note.
 - **Never included.** Binding names and values (`env`, `secrets`), proxy and
   signal targets, redirect targets, module paths, operator policy and grants,
@@ -975,7 +986,9 @@ runtime version, the project `revision`, `opaqueMounts`, `describedMounts` and `
 path item, the handler kind, the execution mode when the route runs project
 code (`trusted` or `sandboxed`), the middleware count, the extension and policy
 names, the error format (with `errorScope` when it is `mixed`), the
-`methodNotAllowed` answer and per-target support.
+`methodNotAllowed` answer and per-target support; on an operation, a body's
+`maxBytes` when there is no body to describe, and the sign-in gates it has no
+security scheme for (`authentication`).
 
 `urlcode openapi --check [file.json]` validates the project's export (with the
 same `--project`, `--origin` and `--host-file`; `--out` still writes it), or a
@@ -1005,7 +1018,9 @@ undeclared method per path) to that example, and to a project with an
 `auth: true` route behind a synthetic auth extension and `function` routes. It
 checks each answer's status, media type, schema and the runtime headers against
 the document; the auth route's 401 and 403 are matched by number, not through
-`default`. The same checks (the harness is `test/openapi-contract.ts`) run in
+`default`. A second generated client, from a project whose synthetic provider
+declares its `session` cookie, calls that route without and then with its
+`auth` option: 401, then 200 with the cookie the scheme names. The same checks (the harness is `test/openapi-contract.ts`) run in
 `packages/store/test/openapi.test.ts` over a served store: a shared collection
 with a key, increments, idempotency, filters and a transition, a short-link
 mount, and an owned collection with a readers mount behind a principal
@@ -1521,6 +1536,7 @@ and [MCP tools](https://modelcontextprotocol.io/specification/2025-11-25/server/
 [docs/HTTP.md#error-format]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#error-format
 [docs/EXTENSIONS.md#protecting-a-route-the-auth-short-form]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#protecting-a-route-the-auth-short-form
 [docs/EXTENSIONS.md#openapi-description]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#openapi-description
+[docs/EXTENSIONS.md#declaring-the-credentials-openapi-security-scheme]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#declaring-the-credentials-openapi-security-scheme
 [docs/STORE.md#openapi]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#openapi
 [docs/TYPESCRIPT.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TYPESCRIPT.md
 [docs/EXTENSIONS.md#the-release-wide-agent-catalog]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-release-wide-agent-catalog

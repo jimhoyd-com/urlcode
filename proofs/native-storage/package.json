@@ -1,0 +1,20 @@
+{
+  "name": "native-storage",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Proof (#1052): the owner's own storage library, called from trusted routes, with auth: true and neither the store nor the audit extension.",
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "proposal": "urlcode permissions --project app",
+    "validate": "urlcode validate --local --project app --host-file host.mjs --policy operator/policy.json --origin http://localhost:4200",
+    "test": "urlcode test --project app --host-file host.mjs --policy operator/policy.json --origin http://localhost:4200",
+    "audit": "urlcode audit --expect-routes 3 --project app --host-file host.mjs --policy operator/policy.json --origin http://localhost:4200",
+    "start": "urlcode serve --project app --host-file host.mjs --policy operator/policy.json --origin http://localhost:4200 --port 4200"
+  },
+  "dependencies": {
+    "@auth/core": "0.41.3",
+    "@example/urlcode-authjs": "file:../authjs-provider",
+    "@jimhoyd/urlcode": "file:../.."
+  }
+}
