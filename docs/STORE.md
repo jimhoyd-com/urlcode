@@ -1905,14 +1905,16 @@ extension that `requires: [store]` and reads the tap from
   record order.
 - `ack(ids)` (at most 100 event ids) marks them forwarded and resolves with how
   many it marked; unknown and already-forwarded ids are ignored.
-- `status()` resolves with `{lost}`: how many events were pruned before they
-  were acknowledged ([below](#when-a-sink-falls-behind)). It only reads.
+- `status()` resolves with `{lost}`: how many events were pruned before any
+  `peek` returned them ([below](#when-a-sink-falls-behind)). It only reads.
 - `query(filter)` pages the log as `urlcode-store audit` does.
 
 Delivery is at least once: a sink that stops between writing a batch and
 acknowledging it sees the same events again, so it deduplicates on `id`. A
-sink must keep up within `auditRetention`; an event pruned before it was
-forwarded is gone, and counted. Every call rejects with a `503` `AuditError`, code
+sink must keep up within `auditRetention`; an event pruned before any `peek`
+returned it is gone, and counted. One a sink peeked is not counted when it is
+pruned before its `ack`: the sink received it, and a sink that crashed before
+forwarding such a batch will not see it again. Every call rejects with a `503` `AuditError`, code
 `audit_inactive`, while the store is not active (`audit_unavailable` when the
 database fails); bad input is `400 invalid_audit_query`. The event types,
 `validateAuditEvent`, `validateAuditQuery`, `AuditError`, `auditLimits` and
@@ -1950,26 +1952,36 @@ Pruning keeps going and writes are never refused for a slow or stopped sink
 ([#1067](https://github.com/jimhoyd-com/urlcode/issues/1067)). Instead the
 store counts what the sink missed and says so loudly:
 
-- **What counts.** An event is *unacknowledged* while its `forwarded` flag,
-  which `ack` sets per event id, is unset. The count starts when the tap first
-  has a consumer: its first `peek` or `ack` against this database, recorded in
-  the one-row `store_audit_tap` table. From then on every prune adds the events
-  it removed unacknowledged to `lost`, in the write's own transaction. An
-  acknowledged event is never counted, whatever order the acks came in. A site
-  with no sink counts nothing, because there pruning is only retention.
+- **What counts.** An event is *lost* when retention prunes it before any
+  sink received it: it was never acknowledged (its `forwarded` flag, which
+  `ack` sets per event id, is unset) and never returned by a `peek`. The
+  one-row `store_audit_tap` table records when the tap first has a consumer
+  (its first `peek` or `ack` against this database) and `peeked`, the highest
+  record-order position any `peek` has returned. `peek` hands out the oldest
+  unacknowledged events in record order and a new event always comes later, so
+  every unacknowledged event at or before `peeked` reached a sink at least
+  once. From the first consumer on, every prune adds the events it removed
+  unacknowledged and after `peeked` to `lost`, in the write's own transaction.
+  An event a sink peeked and is still forwarding when it is pruned is not lost
+  (the sink holds it; only its `ack` no longer finds it), and an acknowledged
+  event is never counted, whatever order the acks came in. A site with no sink
+  counts nothing, because there pruning is only retention.
 - **Cheap.** The write already deletes the pruned range. With a consumer, it
-  deletes the unacknowledged part first, through the index on unforwarded
-  events, and that row count is the loss; then the rest. Each row is still
-  deleted once, and the tap row is one primary-key read and, only when events
-  were lost, one update.
+  deletes the never-peeked unacknowledged part first, through the index on
+  unforwarded events, and that row count is the loss; then the rest. Each row
+  is still deleted once, and the tap row is one primary-key read and, only when
+  events were lost, one update. A `peek` writes only when it returns an event
+  later than any it returned before on this connection (to raise `peeked`, in
+  the same transaction as its read); an empty poll, or re-peeking a batch not
+  yet acknowledged, only reads.
 - **Reported by the tap.** `status()` resolves with `{lost}`, a counter that
   only grows and survives restarts (it is a row of the database, so a backup
   carries it). A sink compares it with the value it saw last: any increase is
   events it will never receive.
-- **A metric.** The store reports it as `audit_pruned_unacked_total` in the
+- **A metric.** The store reports it as `audit_lost_total` in the
   [metrics snapshot](OBSERVABILITY.md#metrics-snapshot)
-  (`extensions.store.audit_pruned_unacked_total`) and in Prometheus as
-  `urlcode_extension_store_audit_pruned_unacked_total`.
+  (`extensions.store.audit_lost_total`) and in Prometheus as
+  `urlcode_extension_store_audit_lost_total`.
 - **One warning, not one per write.** The serving process logs one
   `extension_warning` the first time it sees the count become nonzero, naming
   the count and `auditRetention`, and another only each time the count reaches a
@@ -2047,8 +2059,8 @@ takes `--actor` as a filter, not an attribution.
   with its record order, a forwarded flag for [the tap](#forwarding-events-to-a-sink),
   and indexes on actor, subject, action, time and the unforwarded events)
   with `store_audit_tap` (one row: whether the tap has a
-  consumer, and how many events were [pruned before it acknowledged
-  them](#when-a-sink-falls-behind)).
+  consumer, the newest event a `peek` returned, and how many events were
+  [pruned before any sink received them](#when-a-sink-falls-behind)).
   Collections are rows, not
   tables, so declaring, changing or removing a collection never changes the
   tables; the rows of a collection that is no longer declared stay untouched.
@@ -2059,14 +2071,15 @@ takes `--actor` as a filter, not an attribution.
   [`sortable` and `filterable`](#sorting-and-filtering) properties
   (`store_list_*`). Activation builds them, and drops any no live activation
   declares any more.
-- The schema starts from one baseline, schema version 8 (`PRAGMA user_version`):
+- The schema starts from one baseline, schema version 9 (`PRAGMA user_version`):
   an empty file gets every table above in one transaction, and opening an
   up-to-date database changes nothing. Only forward steps on top of the
   baseline are ever added: a later release that changes the schema adds a
   step, and each step runs in its own transaction with the new version. A
-  store database of an earlier schema version (1 to 7, written by releases
-  before the baseline) is not upgraded: activation, the operator commands and
-  `urlcode-store audit` refuse it (`older than this release's baseline (8),
+  store database of an earlier schema version (1 to 8, written by releases
+  and development builds before the baseline) is not upgraded: activation, the
+  operator commands and `urlcode-store audit` refuse it (`older than this
+  release's baseline (9),
   and cannot be upgraded; recreate the data directory`), so recreate the data
   directory. A file that is not a store database (`PRAGMA application_id`) or
   comes from a newer release is refused too. The JSON data files of earlier

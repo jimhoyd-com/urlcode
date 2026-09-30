@@ -1920,8 +1920,8 @@ and the `AuditTap`, `AuditTapStatus`, `AuditLog`, `AuditEvent`, `AuditStoredEven
 `requires: [store]` forwards events anywhere by calling `peek(limit)`, writing
 the batch, then `ack(ids)`, at least once and deduplicated on the event id
 ([forwarding events to a sink](STORE.md#forwarding-events-to-a-sink)).
-`status()` reports how many events retention pruned before the sink
-acknowledged them, which the store also exposes as a metric and a warning
+`status()` reports how many events retention pruned before any sink peeked
+them, which the store also exposes as a metric and a warning
 ([when a sink falls behind](STORE.md#when-a-sink-falls-behind)). There
 is no first-party audit extension: a first-party sink would add a second
 database, a drain and a delivery guarantee to maintain, while the tap lets an

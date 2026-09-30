@@ -4,9 +4,11 @@
 // tap (core's `AuditTap`: `peek`, then `ack`) to forward it anywhere. Every statement is indexed and bounded.
 //
 // The tap's gap (#1067): pruning never waits for a sink, and writes are never refused for a slow one, but what it
-// removes unacknowledged is counted. The one `store_audit_tap` row says whether the tap has a consumer (set by its
-// first `peek` or `ack`) and how many events were `lost`: pruned while `forwarded = 0` after that. "Unacknowledged" is
-// exactly the per-event `forwarded` flag `ack` sets, so out-of-order acks count correctly.
+// removes before any sink received it is counted. The one `store_audit_tap` row says whether the tap has a consumer (set
+// by its first `peek` or `ack`), the highest `seq` a `peek` has returned (`peeked`), and how many events were `lost`:
+// pruned after that while neither acknowledged (`forwarded = 0`) nor ever peeked (`seq > peeked`). `peek` returns the
+// oldest unforwarded events in `seq` order and a new event only ever gets a larger `seq`, so every unforwarded event at
+// or below `peeked` was handed to a sink at least once: pruning one peeked but not yet acknowledged is not a loss.
 import { randomUUID } from 'node:crypto';
 import { AuditError, auditLimits, validateAuditEvent, validateAuditQuery } from '@jimhoyd/urlcode/extensions';
 import type { AuditLog, AuditPage, AuditQuery, AuditStoredEvent, AuditTapStatus, AuditValue, NormalizedAuditQuery } from '@jimhoyd/urlcode/extensions';
@@ -31,8 +33,9 @@ export function watchAuditLoss(db: StoreDatabase, watcher: () => void): void { l
  * the log to its newest `retention` events. A failure rolls the caller's change back too.
  *
  * Counting the tap's gap adds O(1) statements and only index work pruning does anyway: one primary-key read of the
- * tap row, and, when the tap has a consumer, the unforwarded part of the pruned range is deleted first through the
- * partial `store_audit_unforwarded` index (its row count is the loss) before the rest; each row is still deleted once.
+ * tap row, and, when the tap has a consumer, the never-peeked unforwarded part of the pruned range (`peeked < seq <=
+ * cutoff`) is deleted first through the partial `store_audit_unforwarded` index (its row count is the loss) before the
+ * rest; each row is still deleted once.
  */
 export function recordAuditEvent(db: StoreDatabase, body: AuditBody, retention: number): void {
   const event = validateAuditEvent({ id: randomUUID(), source: 'store', at: Date.now(), ...body });
@@ -40,8 +43,9 @@ export function recordAuditEvent(db: StoreDatabase, body: AuditBody, retention: 
     event.id, event.source, event.action, event.actor, event.subject, event.at, event.reason ?? '', event.metadata === undefined ? null : JSON.stringify(event.metadata));
   const cutoff = db.get<{ cutoff: number | null }>('SELECT max(seq) - ? AS cutoff FROM store_audit_events', retention)?.cutoff;
   if (cutoff === null || cutoff === undefined || cutoff < 1) return;
-  if (db.get<{ consumer: number }>('SELECT consumer FROM store_audit_tap WHERE id = 1')?.consumer === 1) {
-    const lost = db.run('DELETE FROM store_audit_events WHERE forwarded = 0 AND seq <= ?', cutoff);
+  const tap = db.get<{ consumer: number; peeked: number }>('SELECT consumer, peeked FROM store_audit_tap WHERE id = 1');
+  if (tap?.consumer === 1 && cutoff > tap.peeked) {
+    const lost = db.run('DELETE FROM store_audit_events WHERE forwarded = 0 AND seq > ? AND seq <= ?', tap.peeked, cutoff);
     if (lost > 0) {
       db.run('UPDATE store_audit_tap SET lost = lost + ? WHERE id = 1', lost);
       const watcher = lossWatchers.get(db);
@@ -100,8 +104,10 @@ function eventIds(ids: unknown): string[] {
 /**
  * The store's audit log as core's `AuditLog`: the tap and the query over the database the serving activation holds.
  * `current()` is that database, or undefined while the store is not active, when every call rejects with 503
- * `audit_inactive`. `ack` is one write transaction; so is the first `peek` on a connection, which records that the tap
- * has a consumer. `status` only reads.
+ * `audit_inactive`. `ack` is one write transaction; so is a `peek` that returns an event newer than any this connection
+ * has marked before (or is its first): it records that the tap has a consumer and raises `peeked` to the newest `seq` it
+ * returns, reading the batch under that same write lock so no prune between the read and the mark counts it as lost.
+ * A `peek` that returns nothing new (an empty poll, a batch re-peeked before its ack) only reads. `status` only reads.
  */
 export function auditLog(current: () => StoreDatabase | undefined): AuditLog {
   const database = (): StoreDatabase => {
@@ -109,8 +115,8 @@ export function auditLog(current: () => StoreDatabase | undefined): AuditLog {
     if (!db) throw new AuditError(503, 'audit_inactive', 'The store is not active');
     return db;
   };
-  // The databases whose tap row already names a consumer, so only the first peek on a connection writes.
-  const consumed = new WeakSet<StoreDatabase>();
+  // Per connection whose tap row already names a consumer, the highest seq it has marked peeked.
+  const consumed = new WeakMap<StoreDatabase, number>();
   const consume = (db: StoreDatabase): void => { if (!consumed.has(db)) db.run('UPDATE store_audit_tap SET consumer = 1 WHERE id = 1 AND consumer = 0'); };
   const guarded = async <T>(work: () => T): Promise<T> => {
     try { return work(); }
@@ -119,13 +125,25 @@ export function auditLog(current: () => StoreDatabase | undefined): AuditLog {
   return Object.freeze({
     peek: (limit: number) => guarded(() => {
       const max = batchLimit(limit), db = database();
-      if (!consumed.has(db)) { db.transaction(() => consume(db)); consumed.add(db); }
-      return db.all<Row>(`SELECT ${COLUMNS} FROM store_audit_events WHERE forwarded = 0 ORDER BY seq LIMIT ?`, max).map(stored);
+      const read = (): Row[] => db.all<Row>(`SELECT ${COLUMNS} FROM store_audit_events WHERE forwarded = 0 ORDER BY seq LIMIT ?`, max);
+      const newest = (rows: Row[]): number => rows.length ? Number(rows[rows.length - 1]!.seq) : 0;
+      let rows = read();
+      const marked = consumed.get(db);
+      if (marked === undefined || newest(rows) > marked) {
+        rows = db.transaction(() => {
+          consume(db);
+          const batch = read(), seq = newest(batch);
+          if (seq > 0) db.run('UPDATE store_audit_tap SET peeked = ? WHERE id = 1 AND peeked < ?', seq, seq);
+          return batch;
+        });
+        consumed.set(db, Math.max(marked ?? 0, newest(rows)));
+      }
+      return rows.map(stored);
     }),
     ack: (ids: readonly string[]) => guarded(() => {
       const list = eventIds(ids), db = database();
       const marked = db.transaction(() => { consume(db); return list.length ? db.run('UPDATE store_audit_events SET forwarded = 1 WHERE forwarded = 0 AND id IN (SELECT value FROM json_each(?))', JSON.stringify(list)) : 0; });
-      consumed.add(db);
+      if (!consumed.has(db)) consumed.set(db, 0);
       return marked;
     }),
     status: () => guarded(() => auditTapStatus(database())),
