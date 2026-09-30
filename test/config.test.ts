@@ -75,7 +75,7 @@ test('dotenv is local only; process wins; required secrets fail closed', async t
   assert.equal((await loadBindings(root,false,{})).token,undefined);
   await assert.rejects(createRuntime(root,{ environment:{} }),/denied by operator policy/);
   const permissions = await approveBindings(root);
-  await assert.rejects(createRuntime(root,{ environment:{},permissions }),/Missing required secret/);
+  await assert.rejects(createRuntime(root,{ environment:{},permissions }),/Secret binding KEY reads token, which is not set or is empty/);
   const runtime = await createRuntime(root,{ local:true,environment:{},permissions }); await runtime.close();
   await writeFile(join(root,'.env.local'),'token=one\ntoken=two');
   await assert.rejects(loadBindings(root,true,{}),/Duplicate/);

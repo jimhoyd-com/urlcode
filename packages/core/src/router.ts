@@ -229,13 +229,14 @@ export async function compileRoutes(loaded: LoadedDocument, bindings: Record<str
         } else {
           value = ref.value;
         }
-        assert(typeof value === 'string', 'Missing required environment binding');
+        // Name the binding and the variable, never a value: the refusal reaches logs and agents.
+        assert(typeof value === 'string', ref.env ? `Environment binding ${alias} reads ${ref.env}, which is not set. Set it in the host environment, or declare a default` : `Environment binding ${alias} has no value`, { code: 'missing-binding' });
         route.env[alias] = value;
       }
       for (const [alias, ref] of Object.entries(config.secrets || {})) {
         assert(permissions.projectSha256 === projectSha256 && permissions.routes?.[pattern]?.secrets?.includes(ref.secret), `Secret binding denied by operator policy${revisionPinHint(permissions.projectSha256, projectSha256) || `: ${alias} reads ${ref.secret}, which no grant allows for this route. ${grantHint}`}`, { code: 'binding-denied' });
         const value = bindings[ref.secret];
-        assert(typeof value === 'string' && value.length, 'Missing required secret binding');
+        assert(typeof value === 'string' && value.length, `Secret binding ${alias} reads ${ref.secret}, which is not set or is empty. Set it in the host environment`, { code: 'missing-binding' });
         route.secrets[alias] = value;
       }
       const resolveHeaders=(headers:EgressHeaders|undefined):Record<string,string> => Object.fromEntries(Object.entries(headers||{}).map(([key,value])=>{if(typeof value==='string')return [key,value];assert(own(route.secrets,value.secret),'Unknown egress secret alias');return [key,route.secrets[value.secret]!];}));
