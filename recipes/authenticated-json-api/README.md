@@ -27,10 +27,11 @@ export default await composeHost(import.meta.url, [auth()]);
 The auth extension serves exactly one mount, so the recipe carries it:
 `routes/auth.yaml`, included from `urlcode.yaml`, is the file
 `urlcode extensions add auth` writes. In a site created with
-`urlcode init <site>` and `urlcode extensions add auth`, copy `urlcode.yaml`,
-`functions/profile.mjs`, `tests/requests.json` and `tests/seed.json` into
-`app/` unchanged (the site already has `routes/auth.yaml`) and set
-`expectRoutes` in `app/tests/audit.json` to 2.
+`urlcode init <site>` and `urlcode extensions add auth`,
+`urlcode recipes add authenticated-json-api --project app` merges the route,
+`functions/profile.mjs`, the fixtures and the seed into `app/` (the site's
+`routes/auth.yaml` is the same file) and moves `expectRoutes` in
+`app/tests/audit.json` to 2.
 
 ## The local loop
 

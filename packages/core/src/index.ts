@@ -16,6 +16,8 @@ export type { InterchangeFormat, ConversionDiagnostic, ConversionCounts, Convers
 
 export {listRecipes, searchRecipes, showRecipe, addRecipe} from './recipes.ts';
 export type {RecipeSummary, Recipe, RecipeAddReport, RecipeSearchResult} from './recipes.ts';
+export {mergeRecipe} from './recipe-merge.ts';
+export type {RecipeMergeReport, MergeCounts} from './recipe-merge.ts';
 export {listExamples, searchExamples, addExample} from './examples.ts';
 export type {ExampleSummary, ExampleSearchResult, ExampleAddReport, RouteIndex, RouteIndexEntry} from './examples.ts';
 export type {CatalogMetadata, TargetVerdict, Complexity} from './catalog.ts';

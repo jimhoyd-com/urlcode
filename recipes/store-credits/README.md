@@ -57,8 +57,8 @@ with an asserted sign-in and `GET /api/auth/get-session`, as in the
 [store-booking recipe](../store-booking/README.md#operator-prerequisites),
 which also shows the host. `routes/auth.yaml` is the auth mount
 `urlcode extensions add auth` writes: in a site created with
-`extensions add auth store`, copy `urlcode.yaml`, `tests/requests.json` and
-`tests/seed.json` into `app/` unchanged and set `expectRoutes` in
+`extensions add auth store`, `urlcode recipes add store-credits --project app`
+merges the recipe into `app/` and moves `expectRoutes` in
 `app/tests/audit.json` to 3.
 
 ## The local loop

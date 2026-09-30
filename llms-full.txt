@@ -1565,9 +1565,15 @@ the metadata first: capabilities, per-target verdicts derived from the
 capability preflight, required services and operator grants, inputs to edit,
 the exact validate/test/audit commands and expected behavior. `urlcode examples
 search <text>` (MCP `search_examples`) answers the smallest runnable example and,
-for the cookbook, the single route that demonstrates it. `recipes add NAME --out
+for the cookbook, the single route that demonstrates it. To adopt a recipe into
+the project you are working on, `urlcode recipes add NAME --project app` (from the
+site directory) merges its routes, include files, extension configuration
+(store collections), fixtures, seed and audit route count into `app/`, refusing
+the whole merge with every clash named and nothing written; do not copy a
+recipe's files over `app/` by hand ([adding a recipe to an existing project][docs/RECIPES.md#adding-a-recipe-to-an-existing-project]).
+`recipes add NAME --out
 NEW_DIRECTORY` and `examples add NAME --out NEW_DIRECTORY` create a standalone
-project whose listed commands run from that directory; neither merges existing routes. `bulk-import csv INPUT --out NEW_DIRECTORY`
+project whose listed commands run from that directory. `bulk-import csv INPUT --out NEW_DIRECTORY`
 converts strict redirect rows into deterministic 1,000-route include files with
 source fingerprints. Both support `--dry-run`. See [recipes][docs/RECIPES.md],
 [bulk import and measured limits][docs/BULK.md], and [interchange][docs/INTERCHANGE.md].
@@ -1843,6 +1849,7 @@ programmatic compatibility analysis and provider verification limits.
 [docs/STORE.md#membership-gates-and-cross-owner-reads]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#membership-gates-and-cross-owner-reads
 [proofs/private-requests/README.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/private-requests/README.md
 [docs/RECIPES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RECIPES.md
+[docs/RECIPES.md#adding-a-recipe-to-an-existing-project]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RECIPES.md#adding-a-recipe-to-an-existing-project
 [docs/BULK.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/BULK.md
 [docs/INTERCHANGE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/INTERCHANGE.md
 [docs/EXTENSIONS.md#project-level-lifecycle-hooks]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#project-level-lifecycle-hooks

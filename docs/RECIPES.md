@@ -14,6 +14,8 @@ urlcode recipes show webhook-receiver        # metadata first, then every file
 urlcode recipes add webhook-receiver --out ./orders-hook --dry-run
 urlcode recipes add webhook-receiver --out ./orders-hook
 urlcode validate --local --project ./orders-hook
+urlcode recipes add store-booking --project app --dry-run   # merge into an existing site's project
+urlcode recipes add store-booking --project app
 ```
 
 ## The catalog
@@ -54,7 +56,9 @@ any membership lists, in `tests/seed.json`. Its fixtures sign in through
 id, and read `GET /api/auth/get-session`, so the audit counts the auth mount
 covered ([authenticated routes](READINESS.md#authenticated-routes-auth-true)).
 In a site created with `urlcode init` and `urlcode extensions add auth` (and
-`store`), the recipe's `urlcode.yaml` and tests copy into `app/` unchanged.
+`store`), `urlcode recipes add NAME --project app` merges the recipe into `app/`
+([adding a recipe to an existing project](#adding-a-recipe-to-an-existing-project)):
+the site's `routes/auth.yaml` is the recipe's own, so it is not a clash.
 Their commands pass `--local-review`, so the fixtures run on each edit with no
 revision pin ([the local review loop](EXTENSIONS.md#the-local-review-loop));
 serving still needs the reviewed pin.
@@ -127,9 +131,9 @@ packed archive and runs its commands verbatim.
 
 ## Adding a recipe
 
-`add` creates a new standalone directory. It refuses an existing destination,
-even an empty directory; it never merges or overwrites existing project routes.
-Review or copy selected declarations manually when combining projects. Dry-run
+`add --out` creates a new standalone directory. It refuses an existing destination,
+even an empty directory; it never merges or overwrites existing project routes
+(`--project`, below, merges into an existing project). Dry-run
 reads and validates the packaged recipe and checks the destination, but writes
 nothing. The output parent must already exist and be owned by the caller.
 Dependencies are written first and the complete `urlcode.yaml` is published by
@@ -137,10 +141,65 @@ rename last. A failed write removes the new directory. This is atomic project
 activation, not an atomic directory replacement or a guarantee against a local
 attacker concurrently replacing the caller's output directories.
 
+### Adding a recipe to an existing project
+
+`urlcode recipes add NAME --project DIR` merges a recipe into an existing
+project, such as a site's `app/`, instead of copying its files by hand. Pass
+exactly one of `--out` and `--project`. It merges:
+
+- the routes the recipe's `urlcode.yaml` declares, into the project's
+  `urlcode.yaml`, and each file the recipe `includes` (such as
+  `routes/auth.yaml`), added to the project's `includes`;
+- each extension's configuration: every entry of a mapping under `config`
+  (a store collection such as `collections.bookings`, or a membership
+  collection) joins the project's `extensions.<name>.config`, and other
+  top-level entries (`site.spa`) merge the same way;
+- the recipe's other files (functions, pages, static files), but not its
+  `README.md`, which `recipes show` prints;
+- `tests/requests.json`: the recipe's fixtures are appended after the
+  project's;
+- `tests/seed.json`: accounts by `id`, and membership lists as a union;
+- `tests/audit.json`: `expectRoutes` moves by the routes the merge added,
+  when the project has one the audit reads.
+
+An entry the project already has, identical, is not a clash and is left as it
+is: the `routes/auth.yaml` that `urlcode extensions add auth` wrote, a seeded
+account or a fixture. Adding the same recipe twice changes nothing. An entry
+that exists and differs is a clash: a route pattern, a configuration entry
+(a collection name), an include or other file, a seed account id, or a
+fixture sending the same request with different expectations (fixtures carry
+no id, so the request is what identifies one). Any clash refuses the whole
+merge with code `recipe-clash`, every clash named, and nothing written.
+
+A recipe that needs an extension the project does not declare is refused with
+code `recipe-needs-extension`, naming the command that adds it (`urlcode
+extensions add auth store`, run in the site directory). Adding an extension
+installs a package and changes the operator host, so the merge never does it.
+
+The project's `urlcode.yaml` is edited in place as `extensions add` edits it:
+the new entries are inserted after the existing ones, with the comments the
+recipe wrote beside them, and every other line stays byte-identical. A file laid
+out in a way that cannot be edited like that is refused, not reformatted. JSON
+files are appended to, one fixture per line as the recipes write them.
+
+The command prints what it changed as JSON (`routes`, `includes`,
+`extensions`, `settings`, `files`, `fixtures`, `seed`, `expectRoutes`,
+`written`), the recipe's `inputs` to review as `notes`, and the `validate`,
+`test` and `audit` commands to run next. `--dry-run` reports the same and
+writes nothing. The write is all or nothing: files are written with
+`urlcode.yaml` last, the project is loaded again, and a failure restores every
+file it changed and removes every file and directory it created.
+
+Recipes that sign in with the auth extension share its sign-in rate limit,
+ten per minute, in one `urlcode test` run, so two whose fixtures sign in more
+than ten times together (`store-booking` and `store-credits`) merge but answer
+`429` from the eleventh sign-in ([#1019](https://github.com/jimhoyd-com/urlcode/issues/1019)).
+
 ## SDK and MCP
 
 The SDK provides `listRecipes()`, `searchRecipes(text)`, `showRecipe(name)`,
-`addRecipe(name, output, {dryRun})`, `listExamples()`, `searchExamples(text)` and
+`addRecipe(name, output, {dryRun})`, `mergeRecipe(name, project, {dryRun})`,
+`listExamples()`, `searchExamples(text)` and
 `addExample(name, output, {dryRun})`.
 Catalog names are a fixed list in code; metadata and file lists come from each
 schema-checked `recipe.yaml` and are returned as copies. Unknown names and
@@ -152,7 +211,10 @@ and the webhook receiver, and the webhook fixtures' test key in the process
 environment). The recipes behind `auth: true` run through the CLI's own
 `validate`, `test` (twice) and `audit`, as their commands list them, against
 the real auth extension (`packages/auth/test/recipes.test.ts`) and, for the
-store recipes, the real store (`packages/store/test/recipes.test.ts`). `store-crud` runs against the
+store recipes, the real store (`packages/store/test/recipes.test.ts`), both as
+a standalone project and merged with `--project` into a site's `app/`
+(`test/addons.integration.ts` merges them into a site made by the real `init`
+and `extensions add auth store`). `store-crud` runs against the
 real `storeExtension` from `packages/store` with a temporary database, and a
 separate test drives its full lifecycle across a restart. `spa-shell` runs with the
 plugin from its README host file, and `test/spa-shell-recipe.test.ts` drives it

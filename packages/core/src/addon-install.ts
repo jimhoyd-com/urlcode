@@ -145,21 +145,33 @@ function parent(text: string, path: YamlPath): unknown {
   if (doc.errors.length) throw new YamlLayoutError();
   return path.length ? doc.getIn(path, true) : doc.contents;
 }
-/** Adds `key: value` as the last entry of the map at `path`, creating missing maps on the way. */
-export function yamlInsertEntry(text: string, path: YamlPath, key: string, value: unknown): string {
+/**
+ * Adds `key: value` as the last entry of the map at `path`, creating missing maps on the way. `block`, when given, is
+ * the entry already rendered as block YAML (so it can keep its own comments); it is used wherever the entry goes in
+ * block style, and an empty flow map (`key: {}` alone on its line) is then opened into a block rather than filled
+ * with one long flow line.
+ */
+export function yamlInsertEntry(text: string, path: YamlPath, key: string, value: unknown, block?: string): string {
   const map = parent(text, path);
   if (map === undefined && path.length) return yamlInsertEntry(text, path.slice(0, -1), String(path.at(-1)), { [key]: value });
   if (!isMap(map)) throw new YamlLayoutError();
   const last = map.items.at(-1);
   if (map.flow) {
     const entry = `${flowText(key)}: ${flowText(value)}`;
-    if (!last) { const [start, end] = rangeOf(map); return text.slice(0, start) + `{${entry}}` + text.slice(end); }
+    if (!last) {
+      const [start, end] = rangeOf(map), from = lineStart(text, start), head = text.slice(from, start);
+      if (block !== undefined && /^[ \t]*[^\s#-][^#]*:[ \t]*$/.test(head) && /^[ \t]*(?:\r?\n|$)/.test(text.slice(end))) {
+        const before = text.slice(0, from) + head.trimEnd();
+        return insertBlock(before + text.slice(lineEnd(text, end)), before.length, block, head.search(/\S/) + 2);
+      }
+      return text.slice(0, start) + `{${entry}}` + text.slice(end);
+    }
     const at = rangeOf(last.value ?? last.key)[1];
     return text.slice(0, at) + `, ${entry}` + text.slice(at);
   }
   if (!last) throw new YamlLayoutError();
   const first = rangeOf(map.items[0]!.key)[0];
-  return insertBlock(text, lineEnd(text, rangeOf(last.value ?? last.key)[2]), stringify({ [key]: value }, { lineWidth: 0 }), first - lineStart(text, first));
+  return insertBlock(text, lineEnd(text, rangeOf(last.value ?? last.key)[2]), block ?? stringify({ [key]: value }, { lineWidth: 0 }), first - lineStart(text, first));
 }
 /** Appends `item` to the sequence at `path`, creating it when missing. */
 export function yamlAppendItem(text: string, path: YamlPath, item: string): string {
@@ -200,9 +212,10 @@ export function yamlDelete(text: string, path: YamlPath): string {
   if (!(isMap(collection) ? /^[ \t]*$/ : /^[ \t]*-[ \t]+$/).test(text.slice(from, start))) throw new YamlLayoutError();
   return text.slice(0, from) + text.slice(lineEnd(text, after));
 }
-/** Applies minimal `edits` to `text`, refusing unless the result parses to `expected`. */
-function checkedYamlEdit(text: string, expected: unknown, edits: ((current: string) => string)[]): string {
+/** Applies minimal `edits` to `text`, refusing unless the result parses to `expected`; `refusal` replaces the default message. */
+export function checkedYamlEdit(text: string, expected: unknown, edits: ((current: string) => string)[], refusal?: () => string): string {
   const refuse = (): never => {
+    if (refusal) throw new ConfigError(refusal());
     const { extensions, includes } = isRecord(expected) ? expected : {};
     throw new ConfigError(`${PROJECT_DIRECTORY}/urlcode.yaml is laid out in a way this command cannot edit in place without rewriting the rest of the file; make it read as follows, then run the command again:\n${stringify({ ...(extensions === undefined ? {} : { extensions }), ...(includes === undefined ? {} : { includes }) }, { lineWidth: 0 })}`);
   };
@@ -375,7 +388,7 @@ export interface Snapshot { restore(): Promise<void>; created: string[] }
 /** The committed audit route count `extensions add|remove` keeps in step with the routes it writes (#910, #955). */
 function expectedRouteFile(site: Site): string { return join(site.project, ...auditExpectationFile.split('/')); }
 /** Configured routes as the audit counts them: declared routes plus each active `site.*` convention no route shadows. */
-async function configuredRouteCount(project: string): Promise<number> {
+export async function configuredRouteCount(project: string): Promise<number> {
   const loaded = await loadDocument(project), site: Record<string, unknown> = { ...loaded.document.site };
   const conventions = Object.entries(generatedPaths).filter(([key, path]) => site[key] !== undefined && site[key] !== null && site[key] !== false && !Object.hasOwn(loaded.routes, path));
   return Object.keys(loaded.routes).length + conventions.length;
