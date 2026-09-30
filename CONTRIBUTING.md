@@ -74,7 +74,12 @@ There is no separate template repository to keep in step.
 `starters/default/AGENTS.md` is generated from
 `packages/core/src/agents-guide.ts` and checked by test; the starter carries no
 `.mcp.json`, which `urlcode init` renders from the same source. The Claude marketplace
-skills are derived from `.claude/skills/`. When either source changes (including
+skills are derived from `.claude/skills/`. The sections `skills/urlcode/SKILL.md`
+and `.claude/skills/urlcode-authoring/SKILL.md` share (declarative-first,
+installation, bounded retrieval, trust, verification, grants and feedback) have
+one authored copy, `scripts/skill-shared-sections.md`, rendered between each
+skill's `shared:NAME` markers; edit the rest of each skill in place. When any
+of these sources changes (including
 the capability catalog, policies or starter routes), run `npm run docs:agents`
 and commit every resulting asset; do not hand-edit a derived copy.
 The richer asset demo lives in `examples/assets`, not a selectable starter.
