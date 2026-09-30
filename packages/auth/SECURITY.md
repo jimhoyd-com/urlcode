@@ -27,11 +27,14 @@
   database with a random secret and never serves the site's accounts. `serve`,
   `dev` and a pinned `validate` activate without the flag and keep every limit
   as configured.
-- **Bodies pass core's reader first.** Every mount request body goes through
-  core's `readBody` before Better Auth parses it, so a body core would refuse
-  (an unpaired surrogate escape, `400 invalid_unicode`; a repeated key,
-  excessive nesting, invalid UTF-8 or a non-JSON media type) never reaches
-  Better Auth, which would store an unpaired surrogate as U+FFFD (#1016).
+- **Body guards preserve upstream formats.** Every body has a 1 MiB cap and
+  repeated `Content-Type` headers are refused. JSON and `application/*+json`
+  pass core's `readBody` before Better Auth parses their unchanged bytes, retaining
+  the unpaired-surrogate, duplicate-key, nesting and encoding guards (#1016).
+  Form and plain-text bodies require valid UTF-8, including form percent-encoded
+  bytes. Binary/multipart parsing and accepted formats belong to the enabled
+  upstream endpoint; JSON-specific checks are not applied to those bodies.
+  Better Auth's endpoint origin/CSRF checks still run, including on form sign-in.
 - **Protected routes.** `auth: true` requires a session Better Auth verifies
   and refuses cross-origin unsafe methods. A database failure while verifying
   the session answers `503 auth_unavailable` with no detail, never a `401`;

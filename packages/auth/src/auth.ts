@@ -295,13 +295,22 @@ export function createAuthExtension(settings: AuthSettings & { projectSha256: st
         async handle(request: ExtensionRequest): Promise<HandlerResult> {
           const path = request.path.slice(mount.length);
           if (!served.has(path)) return jsonResponse(404, { error: 'not_found' });
-          // Better Auth parses its own body and keeps an unpaired surrogate escape, which SQLite then stores as U+FFFD
-          // (#1016). A body therefore passes core's reader first and is refused exactly as core refuses one (400
-          // invalid_unicode, and the reader's other codes); Better Auth still parses the untouched bytes.
-          if (request.body.byteLength > 0) {
-            try { readBody(request, { maxBytes: maxRequestBodyBytes }); }
-            catch (error) { if (error instanceof ExtensionHttpError) return jsonResponse(error.status, { error: error.code }); throw error; }
-          }
+          // Bound all formats, validate JSON without changing its bytes, and leave media-type admission to upstream.
+          try {
+            if ((request.headerCounts?.['content-type'] ?? 0) > 1) throw new ExtensionHttpError(400, 'duplicate_header');
+            if (request.body.byteLength > maxRequestBodyBytes) throw new ExtensionHttpError(413, 'body_too_large');
+            const type = (request.headers.get('content-type') ?? '').split(';')[0]!.trim().toLowerCase();
+            if (request.body.byteLength > 0 && (type === 'application/json' || (type.startsWith('application/') && type.endsWith('+json')))) {
+              const headers = new Headers(request.headers); headers.set('content-type', 'application/json');
+              readBody({ ...request, headers }, { maxBytes: maxRequestBodyBytes });
+            } else if (type === 'application/x-www-form-urlencoded' || type === 'text/plain') {
+              try {
+                const text = new TextDecoder('utf-8', { fatal: true }).decode(request.body);
+                // Check encoded UTF-8 without interpreting fields or changing upstream's duplicate-field semantics.
+                if (type === 'application/x-www-form-urlencoded') decodeURIComponent(text.replace(/%(?![0-9a-f]{2})/gi, '%25'));
+              } catch { throw new ExtensionHttpError(400, 'invalid_encoding'); }
+            }
+          } catch (error) { if (error instanceof ExtensionHttpError) return jsonResponse(error.status, { error: error.code }); throw error; }
           if (!serving()) return failed();
           const headers = new Headers(request.headers);
           headers.delete(clientAddressHeader);

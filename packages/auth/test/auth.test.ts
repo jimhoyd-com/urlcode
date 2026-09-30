@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { startServer } from '@jimhoyd/urlcode';
 import { inspectExtensionRevision } from '@jimhoyd/urlcode/extensions';
 import { betterAuth } from 'better-auth';
+import { createAuthEndpoint } from 'better-auth/api';
 import { betterAuthOptions, createAuthExtension, migrate } from '../src/index.ts';
 import extension from '../src/extension.ts';
 
@@ -54,7 +55,7 @@ async function serve(at: Awaited<ReturnType<typeof project>>, settings: Partial<
     for (const cookie of response.headers.getSetCookie()) { const [pair = ''] = cookie.split(';'), at = pair.indexOf('='); if (/max-age=0/i.test(cookie)) jar.delete(pair.slice(0, at)); else jar.set(pair.slice(0, at), pair.slice(at + 1)); }
     return response;
   };
-  return { call, jar };
+  return { call, jar, base };
 }
 /** A server in its own process on the project's database, as a second `urlcode serve` would be; its base URL. */
 async function serveProcess(at: Awaited<ReturnType<typeof project>>, settings: object = {}): Promise<string> {
@@ -294,7 +295,7 @@ test('a body holding an unpaired surrogate is refused with core\'s 400 invalid_u
   // The reader's other refusals apply too; a well-formed body, a surrogate pair included, still reaches Better Auth.
   const plain = await call('/api/auth/sign-in/email', { method: 'POST', headers: { 'content-type': 'text/plain' }, body: { email: 'ann@example.test', password: 'ann-local-password' } });
   assert.equal(plain.status, 415);
-  assert.deepEqual(await plain.json(), { error: 'unsupported_media_type' });
+  assert.equal((await plain.json() as { code: string }).code, 'UNSUPPORTED_MEDIA_TYPE');
   const signedUp = await call('/api/auth/sign-up/email', { method: 'POST', body: { email: 'bob@example.test', password: 'bob-local-password', name: 'Bob 😀' } });
   assert.equal(signedUp.status, 200);
   assert.equal(((await signedUp.json()) as { user: { name: string } }).user.name, 'Bob \u{1F600}');
@@ -456,4 +457,63 @@ test('the scaffold writes the mount and a private secret; host() reads it; the C
     await chmod(database, 0o644);
     assert.throws(() => betterAuthOptions({ database, secret }, origin, '/api/auth'), /must be a private regular file/);
   }
+});
+
+
+test('native JSON, form sign-in and declared plugin formats agree with Better Auth (#1039)', async t => {
+  const at = await project(t); await withUser(at);
+  const plugin = { id: 'format-proof', endpoints: {
+    echo: createAuthEndpoint('/format-proof', { method: 'POST', metadata: { allowedMediaTypes: ['text/plain', 'application/example+json'] } }, async ctx => ctx.json({ body: ctx.body })),
+  } };
+  const settings = { paths: ['/format-proof'], betterAuth: { plugins: [plugin] } };
+  const { base } = await serve(at, settings);
+  const options = betterAuthOptions({ database: at.database, secret, ...settings }, origin, '/api/auth');
+  at.defer(() => (options.database as DatabaseSync).close());
+  const upstream = betterAuth(options);
+  const compare = async (path: string, contentType: string, body: string, source = origin) => {
+    const init = { method: 'POST', headers: { 'content-type': contentType, origin: source }, body };
+    const direct = await upstream.handler(new Request(origin + '/api/auth' + path, init));
+    const mounted = await fetch(base + '/api/auth' + path, init);
+    assert.equal(mounted.status, direct.status, path);
+    return { direct, mounted };
+  };
+  for (const [type, body] of [
+    ['application/json', JSON.stringify({ email: 'ann@example.test', password: 'ann-local-password' })],
+    ['application/x-www-form-urlencoded', 'email=ann%40example.test&password=ann-local-password'],
+  ]) {
+    const { direct, mounted } = await compare('/sign-in/email', type!, body!);
+    assert.equal(mounted.status, 200);
+    assert.ok(mounted.headers.getSetCookie().length);
+    assert.equal((await mounted.json() as { user: { email: string } }).user.email, (await direct.json() as { user: { email: string } }).user.email);
+  }
+  const echoed = await compare('/format-proof', 'text/plain; charset=utf-8', 'provider-native 😀 %FF');
+  assert.equal(echoed.mounted.status, 200);
+  assert.deepEqual(await echoed.mounted.json(), await echoed.direct.json());
+  const suffix = await compare('/format-proof', 'application/example+json', '{"native":true}');
+  assert.equal(suffix.mounted.status, 200);
+  assert.deepEqual(await suffix.mounted.json(), await suffix.direct.json());
+  const malformed = await fetch(base + '/api/auth/format-proof', { method: 'POST', headers: { origin, 'content-type': 'application/example+json' }, body: '{"native":"\\ud800"}' });
+  assert.equal(malformed.status, 400);
+  assert.deepEqual(await malformed.json(), { error: 'invalid_unicode' });
+  const denied = await compare('/sign-in/email', 'application/x-www-form-urlencoded', 'email=ann%40example.test&password=ann-local-password', 'https://foreign.example');
+  assert.equal(denied.mounted.status, 403);
+  assert.equal(denied.mounted.headers.getSetCookie().length, 0);
+  const unsupported = await compare('/format-proof', 'application/octet-stream', 'provider-native');
+  assert.equal(unsupported.mounted.status, 415);
+  assert.deepEqual(await unsupported.mounted.json(), await unsupported.direct.json());
+  const closed = await fetch(base + '/api/auth/another-plugin', { method: 'POST', body: 'x' });
+  assert.equal(closed.status, 404);
+});
+
+test('form and plugin bodies retain size and encoding guards without rewriting fields (#1039)', async t => {
+  const at = await project(t); await withUser(at);
+  const { base } = await serve(at);
+  for (const body of ['email=%ED%A0%80&password=x', 'email=%FF&password=x', new Uint8Array([0xff])]) {
+    const response = await fetch(base + '/api/auth/sign-in/email', { method: 'POST', headers: { origin, 'content-type': 'application/x-www-form-urlencoded' }, body });
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), { error: 'invalid_encoding' });
+    assert.equal(response.headers.getSetCookie().length, 0);
+  }
+  const large = await fetch(base + '/api/auth/sign-in/email', { method: 'POST', headers: { origin, 'content-type': 'application/x-www-form-urlencoded' }, body: 'x'.repeat(1024 * 1024 + 1) });
+  assert.equal(large.status, 413);
 });

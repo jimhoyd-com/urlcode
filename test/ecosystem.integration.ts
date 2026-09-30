@@ -143,12 +143,14 @@ test('ecosystem: direct npm library use and URLCode hosted inside Hono', { timeo
     assert.deepEqual([json.sandbox, json.handler.kind, json.handler.source], [false, 'function', 'functions/validate.mjs']);
     // The Hono app behind the extension mount: review sees the mount, not the app's routes.
     assert.match(urlcode(['explain', '/app/hono/deep/1/2', ...hosted]).stdout, /"subpaths":"provider-defined, not enumerated or inspected by URLCode"/);
-    const review = JSON.parse(urlcode(['review', ...hosted, '--json']).stdout) as { observations: { signal: string; routes: string[] }[] };
+    const review = JSON.parse(urlcode(['review', ...hosted, '--json']).stdout) as { trustedDependencies: {packages:string[];complete:boolean}; observations: { signal: string; routes: string[] }[] };
     const signals = review.observations.map(item => `${item.signal} ${item.routes.join(',')}`).sort();
     // Recorded as found (proofs/ecosystem/README.md): review suggests the declarative request.body schema instead of
     // the zod code, and does not report Hono's in-process app.fetch(request) as an outbound network call (#889). The
-    // installed package zod itself is not named anywhere in explain or review.
+    // direct package imports are now named without claiming their implementations were inspected.
     assert.deepEqual(signals, ['manual-body-validation /app/api/validate']);
+    assert.ok(review.trustedDependencies.packages.includes('zod'));
+    assert.equal(review.trustedDependencies.complete,false);
   });
 
   // Both hosts: URLCode's own server, and the Hono application embedding the same project.
