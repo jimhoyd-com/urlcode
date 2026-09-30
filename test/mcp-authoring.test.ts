@@ -1,11 +1,11 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {Readable,Writable} from 'node:stream';
-import {cp,mkdtemp,rm,readFile,writeFile,symlink,lstat,mkdir} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join,resolve} from 'node:path';import {fileURLToPath} from 'node:url';
+import {cp,mkdtemp,rm,readFile,readdir,writeFile,symlink,lstat,mkdir} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join,relative,resolve} from 'node:path';import {fileURLToPath} from 'node:url';
 import {serveMcp} from '../packages/core/src/mcp.ts';import {confinedPath} from '../packages/core/src/mcp-authoring.ts';import {project,redirect,byReplyId} from './helpers.ts';
 import {scaffoldProject} from '../packages/core/src/scaffold.ts';import {buildContext,shellWord} from '../packages/core/src/context.ts';import {inspectExtensionRevision} from '../packages/core/src/extensions.ts';
 const initialize={jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'test',version:'1'}}};
 const ready={jsonrpc:'2.0',method:'notifications/initialized'};
 interface Reply { error?:{code:number;message:string};result:{tools:{name:string;annotations:{readOnlyHint:boolean}}[];content:{text:string}[];isError?:boolean} }
-const authoringNames=['create_route','add_recipe','scaffold_feature','run_validate','run_test','run_audit','run_tests'];
+const authoringNames=['create_route','add_recipe','merge_recipe','scaffold_feature','run_validate','run_test','run_audit','run_tests'];
 async function session(root:string,messages:unknown[],allowAuthoring?:boolean) {
  let text='';const output=new Writable({write(chunk,_encoding,callback){text+=String(chunk);callback();}});
  await serveMcp({project:root,input:Readable.from([messages.map(value=>JSON.stringify(value)+'\n').join('')]),output,...(allowAuthoring?{allowAuthoring:true}:{})});
@@ -30,7 +30,7 @@ test('authoring tools are absent without the flag and cannot be enabled by argum
 test('the flag lists the authoring tools as non-read-only alongside the read tools',async t=>{
  const root=await project(t,{'/a':redirect()});
  const replies=await session(root,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/list'}],true);
- const tools=replies[1]!.result.tools;assert.equal(tools.length,39);
+ const tools=replies[1]!.result.tools;assert.equal(tools.length,40);
  for(const name of authoringNames){const tool=tools.find(tool=>tool.name===name);assert.ok(tool);assert.equal(tool.annotations.readOnlyHint,false);}
  assert.equal(tools.find(tool=>tool.name==='inspect')!.annotations.readOnlyHint,true);
 });
@@ -44,7 +44,7 @@ test('runners that execute trusted project code are annotated destructive, open-
   assert.match(tool.description,/trusted function and middleware modules/,name);assert.match(tool.description,/not confinement/,name);
  }
  // The file-writing tools stay project-confined writes: not destructive, not open-world.
- for(const name of ['create_route','add_recipe','scaffold_feature'])
+ for(const name of ['create_route','add_recipe','merge_recipe','scaffold_feature'])
   assert.deepEqual(tools.find(candidate=>candidate.name===name)!.annotations,{readOnlyHint:false,destructiveHint:false,openWorldHint:false},name);
 });
 test('path confinement refuses absolute, parent, symlinked, dotenv, git and operator paths',async t=>{
@@ -93,6 +93,58 @@ test('add_recipe dry run writes nothing; the real run publishes inside the proje
  const dry=payload((await add(true))[1]!);assert.equal(dry.dryRun,true);assert.equal(dry.output,'features/go');await assert.rejects(lstat(join(root,'features/go')),{code:'ENOENT'});
  const real=payload((await add(false))[1]!);assert.equal(real.dryRun,false);assert.equal((real.validation as {valid:boolean}).valid,true);assert.ok((await lstat(join(root,'features/go/urlcode.yaml'))).isFile());
  assert.equal((await add(false))[1]!.result.isError,true,'existing destination is never merged into');
+});
+/** Every file under the project and its bytes, to prove a refused or dry-run merge wrote nothing. */
+async function contents(root:string):Promise<Record<string,string>> {
+ const files:Record<string,string>={};
+ for(const entry of await readdir(root,{recursive:true,withFileTypes:true}))if(entry.isFile()){const path=join(entry.parentPath,entry.name);files[relative(root,path)]=await readFile(path,'utf8');}
+ return files;
+}
+test('merge_recipe merges a recipe into the served project with the CLI merge: dry run, JSON report, then run_validate and run_test (#1024)',async t=>{
+ const root=await starter(t);const before=await contents(root);
+ const merge=(args:Record<string,unknown>)=>session(root,[initialize,ready,...calls([{name:'merge_recipe',arguments:args}])],true);
+ const dry=payload((await merge({name:'json-endpoint',dryRun:true}))[1]!);
+ assert.equal(dry.dryRun,true);assert.equal(dry.project,'.');
+ assert.deepEqual((dry.routes as {added:string[]}).added,['/api/status','/api/signups']);
+ assert.deepEqual(dry.written,['tests/requests.json','urlcode.yaml','tests/audit.json']);
+ assert.deepEqual(dry.expectRoutes,{file:'tests/audit.json',from:0,to:2});
+ assert.deepEqual(await contents(root),before,'a dry run writes nothing');
+ const replies=await session(root,[initialize,ready,...calls([{name:'merge_recipe',arguments:{name:'json-endpoint'}},{name:'merge_recipe',arguments:{name:'redirect'}},{name:'run_validate',arguments:{}},{name:'run_test',arguments:{}},{name:'run_audit',arguments:{}}])],true);
+ const merged=payload(replies[1]!);
+ assert.equal(merged.dryRun,false);assert.deepEqual(merged.next,['run_validate','run_test','run_audit']);assert.equal((merged.validation as {valid:boolean}).valid,true);
+ assert.equal((payload(replies[2]!).expectRoutes as {to:number}).to,4);
+ for(const [index,command] of [[3,'validate'],[4,'test'],[5,'audit']] as const){const run=payload(replies[index]!);assert.equal(run.exitCode,0,`${command}: ${JSON.stringify(run)}`);}
+ assert.equal(JSON.parse(await readFile(join(root,'tests/audit.json'),'utf8')).expectRoutes,4);
+ await assert.rejects(lstat(join(root,'urlcode.yaml.lock')),{code:'ENOENT'});
+ // Merging the same recipe again is all unchanged and writes nothing.
+ const files=await contents(root);
+ const again=payload((await merge({name:'redirect'}))[1]!);
+ assert.deepEqual(again.written,[]);assert.deepEqual((again.routes as {added:string[]}).added,[]);
+ assert.deepEqual(await contents(root),files);
+});
+test('merge_recipe refuses a clash as an error result naming every clash and writes nothing; it takes no path (#1024)',async t=>{
+ const root=await starter(t);
+ assert.equal((await session(root,[initialize,ready,...calls([{name:'merge_recipe',arguments:{name:'static-page'}}])],true))[1]!.result.isError,undefined);
+ const files=await contents(root);
+ const replies=await session(root,[initialize,ready,...calls([
+  {name:'merge_recipe',arguments:{name:'contact-form'}},
+  {name:'merge_recipe',arguments:{name:'contact-form',dryRun:true}},
+  {name:'merge_recipe',arguments:{name:'store-booking'}},
+  {name:'merge_recipe',arguments:{name:'redirect',project:'../elsewhere'}},
+  {name:'merge_recipe',arguments:{name:'redirect',destination:'features/go'}},
+  {name:'merge_recipe',arguments:{name:'no-such-recipe'}},
+ ])],true);
+ for(const reply of replies.slice(1,3)){
+  assert.equal(reply.result.isError,true);const text=reply.result.content[0]!.text;
+  assert.match(text,/Refusing to add contact-form to .*: \d+ entries clash/);
+  assert.match(text,/route \/ in .*urlcode\.yaml differs/);assert.match(text,/file .*public\/index\.html differs from the recipe's/);
+ }
+ assert.equal(replies[3]!.result.isError,true);assert.match(replies[3]!.result.content[0]!.text,/store-booking needs the auth and store extensions/);
+ // No argument names a target: an extra property fails the input schema before anything runs.
+ for(const reply of replies.slice(4,6))assert.equal(reply.error?.code,-32602,JSON.stringify(reply));
+ assert.equal(replies[6]!.result.isError,true);
+ assert.deepEqual(await contents(root),files);
+ await assert.rejects(lstat(resolve(root,'../elsewhere')),{code:'ENOENT'});
 });
 test('scaffold_feature creates placeholders for a created route and refuses to overwrite',async t=>{
  const root=await project(t,{'/a':redirect()});
