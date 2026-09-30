@@ -3,7 +3,7 @@ import {PassThrough} from 'node:stream';
 import type {Readable,Writable} from 'node:stream';
 import {once} from 'node:events';
 import {Ajv} from 'ajv';
-import {ProtocolError,ProtocolErrorCode,Server} from '@modelcontextprotocol/server';
+import {ProtocolError,ProtocolErrorCode,Server,parseJSONRPCMessage} from '@modelcontextprotocol/server';
 import {StdioServerTransport} from '@modelcontextprotocol/server/stdio';
 import type {ErrorObject} from 'ajv';
 import {ConfigError,describeError} from './errors.ts';
@@ -232,10 +232,25 @@ export async function serveMcp(options:McpOptions):Promise<void> {
  // as core's HTTP body reader refuses invalid encoding (#1021). The transport also drops a line that is not JSON
  // without a reply, so the decoded text is parsed here too and a line that fails answers -32700 the same way (#1028).
  // The BOM is kept (ignoreBOM) so the text parsed is the text the transport would parse.
+ // Valid JSON the transport's own message schema refuses ({}, 42, an object without jsonrpc "2.0") would be dropped
+ // the same way: it answers -32600 Invalid Request instead (#1032), with the request's id when the SDK's HTTP transport
+ // would echo it (an object with a string method and a string or number id) and null otherwise, so a malformed
+ // response is never answered under its own id. The protocol revisions the SDK negotiates on stdio carry no JSON-RPC
+ // batches (MCP removed batching in 2025-06-18) and the transport never accepted an array, so an array, empty or not,
+ // is one -32600 with a null id and none of its elements runs.
  // A line of JSON whitespace alone is not a message and goes on to the transport, which skips it, as is a line past
  // the transport's bound, which ends the session there; every line that passes is forwarded byte for byte.
  const bytes=new PassThrough(),utf8=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true});
- const parseError=(reason:string)=>`${JSON.stringify({jsonrpc:'2.0',id:null,error:{code:-32700,message:`Parse error: the line is not ${reason}`}})}\n`;
+ const refusal=(code:number,message:string,id:string|number|null=null)=>`${JSON.stringify({jsonrpc:'2.0',id,error:{code,message}})}\n`;
+ const parseError=(reason:string)=>refusal(-32700,`Parse error: the line is not ${reason}`);
+ const invalidRequest=(value:unknown):string|undefined=>{
+  if(Array.isArray(value))return refusal(-32600,'Invalid Request: JSON-RPC batches are not supported');
+  try{parseJSONRPCMessage(value);return undefined;}
+  catch{
+   const {method,id}:Record<string,unknown>=object(value)?value:{};
+   return refusal(-32600,'Invalid Request: the line is not a JSON-RPC message',typeof method==='string'&&(typeof id==='string'||typeof id==='number')?id:null);
+  }
+ };
  const forward=async(chunk:Buffer):Promise<void>=>{if(!bytes.write(chunk))await once(bytes,'drain');};
  const pumped=(async()=>{
   let pending=Buffer.alloc(0);
@@ -245,7 +260,11 @@ export async function serveMcp(options:McpOptions):Promise<void> {
     const line=pending.subarray(0,end+1);pending=pending.subarray(end+1);
     let text:string;
     try{text=utf8.decode(line);}catch{output.write(parseError('valid UTF-8'));continue;}
-    if(line.length<=maxBytes&&!/^[\t\n\r ]*$/.test(text)){try{JSON.parse(text);}catch{output.write(parseError('valid JSON'));continue;}}
+    if(line.length<=maxBytes&&!/^[\t\n\r ]*$/.test(text)){
+     let value:unknown;
+     try{value=JSON.parse(text);}catch{output.write(parseError('valid JSON'));continue;}
+     const refused=invalidRequest(value);if(refused){output.write(refused);continue;}
+    }
     await forward(line);
    }
    // A partial line past the transport's bound goes on unchecked: the transport ends the session on it.

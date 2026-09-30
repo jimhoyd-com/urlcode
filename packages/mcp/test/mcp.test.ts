@@ -220,6 +220,14 @@ test('protocol-level failures: parse error, invalid envelope and unknown method'
   const notAnEnvelope = await raw(JSON.stringify({ jsonrpc: '1.0', id: 1, method: 'ping' }));
   assert.equal(notAnEnvelope.status, 400);
   assert.equal((await notAnEnvelope.json() as { error: { code: number } }).error.code, -32600);
+  // Valid JSON that is not a message, and an empty or invalid batch, are -32600 with a null id, as core's stdio
+  // server answers them (#1032).
+  for (const body of ['{}', '42', 'null', '[]', '[{}]', JSON.stringify({ jsonrpc: '2.0', id: 7, method: 5 })]) {
+    const refused = await raw(body);
+    assert.equal(refused.status, 400, body);
+    const json = await refused.json() as { id: unknown; error: { code: number } };
+    assert.deepEqual([json.id, json.error.code], [null, -32600], body);
+  }
   const unknownMethod = await raw(JSON.stringify({ jsonrpc: '2.0', id: 5, method: 'not/a/real/method' }));
   assert.equal((await unknownMethod.json() as { error: { code: number } }).error.code, -32601);
 });
