@@ -18,6 +18,15 @@
   (Better Auth's per-process `memory`, which gives each process its own
   limit), `window`, `max` and `customRules` (which replaces the default
   sign-in and sign-up rules rather than adding to them).
+- **Only a hermetic run raises the limits.** An instance activated for a
+  hermetic run (`HostContext.hermetic`, set by the operator host for `test`,
+  `audit`, `benchmark` and a `--local-review` `validate` or `routes`, never by
+  YAML or the environment) multiplies every rule's `max` by ten (#1019),
+  including an operator's `customRules` and what a rule function returns; a rule
+  the operator disabled stays disabled. That instance runs on a throwaway
+  database with a random secret and never serves the site's accounts. `serve`,
+  `dev` and a pinned `validate` activate without the flag and keep every limit
+  as configured.
 - **Bodies pass core's reader first.** Every mount request body goes through
   core's `readBody` before Better Auth parses it, so a body core would refuse
   (an unpaired surrogate escape, `400 invalid_unicode`; a repeated key,

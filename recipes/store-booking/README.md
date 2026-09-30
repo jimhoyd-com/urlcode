@@ -49,8 +49,8 @@ session, and the next sign-in switches the caller. The auth mount is a route
 like any other, so the audit needs it covered: the asserted sign-ins cover its
 `POST` and an asserted `GET /api/auth/get-session` its `GET`
 ([authenticated routes][docs/READINESS.md#authenticated-routes-auth-true]).
-Better Auth allows 10 sign-ins a minute per client, so the fixtures change
-caller only where the story needs it.
+The fixtures change caller only where the story needs it: a served site allows
+10 sign-ins a minute per client (a `test` or `audit` run allows ten times that).
 
 The auth extension serves exactly one mount, so the recipe carries it:
 `routes/auth.yaml`, included from `urlcode.yaml`, is the file

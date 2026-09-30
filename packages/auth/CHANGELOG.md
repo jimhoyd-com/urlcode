@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- A site whose fixtures sign in more than ten times passes `urlcode test` and `audit` (#1019). Better Auth's limit of
+  10 sign-ins a minute per client address applied to hermetic runs too, where every fixture comes from one address, so
+  the eleventh sign-in answered `429` and every later step was skipped (store-booking and store-credits merged sign in
+  12 times). An instance activated for a hermetic run now multiplies every rate-limit rule's `max` by ten (100
+  sign-ins, 50 sign-ups, 1,000 other requests a minute by default, and an operator's own rules alike); the limiter
+  stays on, database-stored and keyed by the admitted address. Only the operator host's hermetic flag raises it:
+  `serve`, `dev` and a pinned `validate` keep every limit as configured.
+
 - A mount request body holding an unpaired UTF-16 surrogate escape (`"\ud800"` alone) answers core's
   `400 {"error":"invalid_unicode"}` (#1016). Better Auth parses its own body, so sign-up stored such a name as U+FFFD.
   Every body now passes core's `readBody` before Better Auth sees it, and answers the reader's other refusals too: a
