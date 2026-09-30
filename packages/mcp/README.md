@@ -346,7 +346,8 @@ extension has no identity or authorization model of its own.
   (an unsupported one answers `400`), notifications (`202`), `ping`, and the
   standard error codes: `-32700` parse error and `-32600` invalid request
   (HTTP `400`), `-32601` method not found, `-32602` invalid params (an unknown
-  tool, prompt or resource, or prompt arguments that fail their declaration),
+  tool, prompt or resource, prompt arguments that fail their declaration, or
+  a tool or prompt argument holding an unpaired surrogate),
   `-32603` internal error. A body over 256 KiB answers `413`, a non-JSON
   media type `415`, and a request that does not accept both JSON and SSE
   `406`.
@@ -358,6 +359,13 @@ extension has no identity or authorization model of its own.
 - Tool arguments that fail the declared `inputSchema` answer a tool
   execution error (`isError: true`, the schema issues as text) so the model
   can correct them, under every revision; the handler never runs.
+- A tool or prompt argument holding a string or key with an unpaired UTF-16
+  surrogate (a lone `\uD800`-`\uDFFF` escape) is refused before the schema
+  check with `-32602` naming the argument and `data`
+  `{"argument": <name>, "code": "invalid_unicode"}` (#1016), as core's JSON
+  body reader refuses one with `400 invalid_unicode`: the SDK parses the body
+  itself, so the extension checks the parsed arguments with core's
+  `illFormedMember` (`@jimhoyd/urlcode/body-schema`).
 - Tool `outputSchema` / `structuredContent`, validated against the same
   bounded schema profile as `inputSchema` (see "Declare a server" above).
 - Optional `title` on tools, resources and prompts, and optional tool

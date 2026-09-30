@@ -489,7 +489,12 @@ step). Each extension defines its entry and refuses anything else:
 
 A seed only reaches an extension composed for such a run: an entry for an
 extension that is not registered, or that accepts no seed, is refused before
-anything is served, as is one that does not match the extension's shape. A
+anything is served, as is one that does not match the extension's shape or
+that holds a string or key with an unpaired UTF-16 surrogate escape
+(`"\ud800"` alone), which a database would store as U+FFFD. `tests/requests.json`
+refuses such a string too, because a request cannot send it as UTF-8: to test
+core's `400 invalid_unicode`, put the escape inside the body text with its
+backslash doubled (`"body": "{\"a\":\"\\ud800\"}"`). A
 third-party extension accepts a seed by declaring a `seedSchema` on the
 registration it builds for a hermetic host
 ([extension contract](EXTENSIONS.md#hermetic-runs-and-test-seeds)). The

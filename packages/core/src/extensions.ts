@@ -8,6 +8,7 @@ import { validateHeaderName, validateHeaderValue } from './header-validation.ts'
 import type { HandlerResult } from './http-response.ts';
 import type { LogFn, ProjectDocument, RouteAuthShortForm, RouteConfig, TargetName } from './types.ts';
 import type { BodySchema } from './body-validation.ts';
+import { holdsIllFormedString } from './body-validation.ts';
 import { contractProblem, extensionContract, extensionTargetNames, isAuthoringGoals } from './addon-manifest.ts';
 import { revisionPinGuidance, unpinnedInspectionRevision } from './operator-host.ts';
 import type { AddonAgentTooling, ExtensionTarget } from './addon-manifest.ts';
@@ -873,6 +874,9 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
     let validate:ReturnType<InstanceType<typeof Ajv.default>['compile']>;
     try{validate=new Ajv.default({strict:true,allErrors:false}).compile(registration.seedSchema);}
     catch(error){throw extensionError(error,name,'prepare');}
+    // An unpaired surrogate escape cannot reach a database as written (SQLite stores UTF-8, so it would become U+FFFD):
+    // refused like every other JSON boundary (#988, #1016).
+    if(holdsIllFormedString(value))throw new ConfigError(`${seedFile} ${name}: a string or key holds an unpaired surrogate escape (\\uD800-\\uDFFF)`,details);
     const copy=structuredClone(value);
     if(!validate(copy)){const error=validate.errors?.[0];throw new ConfigError(`${seedFile} ${name}${error?.instancePath?error.instancePath.split('/').join('.'):''}: ${error?.message??'is invalid'}`,{...details,pointer:`/${name}${error?.instancePath??''}`});}
     seeded.set(name,frozen(copy));

@@ -201,6 +201,16 @@ test('MCP echoes a supported requested protocol revision and offers the latest o
   assert.equal(reply!.result.protocolVersion,expected,requested);
  }
 });
+test('MCP refuses a tool argument holding an unpaired surrogate with -32602 naming it, and admits a surrogate pair (#1016)',async t=>{
+ const root=await project(t,{});
+ const replies=await session(root,[initialize,ready,...[
+  {name:'plan_feature',arguments:{goal:'contact \ud800form'}},{name:'plan_feature',arguments:{goal:'contact form',deployTarget:'node','x\udc00':1}},{name:'plan_feature',arguments:{goal:'contact form 😀'}},
+ ].map((params,index)=>({jsonrpc:'2.0',id:index+2,method:'tools/call',params}))]);
+ const error=(index:number)=>(replies[index] as unknown as {error:{code:number;message:string;data:unknown}}).error;
+ assert.equal(error(1).code,-32602);assert.match(error(1).message,/^Invalid arguments for plan_feature: argument "goal" holds an unpaired surrogate/);assert.deepEqual(error(1).data,{argument:'goal',code:'invalid_unicode'});
+ assert.equal(error(2).code,-32602);assert.ok(error(2).message.includes('argument "x\\udc00"'),error(2).message);
+ assert.ok(replies[3]!.result,'a surrogate pair is well-formed');
+});
 test('MCP returns the CLI message for tool failures and names bad tools and arguments (#582)',async t=>{
  const root=await project(t,{'/a':{redirect:{url:'https://example.com/'},respond:{text:'two handlers'}}});
  const replies=await session(root,[initialize,ready,...[

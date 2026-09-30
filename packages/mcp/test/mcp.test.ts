@@ -158,6 +158,35 @@ test('tools/call runs the declared trusted handler and wraps its return value as
   assert.deepEqual(JSON.parse(json.result.content[0]!.text), { echoed: 'hello there' });
 });
 
+test('tools/call and prompts/get refuse an argument holding an unpaired surrogate with -32602 naming it; the handler never runs (#1016)', async t => {
+  const p = await project(t);
+  await p.write('echo.mjs', 'export default function echo(input) { return { echoed: input.message }; }\n');
+  await p.write('greeting.mjs', 'export default function greeting(args) { return `Hi ${args.who}`; }\n');
+  const calls: McpToolCallInfo[] = [];
+  const { call } = await p.start({
+    mount: '/mcp', serverName: 'unicode', serverVersion: '1.0.0',
+    tools: { echo: { description: 'Echoes', inputSchema: { type: 'object', additionalProperties: true }, handler: './echo.mjs' } },
+    prompts: { greet: { arguments: [{ name: 'who', required: true }], handler: './greeting.mjs' } },
+  }, undefined, info => calls.push(info));
+  const refused = async (body: unknown, argument: string) => {
+    const json = await (await call(body)).json() as { error?: { code: number; message: string; data?: { argument: string; code: string } } };
+    assert.equal(json.error?.code, -32602, JSON.stringify(body));
+    assert.match(json.error.message, /unpaired surrogate/);
+    assert.equal(json.error.message.includes(JSON.stringify(argument)), true, json.error.message);
+    assert.deepEqual(json.error.data, { argument, code: 'invalid_unicode' });
+  };
+  const tool = (args: unknown) => ({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'echo', arguments: args } });
+  await refused(tool({ message: '\ud800x' }), 'message');
+  await refused(tool({ ok: 'fine', nested: { deep: ['a', '\udc00'] } }), 'nested');
+  await refused(tool({ ['k\ud800']: 1 }), 'k\ud800');
+  await refused({ jsonrpc: '2.0', id: 2, method: 'prompts/get', params: { name: 'greet', arguments: { who: '\udbffBob' } } }, 'who');
+  assert.deepEqual(calls, [], 'no handler ran');
+  // A surrogate pair is well-formed and reaches the handler unchanged.
+  const paired = await (await call(tool({ message: '\ud83d\ude00' }))).json() as { result: { content: { text: string }[]; isError: boolean } };
+  assert.equal(paired.result.isError, false);
+  assert.deepEqual(JSON.parse(paired.result.content[0]!.text), { echoed: '\u{1F600}' });
+});
+
 test('tools/call answers -32602 for an unknown tool name', async t => {
   const { call } = await boot(t);
   const response = await call({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'does-not-exist', arguments: {} } });

@@ -1108,7 +1108,12 @@ text is additionally capped at 512 KiB. Tool schemas reject
 unknown arguments. A `-32602` error names the problem: an unknown tool (and the
 flag that adds it, for `get_extensions` and the authoring tools including
 `run_tests`), each unknown,
-missing or invalid argument, and the arguments the tool accepts. A tool that
+missing or invalid argument, and the arguments the tool accepts. An argument
+holding a string or key with an unpaired UTF-16 surrogate (a lone
+`\uD800`-`\uDFFF` escape, which UTF-8 and so a written file cannot carry) is
+refused before any other check with a `-32602` naming it and `data`
+`{"argument": <name>, "code": "invalid_unicode"}`, as core's JSON body reader
+(`readBody`, `400 invalid_unicode`) refuses one. A tool that
 fails returns `isError` with the message the CLI prints for the same failure,
 for example the schema location of an invalid route or the valid
 `get_capability` names; the server is local, started by the operator and

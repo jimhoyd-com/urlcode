@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- A mount request body holding an unpaired UTF-16 surrogate escape (`"\ud800"` alone) answers core's
+  `400 {"error":"invalid_unicode"}` (#1016). Better Auth parses its own body, so sign-up stored such a name as U+FFFD.
+  Every body now passes core's `readBody` before Better Auth sees it, and answers the reader's other refusals too: a
+  repeated key or `Content-Type`, nesting past 32, invalid UTF-8 or JSON (`400`) and a media type other than
+  `application/json` (`415`), each as `{"error": <code>}`. `urlcode-auth create-user` refuses the same input (exit 2).
+
 - Every Better Auth write checks the host lease under its own write lock (#1010). A temporary trigger on each Better
   Auth table, on auth's connection only, runs the lease check before every insert, update and delete. Before, the lease
   was checked once per request before Better Auth ran, so a request that stalled for longer than the lease's time to

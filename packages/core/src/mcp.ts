@@ -26,6 +26,7 @@ import {suggestProjectFixtures} from './fixture-suggestions.ts';
 import {summarizeChange} from './yaml-change.ts';
 import {realpath} from 'node:fs/promises';
 import {isRecord as object} from './object-guards.ts';
+import {illFormedMember} from './body-validation.ts';
 import {describeInstalledAgentTooling,describeInstalledArtifacts,readArtifactMember} from './addon-install.ts';
 import {inspectInstalledArtifact} from './artifact-inspect.ts';
 import {stageSiteSourceAssets} from './source-stage.ts';
@@ -205,6 +206,10 @@ export async function serveMcp(options:McpOptions):Promise<void> {
  server.setRequestHandler('tools/call',request=>tracked(inOrder(async()=>{
   const name=request.params.name,args=request.params.arguments??{};
   if(!names.has(name))throw new ProtocolError(ProtocolErrorCode.InvalidParams,`Unknown tool ${JSON.stringify(name.slice(0,64))}; call tools/list for the ${names.size} tools this session offers${validators.has(name)?` (${name} needs ${name==='get_extensions'?'the --host-file option':name==='run_tests'?'the --allow-authoring option because it executes the project\'s trusted code':'the --allow-authoring option'})`:''}`);
+  // An unpaired surrogate (a lone \uD800-\uDFFF escape) cannot be written to a file as UTF-8: refused like core's body
+  // reader refuses it (#988, #1016), before any tool runs, naming the argument.
+  const illFormed=object(args)?illFormedMember(args):undefined;
+  if(illFormed!==undefined)throw new ProtocolError(ProtocolErrorCode.InvalidParams,`Invalid arguments for ${name}: argument ${JSON.stringify(illFormed)} holds an unpaired surrogate escape (\\uD800-\\uDFFF)`,{argument:illFormed,code:'invalid_unicode'});
   const checker=validators.get(name)!;
   if(!checker.validate(args))throw new ProtocolError(ProtocolErrorCode.InvalidParams,argumentProblems(checker.tool,checker.validate.errors));
   // The server is local and operator-started with read access to this project only, so the caller gets the same

@@ -138,6 +138,10 @@ test('request fixtures are checked against schemas/requests.schema.json', async 
   await bad([{ path: '/api/status' }], /fixture 1: Test must declare an HTTP status/);
   const root = await project(t, routes, { 'tests/requests.json': '[{"path":"/api/status",\n "status":200,}]' });
   await assert.rejects(readFixtures(root), /tests\/requests\.json is not valid JSON at line 2, column 15/);
+  // A request cannot send an unpaired surrogate as UTF-8 (#1016); the escape itself, doubled in the body text, still can.
+  await bad([{ path: '/api/status', status: 200, body: '\ud800' }], /tests\/requests\.json holds a string or key with an unpaired surrogate escape/);
+  await bad([{ path: '/api/status', status: 200, headers: { 'x-\udc00': 'a' } }], /unpaired surrogate escape/);
+  assert.equal((await readFixtures(await project(t, routes, { 'tests/requests.json': JSON.stringify([{ path: '/api/status', status: 200, body: '{"a":"\\ud800"}' }]) }))).length, 1);
 });
 
 test('a failing case prints expected and actual per assertion, and zero cases fail once routes exist', async t => {

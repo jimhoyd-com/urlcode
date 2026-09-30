@@ -93,6 +93,16 @@ SIGKILL leaves them until that sweep, as does any stop signal on Windows, where
 the sweep also cannot check owner or mode. See
 [test data and seeds][docs/READINESS.md#test-data-and-seeds].
 
+Every JSON input that can reach stored data or a file refuses a string or key
+holding an unpaired UTF-16 surrogate (a lone `\uD800`-`\uDFFF` escape, which
+I-JSON forbids and UTF-8 cannot carry) instead of letting it become U+FFFD or
+compare wrongly: core's JSON body reader and `format: json` routes (`400
+invalid_unicode`), the store, the auth mount before Better Auth parses a body
+(`400 invalid_unicode`) and its `create-user` input, MCP tool and prompt
+arguments in both the extension and `urlcode mcp` (`-32602` naming the
+argument), `tests/seed.json` and `tests/requests.json`. This is data
+consistency, not an authorization boundary.
+
 Add-on packages are trusted by pin, not by review. A released add-on is pinned
 by the sha512 in core's own `addons.json`; an independent package the operator
 adds by npm spec or tarball is pinned by its `package-lock.json` sha512. Every
