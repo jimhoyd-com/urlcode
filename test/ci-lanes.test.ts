@@ -1,29 +1,23 @@
-// The lanes of .github/workflows/ci.yml, evaluated from the workflow itself: the dorny/paths-filter filters are
-// matched with picomatch the way the action matches them (`dot: true`, `some-with-excludes`), and the plan outputs,
-// job conditions and matrices are evaluated with the small subset of GitHub's expression language they use.
+// The lanes of .github/workflows/ci.yml, evaluated from the workflow itself: the changed paths are matched against
+// .github/ci-filters.yml by scripts/ci-changes.ts, and the plan outputs, job conditions and matrices are evaluated with
+// the small subset of GitHub's expression language they use.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import { createRequire } from 'node:module';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { parse } from 'yaml';
+import { filters as readFilters, match } from '../scripts/ci-changes.ts';
 import { addons } from '../scripts/workspaces.ts';
 
-type Matcher = ((path: string) => boolean) & { state: { negated: boolean } };
-const picomatch = createRequire(import.meta.url)('picomatch') as (pattern: string, options: { dot: boolean }, returnState: boolean) => Matcher;
-interface Step { id?: string; if?: string; uses?: string; with?: Record<string, string>; 'continue-on-error'?: boolean }
+interface Step { id?: string; if?: string; run?: string; env?: Record<string, string>; 'continue-on-error'?: boolean }
 interface Job { if?: string; needs?: string | string[]; outputs?: Record<string, string>; strategy?: { matrix: Record<string, unknown> }; steps?: Step[] }
 const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8')) as { jobs: Record<string, Job> };
 const step = (id: string): Step => workflow.jobs.plan!.steps!.find(candidate => candidate.id === id)!;
-const filters = (id: string): Record<string, string[]> => parse(step(id).with!.filters!) as Record<string, string[]>;
-
-/** dorny/paths-filter's `some-with-excludes`: one pattern includes the path and no `!` pattern excludes it. */
-function changes(id: string, paths: string[]): Record<string, boolean> {
-  return Object.fromEntries(Object.entries(filters(id)).map(([name, patterns]) => {
-    const matchers = patterns.map(pattern => picomatch(pattern, { dot: true }, true));
-    const includes = matchers.filter(matcher => !matcher.state.negated), excludes = matchers.filter(matcher => matcher.state.negated);
-    return [name, paths.some(path => !excludes.some(matcher => !matcher(path)) && includes.some(matcher => matcher(path)))];
-  }));
-}
+const ci = readFilters();
+const filters = (id: 'lanes' | 'packages') => ci[id];
 
 type Value = string | boolean | null;
 const truthy = (value: Value): boolean => value !== null && value !== false && value !== '';
@@ -58,14 +52,11 @@ interface Scenario { event: string; paths?: string[]; release?: boolean; filterF
 /** The plan job's outputs for an event and its changed paths. */
 function plan({ event, paths = [], release, filterFails = false }: Scenario): Record<string, string> {
   const context: Record<string, Value> = { 'github.event_name': event, 'inputs.release': release ?? null };
-  const classified = truthy(evaluate(workflow.jobs.plan!.steps!.find(candidate => candidate.id === 'lanes')!.if!, context));
-  for (const id of ['lanes', 'packages']) {
-    assert.equal(truthy(evaluate(step(id).if!, context)), classified);
-    context[`steps.${id}.outcome`] = !classified ? 'skipped' : filterFails ? 'failure' : 'success';
-    const matched = classified && !filterFails ? changes(id, paths) : {};
-    for (const name of Object.keys(filters(id))) context[`steps.${id}.outputs.${name}`] = matched[name] === undefined ? null : String(matched[name]);
-    context[`steps.${id}.outputs.changes`] = classified && !filterFails ? JSON.stringify(Object.keys(matched).filter(name => matched[name])) : null;
-  }
+  const classified = truthy(evaluate(step('changes').if!, context)), ran = classified && !filterFails;
+  context['steps.changes.outcome'] = !classified ? 'skipped' : filterFails ? 'failure' : 'success';
+  const lanes = ran ? match(filters('lanes'), paths) : {}, packages = ran ? match(filters('packages'), paths) : {};
+  for (const name of Object.keys(filters('lanes'))) context[`steps.changes.outputs.${name}`] = ran ? String(lanes[name]) : null;
+  context['steps.changes.outputs.packages'] = ran ? JSON.stringify(Object.keys(packages).filter(name => packages[name])) : null;
   return Object.fromEntries(Object.entries(workflow.jobs.plan!.outputs!).map(([name, expression]) => [name, asOutput(evaluate(unwrap(expression), context))]));
 }
 /** Every job this plan runs, with its matrix legs as `os/node[/shard|/package]`. */
@@ -178,7 +169,7 @@ test('the package filters encode every extension and the extensions that build a
         dependents.add(addon.name); grown = true;
       }
     }
-    const matched = changes('packages', [`packages/${changed.name}/src/index.ts`]);
+    const matched = match(filters('packages'), [`packages/${changed.name}/src/index.ts`]);
     assert.deepEqual(Object.keys(matched).filter(name => matched[name]).sort(), [...dependents].sort(), changed.name);
   }
   // The lane filters name the same extensions.
@@ -239,12 +230,33 @@ test('the gate fails on a failed plan, a failed or cancelled job and a skip caus
   assert.deepEqual([...gate.needs as string[]].sort(), Object.keys(workflow.jobs).filter(name => name !== 'verify-complete').sort());
   assert.equal(gate.steps![0]!.if, "needs.plan.result != 'success' || needs.docs.result != 'success' || contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')");
   assert.equal((gate.steps![0] as { run?: string }).run, 'exit 1');
-  // Both filter steps may fail without failing the plan: their outcome then selects full verification.
-  for (const id of ['lanes', 'packages']) {
-    assert.equal(step(id)['continue-on-error'], true, id);
-    assert.equal(step(id).with!.token, '', `${id} reads git, so it needs no pull-requests permission`);
-    assert.equal(step(id).with!['predicate-quantifier'], 'some-with-excludes', id);
-    assert.match(step(id).uses!, /^dorny\/paths-filter@[0-9a-f]{40}$/);
-  }
-  assert.equal(workflow.jobs.plan!.steps![0]!.with!['fetch-depth'], 0);
+  // The install and the classification may fail without failing the plan: the outcome then selects full verification.
+  const steps = workflow.jobs.plan!.steps!;
+  assert.equal(steps.find(candidate => candidate.run === 'npm ci --ignore-scripts')!['continue-on-error'], true);
+  assert.equal(step('changes')['continue-on-error'], true);
+  assert.equal(step('changes').run, 'node scripts/ci-changes.ts "$RANGE"');
+  assert.match(step('changes').env!.RANGE!, /pull_request\.base\.sha, github\.event\.pull_request\.head\.sha\).*github\.event\.before, github\.event\.after/);
+  assert.equal((steps[0] as { with?: Record<string, unknown> }).with!['fetch-depth'], 0);
+});
+
+test('ci-changes.ts classifies a real git range and refuses what it cannot read', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'urlcode-ci-changes-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const git = (...args: string[]): string => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
+  git('init', '-q', '-b', 'main'); git('config', 'user.email', 'ci@example.invalid'); git('config', 'user.name', 'ci'); git('config', 'commit.gpgsign', 'false');
+  const commit = async (path: string, text: string): Promise<string> => {
+    await mkdir(join(root, path, '..'), { recursive: true });
+    await writeFile(join(root, path), text); git('add', '-A'); git('commit', '-q', '-m', path); return git('rev-parse', 'HEAD');
+  };
+  const start = await commit('docs/CI.md', 'one\n'), prose = await commit('docs/CI.md', 'two\n'), store = await commit('packages/store/src/a.ts', 'x\n');
+  const script = join(process.cwd(), 'scripts', 'ci-changes.ts');
+  const run = (range: string) => {
+    const output = join(root, `.output-${Math.random()}`);
+    const result = spawnSync(process.execPath, [script, range], { cwd: root, encoding: 'utf8', env: { ...process.env, GITHUB_OUTPUT: output } });
+    return { status: result.status, outputs: result.status === 0 ? Object.fromEntries(readFileSync(output, 'utf8').trim().split('\n').map(line => line.split('=') as [string, string])) : {} };
+  };
+  assert.deepEqual(run(`${start}..${prose}`), { status: 0, outputs: { any: 'true', code: 'false', core: 'true', extensionCode: 'false', highImpact: 'false', packages: '["auth","store","mcp"]' } });
+  assert.deepEqual(run(`${prose}...${store}`).outputs, { any: 'true', code: 'true', core: 'false', extensionCode: 'true', highImpact: 'false', packages: '["store"]' });
+  // A malformed range, an absent before-SHA and a commit this clone does not have fail, and the plan then runs everything.
+  for (const range of ['', `${start}..HEAD`, `${'0'.repeat(40)}..${store}`, `${'a'.repeat(40)}..${store}`]) assert.notEqual(run(range).status, 0, range);
 });

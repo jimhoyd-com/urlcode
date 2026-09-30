@@ -11,19 +11,20 @@ is verified by **Publish release** (`publish.yml`), which calls `ci.yml` on ever
 to `main` and passes `release: true` when that commit is about to be released.
 `container` and CodeQL remain separately required by the repository ruleset.
 
-The `plan` job classifies a pull request or a push with
-[dorny/paths-filter](https://github.com/dorny/paths-filter): its filters, the
-plan's outputs and every job's `if:` are plain workflow YAML in `ci.yml`, with
-no planning script. The filters read `git diff` of the checkout (the pull
-request's merge commit against its base, or a push's before and after), not
-the API, so the plan needs no pull-requests permission. The selection fails
-closed:
+The `plan` job classifies a pull request or a push by its changed paths.
+`scripts/ci-changes.ts` lists them with `git diff --no-renames` (a pull
+request against its merge base, `base...head`; a push tip to tip,
+`before..after`) and matches them with picomatch against the path filters in
+`.github/ci-filters.yml`: a filter matches when one of its patterns includes a
+path and none of its `!` patterns excludes it. It only reports which filters
+matched. The plan's outputs, every job's `if:` and the matrices are workflow
+expressions in `ci.yml`. The selection fails closed:
 
 - A release run, a dispatch, the merge queue and the nightly sweep are never
   classified; they run everything.
-- A filter step that fails (a bad or missing commit, history git cannot read)
-  may fail without failing the plan, and its failed outcome selects full
-  verification, as an empty diff does.
+- The install and the classification step may fail without failing the plan
+  (a malformed or absent commit, history git cannot read), and a failed
+  outcome selects full verification, as an empty diff does.
 - Any path the filters do not name as prose, including an unknown one, selects
   the runtime lane.
 - Every job skips only on an explicit `docs` lane or `false` output of a
@@ -31,9 +32,10 @@ closed:
 
 `verify-complete` fails when the plan did not succeed, when `docs` did not
 succeed, and when any job failed or was cancelled, including a job skipped
-because a job it needs failed. `test/ci-lanes.test.ts` evaluates the filters
-with picomatch the way the action does, and the plan outputs, conditions and
-matrices with the subset of GitHub's expression language they use.
+because a job it needs failed. `test/ci-lanes.test.ts` runs the real filters
+through `scripts/ci-changes.ts`, including on a real git history, and evaluates
+the plan outputs, conditions and matrices with the subset of GitHub's
+expression language they use.
 
 | Change portfolio | Routine PR and `main` work |
 | --- | --- |
@@ -72,7 +74,7 @@ extensions and their reverse dependencies on Windows/Node 24
 ([#824](https://github.com/jimhoyd-com/urlcode/issues/824)).
 
 The Windows leg runs the same selection as the Linux leg (the plan's
-`packages`, from the second paths-filter step, whose filters encode which
+`packages`, whose filters in `.github/ci-filters.yml` encode which
 extension builds against which). A core or shared path in the same diff
 therefore widens both legs to every extension. A core-only change adds no
 Windows extension suites; its Windows coverage comes from the high-impact core
@@ -203,28 +205,34 @@ npm run verify:addons
 For releasing, retries and recovery, see
 [release operations](RELEASE-OPERATIONS.md).
 
-### Third-party actions
+### Actions and the Actions policy
 
-Every action a workflow here uses from another repository is pinned to a full
-commit SHA, with the release that SHA was taken from in a comment:
+The repository's Actions policy runs only actions that GitHub created or that
+`jimhoyd-com` owns (plus `mxschmitt/action-tmate`, which no workflow uses),
+each pinned to a full commit SHA. Any other `uses:` ends the whole run in
+`startup_failure` before a job starts. So every workflow here uses only
+`actions/*`, `github/*` or `jimhoyd-com/*`, with the release the SHA was taken
+from in a comment:
 
 ```yaml
-uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 ```
 
 A tag can be moved to other code after review, and a commit cannot. The comment
 tells a reviewer and Dependabot (`.github/dependabot.yml`, the `github-actions`
 ecosystem) which release is pinned, and Dependabot's update pull requests move
 the SHA and the comment together. `test/workflows.test.ts` fails on a
-reference that is not a 40-character SHA followed by `# vX.Y.Z`, and
-`test/action.test.ts` checks that the project Action and the starter's workflow
-pin theirs to a commit. The actions from outside GitHub's `actions/`
-organization are
-[release-please](https://github.com/googleapis/release-please-action)
-(Apache-2.0; the release pull request, `release.yml`) and
-[dorny/paths-filter](https://github.com/dorny/paths-filter) (MIT; the plan,
-`ci.yml`, read-only). An action runs with its job's permissions and token, so
-adding one is a reviewed supply-chain decision, not a routine edit.
+reference in a workflow or `action/action.yml` from another owner, or one that
+is not a 40-character SHA followed by `# vX.Y.Z`. `test/action.test.ts` checks
+that the project Action and the starter's workflow pin theirs to a commit.
+
+Third-party tools run as npm packages instead, pinned by a lockfile's
+integrity hashes. The path classification is `scripts/ci-changes.ts` with
+picomatch from the root lockfile. release-please (`release.yml`) is its npm CLI
+from `.github/release-please/package-lock.json`, a lockfile of its own, so its
+dependencies stay out of every other install. Dependabot watches that
+directory too. The job that runs it holds contents and pull-requests write, and
+installs with `--ignore-scripts`.
 
 ### Diagnostic workflows
 

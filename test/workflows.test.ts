@@ -87,14 +87,21 @@ test('release.yml keeps the release pull request open with release-please; it ne
   const pr = job(release, 'release-pr');
   assert.deepEqual(pr.permissions, { contents: 'write', 'pull-requests': 'write' });
   assert.equal(pr.environment, undefined, 'the release pull request never runs in the publishing environment');
-  const please = (pr.steps ?? []).find(step => step.uses?.startsWith('googleapis/release-please-action@'));
-  assert(please, 'runs release-please');
-  assert.deepEqual(please.with, { token: '${{ env.GH_TOKEN }}', 'config-file': 'release-please-config.json', 'manifest-file': '.release-please-manifest.json', 'skip-github-release': true });
-  const runs = (pr.steps ?? []).map(step => step.run ?? '').join('\n');
+  assert.equal((pr as Job & { env?: Record<string, string> }).env?.GH_TOKEN, '${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}');
+  // The CLI comes from its own lockfile, installed without scripts, and only ever opens pull requests (no github-release).
+  const steps = pr.steps ?? [];
+  assert(steps.some(step => step.run === 'npm ci --ignore-scripts --no-audit --no-fund' && (step as Step & { 'working-directory'?: string })['working-directory'] === '.github/release-please'));
+  const tooling = JSON.parse(await readFile('.github/release-please/package.json', 'utf8')) as { dependencies: Record<string, string> };
+  assert.match(tooling.dependencies['release-please']!, /^\d+\.\d+\.\d+$/, 'an exact release-please version');
+  const lock = JSON.parse(await readFile('.github/release-please/package-lock.json', 'utf8')) as { packages: Record<string, { integrity?: string }> };
+  for (const [path, entry] of Object.entries(lock.packages)) if (path) assert.match(entry.integrity ?? '', /^sha512-/, path);
+  const runs = steps.map(step => step.run ?? '').join('\n');
+  assert.match(runs, /\.github\/release-please\/node_modules\/\.bin\/release-please release-pr\s+--token="\$GH_TOKEN" --repo-url="\$GITHUB_REPOSITORY" --target-branch=main\s+--config-file=release-please-config\.json --manifest-file=\.release-please-manifest\.json/);
+  assert.doesNotMatch(runs, /github-release|npx/);
   assert.match(runs, /npm install --package-lock-only --ignore-scripts/);
   assert.match(runs, /release-versions\.ts sync\n\s*node scripts\/release-versions\.ts check/);
   assert.match(runs, /git push origin "HEAD:\$BRANCH"/);
-  assert.doesNotMatch(runs, /npm ci|push origin (?:HEAD:)?main|npm publish|release-publish|gh release create/);
+  assert.doesNotMatch(runs, /push origin (?:HEAD:)?main|npm publish|release-publish|gh release create/);
 });
 
 test('ci.yml is callable with a release input and is not triggered by pushes itself', async () => {
@@ -172,13 +179,16 @@ test('each publish.yml job holds only the permissions it needs', async () => {
 
 // docs/CI.md#third-party-actions: a tag can be moved to other code, a commit cannot; the comment names the release
 // the SHA was taken from, so a reviewer and Dependabot can see which version it is.
-test('every third-party action is pinned to a full commit SHA with its release in a comment', async () => {
+// The repository's Actions policy runs only actions GitHub created or jimhoyd-com owns, pinned to a full SHA; any
+// other action ends the whole run in startup_failure before a job starts. The project Action runs inside ci.yml.
+test('every action is GitHub-created or jimhoyd-com-owned, pinned to a full commit SHA with its release in a comment', async () => {
   let pinned = 0;
-  for (const name of await readdir(directory)) {
-    for (const line of (await readFile(join(directory, name), 'utf8')).split('\n')) {
+  const files = [...(await readdir(directory)).map(name => join(directory, name)), 'action/action.yml'];
+  for (const name of files) {
+    for (const line of (await readFile(name, 'utf8')).split('\n')) {
       const uses = /^\s*(?:- )?uses: (\S+)(.*)$/.exec(line);
       if (!uses || uses[1]!.startsWith('./')) continue;
-      assert.match(uses[1]!, /^[\w.-]+\/[\w./-]+@[0-9a-f]{40}$/, `${name}: ${line}`);
+      assert.match(uses[1]!, /^(?:actions|github|jimhoyd-com)\/[\w./-]+@[0-9a-f]{40}$/, `${name}: ${line} is not an allowed owner pinned by SHA`);
       assert.match(uses[2]!, /^ # v\d+\.\d+\.\d+$/, `${name}: ${line}`);
       pinned++;
     }

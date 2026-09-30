@@ -14,8 +14,9 @@ channels. A published release is not a production-readiness claim; see
 ## Release a version
 
 1. After every **Publish release** run on `main` (or when dispatched),
-   **Release pull request** runs release-please with
-   `release-please-config.json`. It reads the
+   **Release pull request** runs release-please's `release-pr` command (its npm
+   CLI, pinned with its dependencies by `.github/release-please/package-lock.json`)
+   with `release-please-config.json`. It reads the
    [conventional commits](https://www.conventionalcommits.org/) merged since
    the last `v*` release and opens or updates one pull request, titled
    `chore(main): release X.Y.Z`, that moves every version declaration it is

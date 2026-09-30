@@ -1,8 +1,11 @@
 # Keeps the release pull request open. release-please (release-please-config.json) reads the conventional commits
 # merged since the last release, chooses the next version and opens or updates the pull request that moves every
 # version declaration it can; the follow-up step moves the rest (npm's lockfile entries for the add-ons, and
-# scripts/release-versions.ts sync). It never touches main and never tags: merging the pull request releases the
-# version through publish.yml, which creates the tag and the GitHub Release itself (skip-github-release).
+# scripts/release-versions.ts sync). It never touches main and never tags: only `release-pr` runs, and merging the
+# pull request releases the version through publish.yml, which creates the tag and the GitHub Release itself.
+#
+# release-please is its npm CLI, installed from .github/release-please/package-lock.json (every package pinned by
+# integrity), not a third-party action: the repository's Actions policy allows only GitHub's and jimhoyd-com's.
 #
 # It runs after each Publish release run on main. release-please opens no new pull request while a merged one is
 # still labelled `autorelease: pending`, so once main's version is released the first step labels it tagged.
@@ -28,12 +31,21 @@ jobs:
       pull-requests: write
     env:
       # A pull request opened or pushed with the workflow's own token starts no workflow, so the release pull
-      # request's checks run only when this secret (a token that can write contents and pull requests) is set.
+      # request's checks run only with this secret (a token that can write contents and pull requests).
       GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+      # release-please's branch for the root component on main.
+      BRANCH: release-please--branches--main--components--urlcode
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: false
+          ref: main
+          token: ${{ env.GH_TOKEN }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+      - name: Install the pinned release-please CLI
+        working-directory: .github/release-please
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Label the merged release pull request tagged once its version is released
         run: |-
           set -euo pipefail
@@ -42,30 +54,18 @@ jobs:
             gh pr list --repo "$GITHUB_REPOSITORY" --state merged --label 'autorelease: pending' --json number --jq '.[].number' |
               while read -r number; do gh pr edit "$number" --repo "$GITHUB_REPOSITORY" --remove-label 'autorelease: pending' --add-label 'autorelease: tagged'; done
           fi
-      - id: release
-        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
-        with:
-          token: ${{ env.GH_TOKEN }}
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
-          skip-github-release: true
-      - name: Check out the release pull request
-        if: steps.release.outputs.pr
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
-          token: ${{ env.GH_TOKEN }}
-      - if: steps.release.outputs.pr
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .node-version
+      - name: Open or update the release pull request
+        run: >-
+          .github/release-please/node_modules/.bin/release-please release-pr
+          --token="$GH_TOKEN" --repo-url="$GITHUB_REPOSITORY" --target-branch=main
+          --config-file=release-please-config.json --manifest-file=.release-please-manifest.json
       # No dependency is installed and no package script runs: npm only rewrites the lockfile's workspace entries.
       - name: Move what release-please cannot
-        if: steps.release.outputs.pr
-        env:
-          BRANCH: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
         run: |-
           set -euo pipefail
+          if [ -z "$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then echo 'No open release pull request'; exit 0; fi
+          git fetch --depth 1 origin "$BRANCH"
+          git switch -C "$BRANCH" FETCH_HEAD
           npm install --package-lock-only --ignore-scripts --no-audit --no-fund
           node scripts/release-versions.ts sync
           node scripts/release-versions.ts check

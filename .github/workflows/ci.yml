@@ -30,7 +30,7 @@ permissions:
 # ordinary install leaves.
 jobs:
   # Which jobs and legs this run needs (docs/CI.md). A pull request or a push is
-  # classified from its changed paths by dorny/paths-filter; everything else
+  # classified from its changed paths by scripts/ci-changes.ts; everything else
   # (the release run publish.yml asks for, a dispatch, the merge queue and the
   # nightly sweep) is exact-commit coverage and is never classified. The
   # classification fails closed: a skipped or failed filter step (history git
@@ -42,19 +42,19 @@ jobs:
     timeout-minutes: 5
     outputs:
       exact: ${{ inputs.release == true || (github.event_name != 'pull_request' && github.event_name != 'push') }}
-      lane: ${{ steps.lanes.outcome == 'success' && steps.lanes.outputs.any == 'true' && steps.lanes.outputs.code == 'false' && 'docs' || 'full' }}
-      core: ${{ !(steps.lanes.outcome == 'success' && steps.lanes.outputs.any == 'true' && steps.lanes.outputs.core == 'false') }}
-      highImpact: ${{ !(steps.lanes.outcome == 'success' && steps.lanes.outputs.any == 'true' && steps.lanes.outputs.highImpact == 'false') }}
-      extensionCode: ${{ !(steps.lanes.outcome == 'success' && steps.lanes.outputs.any == 'true' && steps.lanes.outputs.extensionCode == 'false') }}
-      packages: ${{ steps.lanes.outcome == 'success' && steps.lanes.outputs.any == 'true' && steps.packages.outcome == 'success' && steps.packages.outputs.changes || '["auth","store","mcp"]' }}
+      lane: ${{ steps.changes.outcome == 'success' && steps.changes.outputs.any == 'true' && steps.changes.outputs.code == 'false' && 'docs' || 'full' }}
+      core: ${{ !(steps.changes.outcome == 'success' && steps.changes.outputs.any == 'true' && steps.changes.outputs.core == 'false') }}
+      highImpact: ${{ !(steps.changes.outcome == 'success' && steps.changes.outputs.any == 'true' && steps.changes.outputs.highImpact == 'false') }}
+      extensionCode: ${{ !(steps.changes.outcome == 'success' && steps.changes.outputs.any == 'true' && steps.changes.outputs.extensionCode == 'false') }}
+      packages: ${{ steps.changes.outcome == 'success' && steps.changes.outputs.any == 'true' && steps.changes.outputs.packages || '["auth","store","mcp"]' }}
       os: ${{ (inputs.release == true || (github.event_name != 'pull_request' && github.event_name != 'push')) && '["ubuntu-latest","macos-latest","windows-latest"]' || '["ubuntu-latest"]' }}
       node: ${{ (inputs.release == true || (github.event_name != 'pull_request' && github.event_name != 'push')) && '["22","24","26"]' || '["24"]' }}
       # A high-impact pull request (#744) adds Windows Node 24 core shards.
-      testOs: ${{ (inputs.release == true || (github.event_name != 'pull_request' && github.event_name != 'push')) && '["ubuntu-latest","macos-latest","windows-latest"]' || github.event_name == 'pull_request' && !(steps.lanes.outcome == 'success' && steps.lanes.outputs.any == 'true' && steps.lanes.outputs.highImpact == 'false') && '["ubuntu-latest","windows-latest"]' || '["ubuntu-latest"]' }}
+      testOs: ${{ (inputs.release == true || (github.event_name != 'pull_request' && github.event_name != 'push')) && '["ubuntu-latest","macos-latest","windows-latest"]' || github.event_name == 'pull_request' && !(steps.changes.outcome == 'success' && steps.changes.outputs.any == 'true' && steps.changes.outputs.highImpact == 'false') && '["ubuntu-latest","windows-latest"]' || '["ubuntu-latest"]' }}
       # A pull request that changes extension code runs its extension suites on Windows Node 24 too (#824).
-      packageOs: ${{ (inputs.release == true || (github.event_name != 'pull_request' && github.event_name != 'push')) && '["ubuntu-latest","macos-latest","windows-latest"]' || github.event_name == 'pull_request' && !(steps.lanes.outcome == 'success' && steps.lanes.outputs.any == 'true' && steps.lanes.outputs.extensionCode == 'false') && '["ubuntu-latest","windows-latest"]' || '["ubuntu-latest"]' }}
+      packageOs: ${{ (inputs.release == true || (github.event_name != 'pull_request' && github.event_name != 'push')) && '["ubuntu-latest","macos-latest","windows-latest"]' || github.event_name == 'pull_request' && !(steps.changes.outcome == 'success' && steps.changes.outputs.any == 'true' && steps.changes.outputs.extensionCode == 'false') && '["ubuntu-latest","windows-latest"]' || '["ubuntu-latest"]' }}
       # The packed add-on integration: every OS before a release or on dispatch, Linux on a high-impact pull request.
-      integration: ${{ inputs.release == true || github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' && !(steps.lanes.outcome == 'success' && steps.lanes.outputs.any == 'true' && steps.lanes.outputs.highImpact == 'false') }}
+      integration: ${{ inputs.release == true || github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' && !(steps.changes.outcome == 'success' && steps.changes.outputs.any == 'true' && steps.changes.outputs.highImpact == 'false') }}
       integrationOs: ${{ (inputs.release == true || github.event_name == 'workflow_dispatch') && '["ubuntu-latest","macos-latest","windows-latest"]' || '["ubuntu-latest"]' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -62,86 +62,25 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      # `token: ''` makes the filter read `git diff` of this checkout (the pull
-      # request's merge commit against its base, or a push's before..after)
-      # instead of the API, so it needs no pull-requests permission, which a
-      # caller of this workflow does not grant. `some-with-excludes`: a path
-      # matches a filter when one pattern includes it and no `!` pattern excludes it.
-      - id: lanes
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: inputs.release != true && (github.event_name == 'pull_request' || github.event_name == 'push')
+        with:
+          node-version: '26'
+          cache: npm
+      - if: inputs.release != true && (github.event_name == 'pull_request' || github.event_name == 'push')
+        continue-on-error: true
+        run: npm ci --ignore-scripts
+      # The filters are .github/ci-filters.yml. A pull request is compared with
+      # its merge base (`...`), so commits that landed on main meanwhile do not
+      # count; a push tip to tip (`..`), because that is what it moved. A failure
+      # here (a missing or malformed SHA, history git cannot read) fails only
+      # this step, and its outcome selects full verification.
+      - id: changes
         if: inputs.release != true && (github.event_name == 'pull_request' || github.event_name == 'push')
         continue-on-error: true
-        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
-        with:
-          token: ''
-          predicate-quantifier: some-with-excludes
-          filters: |
-            any:
-              - '**'
-            # Anything but reviewed contributor prose. Skills, starters, recipes,
-            # examples, schemas, manifests, workflows, shipped or agent-facing
-            # package documents and unknown paths are code. Everything prose is
-            # still checked by the always-run `docs` job.
-            code:
-              - '**'
-              - '!docs/**/*.md'
-              - '!{README,CONTRIBUTING,SECURITY,GOVERNANCE,CODE_OF_CONDUCT,AGENTS,ROADMAP}.md'
-              - '!llms.txt'
-              - '!llms-full.txt'
-              - '!packages/*/{CONTRIBUTING,CODE_OF_CONDUCT,GOVERNANCE}.md'
-            # Anything outside the extension packages can change the core archive,
-            # its tests, the Action, the image or the reproducible build.
-            core:
-              - '**'
-              - '!packages/{auth,store,mcp}/**'
-            extensionCode:
-              - 'packages/{auth,store,mcp}/**'
-              - '!packages/*/{CONTRIBUTING,CODE_OF_CONDUCT,GOVERNANCE}.md'
-            # Paths that once passed the Linux lane and failed on Windows or at
-            # the packed add-on boundary during release coverage (#668, #669, #673, #744).
-            highImpact:
-              # Installer, upgrade and scaffolding.
-              - 'packages/core/src/{addon-install,extensions-cli,init-with,scaffold,recipes}.ts'
-              - 'packages/core/src/upgrade*'
-              - 'scripts/create-extension*'
-              - 'starters/**'
-              # Package manifests and dependency wiring.
-              - '**/package.json'
-              - '**/package-lock.json'
-              - 'packages/*/urlcode.json'
-              - 'scripts/{workspaces,build-addon-manifest,check-workspace-links}.ts'
-              # Release tooling.
-              - 'scripts/{release-*,pack-addons,package-*,npm-command}.ts'
-              # Integration, proofs and per-package fixture cleanup.
-              - 'test/{addons,private-requests,authjs-provider,native-storage,ecosystem}.integration.ts'
-              - 'proofs/**'
-              - 'scripts/test-addons*'
-              - 'packages/*/test/cleanup.ts'
-              # Shared inputs fail closed: repository automation and any root file but prose.
-              - '.github/**'
-              - '*'
-              - '!{README,CONTRIBUTING,SECURITY,GOVERNANCE,CODE_OF_CONDUCT,AGENTS,ROADMAP}.md'
-              - '!llms.txt'
-              - '!llms-full.txt'
-      # The extension suites to run: a changed extension and every extension
-      # that builds against it (none today), or all of them when a path outside
-      # the extensions changed. Its `changes` output is that list.
-      - id: packages
-        if: inputs.release != true && (github.event_name == 'pull_request' || github.event_name == 'push')
-        continue-on-error: true
-        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
-        with:
-          token: ''
-          predicate-quantifier: some-with-excludes
-          filters: |
-            auth:
-              - '**'
-              - '!packages/{store,mcp}/**'
-            store:
-              - '**'
-              - '!packages/{auth,mcp}/**'
-            mcp:
-              - '**'
-              - '!packages/{auth,store}/**'
+        env:
+          RANGE: ${{ github.event_name == 'pull_request' && format('{0}...{1}', github.event.pull_request.base.sha, github.event.pull_request.head.sha) || format('{0}..{1}', github.event.before, github.event.after) }}
+        run: node scripts/ci-changes.ts "$RANGE"
   docs:
     runs-on: ubuntu-latest
     timeout-minutes: 10

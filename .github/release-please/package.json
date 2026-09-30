@@ -1,0 +1,9 @@
+{
+  "name": "urlcode-release-please",
+  "private": true,
+  "description": "The release-please CLI that .github/workflows/release.yml runs, pinned with its dependencies by this lockfile. Not a workspace.",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "release-please": "17.6.0"
+  }
+}
