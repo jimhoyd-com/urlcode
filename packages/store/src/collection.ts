@@ -912,7 +912,7 @@ export interface TransferStep extends Step { record: StoredRecord; to: StoredRec
  */
 export function storageFailure(error: unknown, rethrowOthers: boolean): never {
   if (error instanceof StoreError) throw error;
-  if (error instanceof RowError) throw new StoreError(503, 'storage_unavailable', 'This collection was redeclared by a reload; try again');
+  if (error instanceof RowError) throw new StoreError(503, 'storage_unavailable', STORED_OUTSIDE);
   if (rethrowOthers && !(error instanceof Error && 'code' in error && error.code === 'ERR_SQLITE_ERROR')) throw error;
   throw new StoreError(503, 'storage_unavailable', 'The store could not save this change');
 }
@@ -933,6 +933,12 @@ export function declarationFingerprint(spec: NormalizedSpec): string {
   const { records, ...rest } = spec;
   return createHash('sha256').update(canonical({ ...rest, records: { schema: records.schema, required: records.required, defaults: records.defaults, readOnly: records.readOnly } })).digest('hex');
 }
+/**
+ * The 503 for a stored row this declaration cannot represent (`RowError`): one written under another declaration
+ * during a reload overlap, or one changed in the database. Fixed, naming no record or value; activation names the
+ * record to the operator.
+ */
+export const STORED_OUTSIDE = 'A stored record does not match this collection\'s declaration';
 /** The 503 a write answers when the declaration fence refuses it: bounded, naming nothing. */
 export const REDECLARED = 'The collection was redeclared by another process';
 /**
@@ -1046,6 +1052,40 @@ export class Collection {
     const listing = this.listing;
     if (listing) db.transaction(() => { for (const create of listing.indexes.values()) db.run(create); });
     this.db = db;
+  }
+  /**
+   * Refuses activation while a stored row holds a balance these transfers could not serve under the declaration
+   * (plain Error, naming the record and the fix for the operator): an amount property that is missing or not a whole
+   * number within the safe integers, a record over `maxRecordBytes` with its amounts at their widest, or stored
+   * balances that could together grow past 2^53 - 1. Rows written under an earlier declaration, or by an earlier
+   * release, are held to the same rules as every write under this one, so a transfer's answer never depends on what
+   * the credited record holds. The ceiling a balance can reach is the sum over stored rows of how far each stands above
+   * its property's lowest `min`, plus that `min`'s magnitude for every record still to be created; under the
+   * declaration it is at most `-min` times `maxRecords`, which activation already keeps within the safe integers.
+   * Runs inside the transaction that records the declaration (store.ts), so no write through another declaration can
+   * land between the check and the fence.
+   */
+  balancesHeld(db: StoreDatabase): void {
+    const transfers = Object.values(this.spec.transfers);
+    if (!transfers.length) return;
+    const floors = new Map<string, number>();
+    for (const transfer of transfers) floors.set(transfer.amount, Math.min(floors.get(transfer.amount) ?? 0, transfer.min));
+    const rows = db.all<RecordRow>(`SELECT ${COLUMNS} FROM store_records WHERE collection = ? ORDER BY seq`, this.name);
+    const ceilings = new Map([...floors.keys()].map(field => [field, 0n]));
+    for (const row of rows) {
+      let record: StoredRecord;
+      try { record = this.parse(row); } catch (error) { throw new Error(error instanceof RowError ? error.message : `Collection ${this.name}: the store holds an invalid record`, { cause: error }); }
+      for (const [field, floor] of floors) {
+        const held = record[field];
+        if (!Number.isSafeInteger(held)) throw new Error(`Collection ${this.name}: record ${row.id} holds no whole-number ${field}, which a transfer moves; set it in the database (0 for a record that never held a balance) or delete the record first`);
+        if ((held as number) > floor) ceilings.set(field, ceilings.get(field)! + BigInt(held as number) - BigInt(floor));
+      }
+      if (this.oversized(record)) throw new Error(`Collection ${this.name}: record ${row.id} exceeds maxRecordBytes (${this.spec.maxRecordBytes}) with its transfer amounts at their widest; shorten it in the database or raise maxRecordBytes first`);
+    }
+    for (const [field, floor] of floors) {
+      const ceiling = ceilings.get(field)! + BigInt(this.spec.maxRecords - rows.length) * BigInt(-floor);
+      if (ceiling > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error(`Collection ${this.name}: the stored ${field} balances could grow past ${Number.MAX_SAFE_INTEGER} under this declaration (how far each stored balance stands above the lowest min, ${floor}, plus that min for every record maxRecords still allows); move balances back to the issuer, raise the lowest min or lower maxRecords first`);
+    }
   }
   /** What sorted and filtered lists read through (listing.ts), derived from the declaration once. */
   private get listing(): ListPlan | undefined { return (this.plan ??= [listPlan(this.name, this.spec)])[0]; }
@@ -1212,16 +1252,17 @@ export class Collection {
    */
   private audited(db: StoreDatabase, action: AuditAction, id: string, fields: readonly string[], actor: string | undefined, extra: Record<string, string> = {}, record?: StoredRecord): boolean {
     if (!this.spec.audit) return false;
+    const who = this.actorOf(actor);
     // Activation refuses an audited collection without an active audit, so this is a wiring error, never a request's.
     if (!this.auditor) throw new StoreError(503, 'audit_unavailable', 'The audit log is unavailable');
     // A membership collection records who gained or lost the right; any other write to it is an ordinary record event.
     if (this.spec.membership && record !== undefined && (action === 'created' || action === 'deleted')) {
-      writeAuditEvent(db, this.name, this.auditor.validate, membershipEvent(this.name, action === 'created' ? 'added' : 'removed', record[this.spec.key!] as string, actor ?? 'anonymous'));
+      writeAuditEvent(db, this.name, this.auditor.validate, membershipEvent(this.name, action === 'created' ? 'added' : 'removed', record[this.spec.key!] as string, who));
       return true;
     }
     const names = [...fields]; let truncated = false;
     while (Buffer.byteLength(JSON.stringify(names)) > AUDIT_FIELDS_BYTES) { names.pop(); truncated = true; }
-    writeAuditEvent(db, this.name, this.auditor.validate, { action: `store.record.${action}`, actor: actor ?? 'anonymous', subject: `${this.name}/${id}`, metadata: { collection: this.name, ...extra, fields: names, ...(truncated ? { truncated: true } : {}) } });
+    writeAuditEvent(db, this.name, this.auditor.validate, { action: `store.record.${action}`, actor: who, subject: `${this.name}/${id}`, metadata: { collection: this.name, ...extra, fields: names, ...(truncated ? { truncated: true } : {}) } });
     return true;
   }
   /** Declared properties whose value differs between two versions of a record (a removed one counts), in declaration order. */
@@ -1266,6 +1307,17 @@ export class Collection {
   private principal(id: string | undefined): string {
     if (typeof id !== 'string' || !principalIdPattern.test(id)) throw new StoreError(401, 'principal_required', 'Sign in to use this collection');
     return id;
+  }
+  /** A principal where none is required: absent stays absent, but one that is given must be a principal id (#1015). */
+  private optionalPrincipal(id: string | undefined): string | undefined { return id === undefined ? undefined : this.principal(id); }
+  /**
+   * The actor a write stamps or records (#1015): the principal id, or `anonymous`. Every entry point passes a validated
+   * one; checked again here because a stamped or audited actor is stored, and one outside `principalIdPattern` (a lone
+   * surrogate, over 128 characters) would leave a row the collection can no longer serve.
+   */
+  private actorOf(actor: string | undefined): string {
+    if (actor === undefined) return 'anonymous';
+    return this.principal(actor);
   }
   /**
    * The row filter for the caller's scope: the collection, and on an owned collection the caller's own records only (a
@@ -1480,7 +1532,7 @@ export class Collection {
   }
   /** Who runs a transition: any caller on an ungated shared one, otherwise a principal (401 without one). */
   private caller(transition: NormalizedTransition, principal: string | undefined): string | undefined {
-    return transition.by === 'any' && transition.members === undefined ? principal : this.principal(principal);
+    return transition.by === 'any' && transition.members === undefined ? this.optionalPrincipal(principal) : this.principal(principal);
   }
   /**
    * Runs the declared transfer `name` for `principal` (#902): `input` is the request body `{from, to, amount}`. An
@@ -1512,7 +1564,7 @@ export class Collection {
   }
   /** Who runs a transfer: any caller on an ungated shared collection, otherwise a principal (401 without one). */
   private transferCaller(transfer: NormalizedTransfer, principal: string | undefined): string | undefined {
-    return !this.owned && transfer.members === undefined ? principal : this.principal(principal);
+    return !this.owned && transfer.members === undefined ? this.optionalPrincipal(principal) : this.principal(principal);
   }
   /** The scope the debited record is read in: the caller's own records on an owned collection, every record otherwise. */
   private transferScope(caller: string | undefined): string | undefined { return this.owned ? caller : undefined; }
@@ -1634,7 +1686,10 @@ export class Collection {
     if (expectedEtag !== undefined && expectedEtag !== etagOf(current)) throw new StoreError(412, 'precondition_failed', 'The record changed since it was last read');
     if (Object.entries(transition.from).some(([field, value]) => current[field] !== value)) throw new StoreError(409, 'transition_conflict', 'The record is not in a state this transition applies to');
     const updatedAt = stamp(current.updatedAt as string);
-    const stamped = Object.fromEntries(Object.entries(transition.stamp).map(([field, source]) => [field, source === 'now' ? updatedAt : actor ?? 'anonymous']));
+    const stamped = Object.fromEntries(Object.entries(transition.stamp).map(([field, source]) => [field, source === 'now' ? updatedAt : this.actorOf(actor)]));
+    // Activation keeps a stamp property able to hold any principal id or instant; judged again, since the row is stored.
+    const refused = Object.entries(stamped).map(([field, value]) => propertyIssue(this.spec.records, field, value)).filter(issue => issue !== undefined);
+    if (refused.length) throw invalidRecord(refused);
     const record: StoredRecord = { ...current, updatedAt, ...transition.set, ...stamped };
     this.sized(record);
     // A transition can bring a record under the constraint (a `reopen` back to `when`), so it is checked like any write.
@@ -1666,7 +1721,7 @@ export class Collection {
     const from = this.current(db, body.from, this.transferScope(caller));
     if (expectedEtag !== undefined && expectedEtag !== etagOf(from)) throw new StoreError(412, 'precondition_failed', 'The record changed since it was last read');
     const held = from[field];
-    // A row stored before the property was declared may lack it; nothing is assumed about its balance.
+    // Activation refuses a stored row without a whole balance; one edited into the database since is not assumed to hold one.
     if (!Number.isSafeInteger(held)) throw new StoreError(409, 'transfer_conflict', 'A record does not hold a whole balance to transfer');
     const debited = (held as number) - body.amount;
     if (debited < transfer.min) throw new StoreError(409, 'insufficient_balance', 'The balance is too low for this transfer');

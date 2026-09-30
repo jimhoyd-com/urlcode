@@ -27,7 +27,8 @@ principal a protected route receives and what `urlcode-store members add
 a private `data/auth.secret`, and adds `auth()` to `host.mjs`. `migrate`
 creates Better Auth's tables in `data/auth.sqlite`, including the `rateLimit`
 table its limiter counts in; the extension refuses to activate until they all
-exist. Both files stay out of the route project; keep them private and backed
+exist, and until Better Auth's own schema check against the database has
+passed. Both files stay out of the route project; keep them private and backed
 up.
 
 `data/auth.sqlite` is created `0600` and must stay a private regular file. It
@@ -172,7 +173,10 @@ in `auth.sqlite` and is refused while a live peer runs on another host;
 processes and containers on one host are accepted. A process that finds another
 host serving the database logs it and answers `503 auth_unavailable` to every
 auth request until that host is gone. The lease is checked once per request,
-before Better Auth runs. How the lease judges a peer, and its timing, are in
+before Better Auth runs, and again inside every Better Auth write under its
+write lock (a temporary trigger on each of its tables), so a request that
+stalls after the first check writes nothing once another host took over. How
+the lease judges a peer, and its timing, are in
 [several serving processes][store-several-processes].
 
 A storage failure answers `503 auth_unavailable`, never a false success or a

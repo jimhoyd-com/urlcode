@@ -792,7 +792,7 @@ store.transaction(tx => {
 - It is trusted host code: reachable only from an operator-installed extension
   that requires the store, never from a route `function`, `middleware` or a
   `sandbox: true` route. `work` runs unsandboxed with full Node access, and the
-  principals it passes are taken as given.
+  principals it passes are taken as given, once checked to be principal ids.
 - **Retries** ([#902](https://github.com/jimhoyd-com/urlcode/issues/902)).
   `transaction(work, {idempotencyKey, fingerprint})` makes it retry-safe, the
   way `Idempotency-Key` makes an HTTP write retry-safe:
@@ -1176,9 +1176,25 @@ Idempotency-Key: 5f0c...
   with each amount property at its widest (17 bytes, `-9007199254740991`), so
   a credit can never push a record over the limit. A record near the limit is
   refused on the write that brings it there, by its owner, not on a later
-  credit. A credited record stored outside the declaration (a row from before
-  the amount property was declared, or edited in the database) answers one
-  fixed `409 transfer_conflict` with no detail.
+  credit. A credited record stored outside the declaration (a row edited in
+  the database) answers one fixed `409 transfer_conflict` with no detail.
+- **Stored balances at activation.** Rows written under an earlier
+  declaration, or by an earlier release, are held to the same rules. On a
+  collection declaring transfers, activation refuses while any stored record
+  lacks a whole-number amount property (for example one created before the
+  property was added), exceeds `maxRecordBytes` with its amounts at their
+  widest, or while the stored balances could together grow past 2^53 − 1: the
+  sum over stored records of how far each balance stands above the lowest
+  `min`, plus that `min`'s magnitude for every record `maxRecords` still
+  allows (under the declaration this is at most `-min` times `maxRecords`).
+  The error names the record, or the property and the bound, and the fix:
+  set a missing balance in the database (`0` for a record that never held
+  one), shorten the record or raise `maxRecordBytes`, or move balances back to
+  the issuer, raise the lowest `min` or lower `maxRecords`. The check runs in
+  the transaction that records the declaration (the
+  [fence](#several-serving-processes-on-one-host)), so no write through the previous
+  declaration lands between the check and the switch; a refused activation
+  records nothing and the previous one keeps serving.
 - **The answer.** `200 {from, to?}`: each record as the transfer left it, with
   `from`'s `ETag`. `to` is included only when the caller may read it: always on
   a shared collection, and on an owned one only when the caller owns it (a
@@ -1310,8 +1326,8 @@ the retained `Idempotency-Key` (a replay, or `422 idempotency_key_reused`);
 property's schema (`409 transfer_limit`) and the debited record's size
 (`413`); anything about the credited record (`409 transfer_conflict`, only for
 a row stored outside the declaration); then the two writes, the two audit
-events and the claim. A debited record without a whole balance (written before
-the property was declared) is `409 transfer_conflict` too. Every refusal
+events and the claim. A debited record without a whole balance (only a row
+edited in the database) is `409 transfer_conflict` too. Every refusal
 writes nothing.
 
 - **Audit.** On an audited collection each record gets a
@@ -1488,7 +1504,9 @@ rows are judged without `required` when they are read and at activation, so
 adding a required property does not stop a collection that already holds
 records without it; such a record's next write must supply it. A row that
 breaks any other rule refuses activation (and a request that meets one answers
-`503`).
+`503 storage_unavailable`, `A stored record does not match this collection's
+declaration`: a row written under another declaration during a reload overlap,
+or one changed in the database).
 
 *Why a declared schema rather than a derived one.* The alternative was to keep
 the store's own `fields:` vocabulary and derive an equivalent profile schema
@@ -2092,17 +2110,25 @@ row by whether that value changes, timed on its own monotonic clock:
   another host, whether or not its own row is still there, the lease is lost:
   the process deletes its row, logs a line naming that host, and does not
   re-insert it. Every store write checks the lease first, inside its own
-  transaction. While the lease is lost, or not renewed for 10 seconds and its
-  row cannot be confirmed under the write lock, the write answers
-  `503 storage_unavailable` and writes nothing. Reads keep working.
+  transaction: under the write lock it reads the lease table and proceeds only
+  while its own row is there and no other host's is. Otherwise the write
+  answers `503 storage_unavailable` and writes nothing. Reads keep working.
+  The check never trusts the process's own clock or its last heartbeat
+  ([#1010](https://github.com/jimhoyd-com/urlcode/issues/1010)); it is one
+  read of a table of a few rows under a lock the write already holds (about
+  2 µs on an Apple-silicon laptop, against about 70 µs for a one-row commit
+  with `synchronous=FULL`).
 - **Recovering.** A process that lost the lease keeps watching. Once no
   other host holds a row (that host closed, or its row stayed unchanged for
   20 seconds), it rejoins at its next heartbeat and writes again.
 
-So a holder that stalled for longer than the TTL (a suspended VM, `SIGSTOP`,
-a blocked event loop) and resumes after another host took over refuses its
-writes. It does not rejoin beside that host. A failed heartbeat is logged once
-and retried every 5 seconds.
+A host inserts its row only in a transaction that found no other host's row,
+so at any moment the table holds rows of one host at most, and a write that
+passed the check holds the write lock until it commits. So a holder that
+stalled for longer than the TTL (a suspended VM whose clock stopped with it,
+`SIGSTOP`, a blocked event loop) and resumes after another host took over
+refuses its writes, whatever its clock says. It does not rejoin beside that
+host. A failed heartbeat is logged once and retried every 5 seconds.
 
 **One audit drainer.** With the audit extension every process has a drain
 loop, but only the holder of the drain lease (`holder` and `lease_until` in
@@ -2130,9 +2156,15 @@ site that runs auth or audit without the store is refused on a second host too
 ([#941](https://github.com/jimhoyd-com/urlcode/issues/941)). A process that
 lost the lease answers `503 auth_unavailable` on every auth request, and
 stores no audit event, so audit's producers keep their events and deliver them
-once it rejoins. Auth checks the lease once per request, before Better Auth
-runs, because Better Auth's own statements cannot be wrapped. Store and audit
-check it inside each write transaction. Each extension releases its lease
+once it rejoins. Store and audit check the lease inside each write
+transaction. Auth checks it once per request before Better Auth runs (a quick
+`503`), and again inside every Better Auth write: Better Auth's statements
+cannot be wrapped in a transaction of auth's, so each of its tables has a
+temporary trigger, on auth's connection only, that runs the same check before
+every insert, update and delete, under that statement's write lock. A stall
+between the per-request check and Better Auth's writes therefore writes
+nothing once another host took over; the request answers
+`503 auth_unavailable`. Each extension releases its lease
 when an activation fails after joining
 ([#979](https://github.com/jimhoyd-com/urlcode/issues/979)).
 
@@ -2146,12 +2178,18 @@ What the lease does not do:
   SQLite's locks and write-ahead log are unreliable, so the lease's own
   statements can fail there too. It is a check for a misconfiguration, not a
   way to run on two hosts.
-- A process judges peers by its own monotonic clock. A clock that runs slow
-  by a large factor (not an offset), or a stall inside a single write
-  transaction, is not covered.
-- A process that lost its lease keeps its connection and keeps reading. It
-  also keeps watching the lease table, which takes the write lock once per
-  heartbeat.
+- A process judges peers by its own monotonic clock, so clocks decide when a
+  take-over happens, never whether two hosts write. A clock that runs fast by
+  a large factor makes a process take over from a live holder too early; the
+  holder then refuses its writes rather than both
+  writing.
+- It guards writes, not reads. A process whose row is gone keeps serving
+  reads, which can be stale once the other host writes, until its next
+  heartbeat notices the other host. It keeps its connection and keeps
+  watching the lease table, which takes the write lock once per heartbeat.
+- Auth guards the tables that exist when it activates. A table created while
+  it serves (running `urlcode-auth migrate` for a new plugin against a live
+  server) has no trigger until the next activation.
 - A row that stays after a crash is watched for 20 seconds by the next
   process to start, then deleted. An operator never needs to clear it by
   hand. To clear it anyway, stop every server first, then run
@@ -2463,7 +2501,12 @@ it: `create(null, {userId})` adds a member.
 `create`, `get`, `update` and `transition` return `{record, etag}` (a record
 never includes its owner) and
 applies exactly the JSON API's rules: another owner's record and a missing id
-are the same `404`, no principal on an owned collection is `401`, a record
+are the same `404`, no principal on an owned collection is `401`, a principal
+whose `id` is not a principal id (core's `principalIdPattern`: 1 to 128 ASCII
+letters, digits, `.`, `_`, `:` or `-`, starting with a letter or digit) is
+`401 principal_required` on every call and every collection, before anything
+is read, stamped or recorded
+([#1015](https://github.com/jimhoyd-com/urlcode/issues/1015)), a record
 that breaks the schema is `422 invalid_record` with `issues`, `maxRecords` is `409 collection_full`, and
 a stale `ifMatch` is `412`. Failures are `StoreError`s with the same status and
 code as the HTTP answer. The export performs no request admission of its own:

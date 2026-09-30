@@ -232,10 +232,13 @@ export function releaseAuditDrain(db: StoreDatabase, holder: string): void {
  * The declaration fence (#927). An activation records, per collection, the fingerprint of the declaration it serves
  * and the schema version it was built for, replacing whatever an earlier activation (in this process or another)
  * recorded: the newest activation wins. `declarationOf` is the one indexed read a write makes under its write lock to
- * compare its own with them and with the file's `user_version`.
+ * compare its own with them and with the file's `user_version`. `check` runs first, under the same write lock: what it
+ * reads cannot change before the declarations it guards are recorded, since every later write through another
+ * declaration is refused by the fence. A throw from it records nothing.
  */
-export function recordDeclarations(db: StoreDatabase, fingerprints: ReadonlyMap<string, string>, now: number): void {
+export function recordDeclarations(db: StoreDatabase, fingerprints: ReadonlyMap<string, string>, now: number, check?: () => void): void {
   db.transaction(() => {
+    check?.();
     db.run('DELETE FROM store_declarations');
     for (const [collection, fingerprint] of fingerprints) db.run('INSERT INTO store_declarations(collection, fingerprint, schema_version, activated_at) VALUES (?, ?, ?, ?)', collection, fingerprint, STORE_SCHEMA_VERSION, now);
   });
