@@ -52,7 +52,7 @@ export type { ExtensionHttpErrorCode, ReadBodyOptions, SameOriginOptions } from 
  * offers so a sink can forward its events. The store records and serves them; a sink named `audit` may consume them.
  */
 export { AuditError, auditLimits, validateAuditEvent, validateAuditQuery } from './audit-events.ts';
-export type { AuditErrorCode, AuditEvent, AuditLog, AuditPage, AuditQuery, AuditStoredEvent, AuditTap, AuditValue, NormalizedAuditQuery } from './audit-events.ts';
+export type { AuditErrorCode, AuditEvent, AuditLog, AuditPage, AuditQuery, AuditStoredEvent, AuditTap, AuditTapStatus, AuditValue, NormalizedAuditQuery } from './audit-events.ts';
 export interface ExtensionDeclaration { version:'1'; config:Record<string,unknown> }
 export type ExtensionPolicies = Record<string,Record<string,unknown>|false>;
 /**
@@ -105,6 +105,16 @@ export interface ExtensionActivation {
    */
   warn?:(message:string)=>void;
   /**
+   * The serving-time counterpart of `warn` (RIM-EXT-WARN-001): for a condition the operator must act on that arises
+   * while the instance serves, after `activate()` settled, such as data the extension had to discard. Written to the
+   * same operator log as the same `extension_warning` record, bounded the same way (one line of at most 500
+   * characters, at most `maxExtensionWarnings` per activation, then one suppression line), and ignored once the
+   * runtime holding this activation has closed. Core does not rate-limit beyond that bound: the extension decides when
+   * a condition is worth one record (on a change of state, never per request). Counts and configuration names only.
+   * The runtime always sets it; optional only so an activation built by hand (a test) can leave it out.
+   */
+  runtimeWarn?:(message:string)=>void;
+  /**
    * The reload hand-off (RIM-EXT-HANDOFF-001): present only when this activation belongs to the replacement runtime
    * of an in-process reload (`startServer`'s `reload()`, which the `urlcode dev` watcher calls), and the serving
    * runtime's instance of this same registration offered one from `handoff()`. Absent on every first activation,
@@ -155,6 +165,47 @@ export function activationWarnings(name:string,log:LogFn|undefined):{warn:(messa
     try{log?.({event:'extension_warning',extension:name,message:text});}catch{/* Logging cannot fail activation. */}
   };
   return {warn,close(){open=false;}};
+}
+/**
+ * The serving-time `runtimeWarn()` channel for one extension activation (RIM-EXT-WARN-001): the same record and bound
+ * as `activationWarnings`, open from activation until `close()`, which the registry calls when its runtime closes.
+ */
+export function runtimeWarnings(name:string,log:LogFn|undefined):{warn:(message:string)=>void;close:()=>void} {
+  let recorded=0,open=true;
+  const warn=(message:string):void=>{
+    if(!open||recorded>maxExtensionWarnings)return;
+    recorded++;
+    const text=recorded>maxExtensionWarnings?`further runtime warnings suppressed after ${maxExtensionWarnings} in this activation`:boundedLine(typeof message==='string'?message:'')||'warning with no message';
+    try{log?.({event:'extension_warning',extension:name,message:text});}catch{/* Logging never fails the caller. */}
+  };
+  return {warn,close(){open=false;}};
+}
+/** How many numbers one extension instance's `metrics()` may report (RIM-EXT-METRICS-001). */
+export const maxExtensionMetrics=16;
+/** A valid `ExtensionInstance.metrics()` key: lowercase snake case, so `urlcode_extension_<extension>_<name>` is a Prometheus name. */
+export const extensionMetricName=/^[a-z][a-z0-9_]{0,62}[a-z0-9]$/;
+/**
+ * Every active extension's `metrics()`, validated (RIM-EXT-METRICS-001): by extension name, only the extensions that
+ * implement it, each with at most `maxExtensionMetrics` valid entries in its own order. An invalid entry is dropped and
+ * a throwing call reports nothing, so an extension can never fail a snapshot.
+ */
+export function extensionMetrics(registry:Pick<ExtensionRegistry,'entries'>|undefined):Record<string,Record<string,number>> {
+  const out:Record<string,Record<string,number>>={};
+  for(const [name,entry] of registry?.entries??[]){
+    if(typeof entry.instance.metrics!=='function')continue;
+    let reported:unknown;
+    try{reported=entry.instance.metrics();}catch{continue;}
+    if(!reported||typeof reported!=='object')continue;
+    const numbers:Record<string,number>={};
+    let kept=0;
+    for(const [key,value] of Object.entries(reported)){
+      if(kept>=maxExtensionMetrics)break;
+      if(!extensionMetricName.test(key)||typeof value!=='number'||!Number.isFinite(value)||value<0)continue;
+      numbers[key]=value;kept++;
+    }
+    out[name]=numbers;
+  }
+  return out;
 }
 /**
  * The reserved header namespace an `authorize()`/`middleware()` hook can write into
@@ -340,6 +391,14 @@ export interface ExtensionInstance {
    * never fails the request. An extension with no declared `capabilities` never needs this method.
    */
   provide?(capability:string,invocation:InvocationContext):unknown|Promise<unknown>;
+  /**
+   * The instance's own numbers for the operator's metrics snapshot (RIM-EXT-METRICS-001), read synchronously each time
+   * a snapshot is taken (`runtime.metrics()`, `app.metrics()`, `onMetrics`, `/_urlcode/metrics`). Keys match
+   * `extensionMetricName` (lowercase snake case; a name ending in `_total` is a counter, anything else a gauge), values
+   * are finite numbers >= 0, at most `maxExtensionMetrics` of them. Core drops an invalid entry, or the whole result
+   * when the call throws, and never fails a snapshot for it. Keep it cheap and free of user data: numbers only.
+   */
+  metrics?():Readonly<Record<string,number>>;
   close?():void|Promise<void>;
 }
 /** Trusted operator code only. YAML declares names/configuration, never modules. */
@@ -801,7 +860,7 @@ export function checkExtensionPolicies(document:ProjectDocument,routes:Record<st
  * `urlcode audit` run (RIM-EXT-HERMETIC-001). Each entry must name a declared extension whose registration declares a
  * `seedSchema` and must satisfy it; that extension's activation then receives it as `context.seed`.
  */
-export function prepareExtensions(document:ProjectDocument,routes:Record<string,RouteConfig>,registrations:RuntimeExtension[]|undefined,context:Omit<ExtensionActivation,'mounts'|'warn'|'handoff'|'seed'>,routeAuth?:Record<string,RouteAuthShortForm>,log?:LogFn,acceptedPin?:{readonly from:string},seeds?:Readonly<Record<string,unknown>>): {readonly followed:readonly string[];activate(serving?:ExtensionRegistry):Promise<ExtensionRegistry>} {
+export function prepareExtensions(document:ProjectDocument,routes:Record<string,RouteConfig>,registrations:RuntimeExtension[]|undefined,context:Omit<ExtensionActivation,'mounts'|'warn'|'runtimeWarn'|'handoff'|'seed'>,routeAuth?:Record<string,RouteAuthShortForm>,log?:LogFn,acceptedPin?:{readonly from:string},seeds?:Readonly<Record<string,unknown>>): {readonly followed:readonly string[];activate(serving?:ExtensionRegistry):Promise<ExtensionRegistry>} {
   assert(acceptedPin===undefined||typeof acceptedPin.from==='string'&&/^[a-f0-9]{64}$/.test(acceptedPin.from),'Invalid accepted extension revision pin');
   const followed:string[]=[];
   assert(registrations===undefined||Array.isArray(registrations)&&registrations.length<=16,'Extensions must be an array of at most 16 operator registrations');
@@ -910,6 +969,9 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
     seeded.set(name,frozen(copy));
   }
   return {followed:Object.freeze([...followed]),async activate(serving?:ExtensionRegistry){
+    // Each activation's runtimeWarn() stays open while this registry serves and closes with it (RIM-EXT-WARN-001).
+    const servingWarnings:{close():void}[]=[];
+    const closeWarnings=():void=>{for(const channel of servingWarnings)channel.close();};
     try{for(const {name,registration,config,policies,mounts,principalMounts}of preparations){
       // Offered only by the serving instance of this very registration: never across names or registration objects.
       const previous=serving?.entries.get(name);
@@ -925,8 +987,9 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
       // named and kept (bounded, without a stack) so validate, test, dev and serve startup can print it.
       let instance:ExtensionInstance;
       // warn() reaches the same operator log; it is closed once activate() settles (RIM-EXT-WARN-001).
-      const warnings=activationWarnings(name,log);
-      try{instance=await registration.activate(config,Object.freeze({...frozen({...context,mounts,principalMounts,warn:warnings.warn}),...(handoff?{handoff}:{}),...(seeded.has(name)?{seed:seeded.get(name)}:{})}));}
+      const warnings=activationWarnings(name,log),later=runtimeWarnings(name,log);
+      servingWarnings.push(later);
+      try{instance=await registration.activate(config,Object.freeze({...frozen({...context,mounts,principalMounts,warn:warnings.warn,runtimeWarn:later.warn}),...(handoff?{handoff}:{}),...(seeded.has(name)?{seed:seeded.get(name)}:{})}));}
       catch(error){throw extensionError(error,name,'activate');}
       finally{warnings.close();}
       const providesPrincipal=registration.providesPrincipal===true,streams=registration.streams===true;
@@ -934,8 +997,8 @@ export function prepareExtensions(document:ProjectDocument,routes:Record<string,
       assert(instance&&typeof instance.handle==='function'&&(!policies.size||typeof instance.authorize==='function'||typeof instance.middleware==='function'),`Extension ${name} lacks a required handler, authorization hook or middleware hook`);
       assert(!providesPrincipal||!policies.size||typeof instance.authorize==='function',`Extension ${name} declares providesPrincipal but has no authorization hook`);
       entries.set(name,{instance,registration,policies,providesPrincipal,streams});
-    }}catch(error){for(const entry of [...entries.values()].reverse())try{await entry.instance.close?.();}catch{/* Keep the activation failure. */}throw error;}
-    return {entries,credentialHeaders:[...credentialHeaders],async close(){for(const entry of [...entries.values()].reverse())try{await entry.instance.close?.();}catch{/* Operators own extension lifecycle diagnostics. */}}};
+    }}catch(error){closeWarnings();for(const entry of [...entries.values()].reverse())try{await entry.instance.close?.();}catch{/* Keep the activation failure. */}throw error;}
+    return {entries,credentialHeaders:[...credentialHeaders],async close(){closeWarnings();for(const entry of [...entries.values()].reverse())try{await entry.instance.close?.();}catch{/* Operators own extension lifecycle diagnostics. */}}};
   }};
 }
 /** Mandatory privacy floor after trusted response hooks, with bounded output. */

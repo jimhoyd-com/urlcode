@@ -52,6 +52,8 @@ export interface MetricsSnapshot {
   policies: { throttle: Counters; agents: Counters; cache: Counters };
   signals: Counters;
   logsDropped: number; observers: { errors: number };
+  /** What the serving runtime's extensions report through `ExtensionInstance.metrics()`, by extension name (RIM-EXT-METRICS-001). */
+  extensions?: Record<string, Record<string, number>>;
   [extra: string]: unknown;
 }
 export interface Metrics {
@@ -227,6 +229,11 @@ export function renderPrometheus(snapshot: Partial<MetricsSnapshot>): string {
   metric('signals_total','counter','Best-effort webhook outcomes.',Object.entries(snapshot.signals||{}).map(([outcome,value])=>[{outcome},value]));
   metric('logs_dropped_total', 'counter', 'Log records the JSON logger shed.', [[{}, snapshot.logsDropped]]);
   metric('observer_errors_total', 'counter', 'Observer hooks that threw or rejected.', [[{}, snapshot.observers?.errors]]);
+  // Extension numbers (RIM-EXT-METRICS-001): names were checked by `extensionMetrics`, and a `_total` suffix is a counter.
+  for (const [extension, numbers] of Object.entries(snapshot.extensions || {})) for (const [name, value] of Object.entries(numbers || {})) {
+    if (!/^[a-z][a-z0-9-]{0,63}$/.test(extension) || !/^[a-z][a-z0-9_]{0,62}[a-z0-9]$/.test(name)) continue;
+    metric(`extension_${extension.replace(/-/g, '_')}_${name}`, name.endsWith('_total') ? 'counter' : 'gauge', `Reported by the ${extension} extension.`, [[{}, value]]);
+  }
   metric('uptime_seconds', 'gauge', 'Seconds since the process started serving.', [[{}, snapshot.uptimeSeconds]]);
   metric('process_rss_bytes', 'gauge', 'Resident set size of the process.', [[{}, snapshot.rssBytes]]);
   metric('metrics_snapshot_version', 'gauge', 'Version of the metrics snapshot shape.', [[{}, snapshot.version]]);

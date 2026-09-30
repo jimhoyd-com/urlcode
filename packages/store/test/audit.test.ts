@@ -182,6 +182,70 @@ test('the tap delivers at least once in record order: an unacknowledged event co
   for (const event of again) validateAuditEvent({ id: event.id, source: event.source, action: event.action, actor: event.actor, subject: event.subject, at: event.at, ...(event.metadata ? { metadata: event.metadata } : {}) });
 });
 
+/** A store activated directly with `auditRetention: 10`, capturing its activation and runtime warnings. */
+async function behind(t: TestContext, root: string) {
+  const warned: string[] = [], started: string[] = [];
+  const instance = createStore({ database: databaseOf(root), projectSha256: pin });
+  const served = await instance.registration.activate({ ...config, auditRetention: 10 }, { ...activation(root), warn: message => started.push(message), runtimeWarn: message => warned.push(message) });
+  let open = true;
+  const close = async () => { if (open) { open = false; await served.close?.(); await instance.close(); } };
+  cleanup(t, close);
+  let n = 0;
+  // Each write is one audited create; the loss check runs in a microtask after its transaction, so settle it too.
+  const write = async (count: number) => { for (let i = 0; i < count; i++) { await instance.exports.records('notes').create({ id: 'alice' }, { code: `c${n++}`, destination: 'https://example.test/' }); await new Promise(resolve => setImmediate(resolve)); } };
+  return { tap: instance.exports.audit, metrics: () => served.metrics!(), warned, started, write, close };
+}
+
+test('a sink behind the retention window is told what it lost: the tap status, the metric and one warning; writes still succeed (#1067)', async t => {
+  const root = await tempRoot(t);
+  await mkdir(join(root, 'app'));
+  const site = await behind(t, root);
+  await site.write(15);
+  assert.deepEqual(await site.tap.status(), { lost: 0 }, 'with no consumer, pruning is only retention');
+  assert.deepEqual(site.metrics(), { audit_pruned_unacked_total: 0 });
+  // The sink arrives, reads the whole window and acknowledges only the oldest event.
+  const window = await site.tap.peek(100);
+  assert.equal(window.length, 10);
+  assert.equal(await site.tap.ack([window[0]!.id]), 1);
+  await site.write(5);
+  assert.deepEqual(await site.tap.status(), { lost: 4 }, 'five events pruned, the acknowledged one not lost');
+  assert.deepEqual(site.metrics(), { audit_pruned_unacked_total: 4 });
+  assert.equal(site.warned.length, 1, 'exactly one warning when the count first became nonzero');
+  assert.match(site.warned[0]!, /audit log: 1 event was pruned \(auditRetention 10\) before the tap's consumer acknowledged them/);
+  await site.write(4);
+  assert.deepEqual(await site.tap.status(), { lost: 8 });
+  assert.equal(site.warned.length, 1, 'growth within a retention window is not warned again');
+  assert.equal((await site.tap.peek(100)).length, 10, 'the log still holds its window: no write was refused');
+  await site.write(2);
+  assert.deepEqual(await site.tap.status(), { lost: 10 });
+  assert.equal(site.warned.length, 2, 'a whole retention window lost warns once more');
+  assert.match(site.warned[1]!, /audit log: 10 events were pruned/);
+  assert.deepEqual(site.started, []);
+  // The count is the database's: a restart reports it once at activation, and the metric carries it on.
+  await site.close();
+  const again = await behind(t, root);
+  assert.deepEqual(await again.tap.status(), { lost: 10 });
+  assert.deepEqual(again.metrics(), { audit_pruned_unacked_total: 10 });
+  assert.equal(again.started.length, 1);
+  assert.match(again.started[0]!, /audit log: 10 events were pruned/);
+});
+
+test('a sink that keeps up within the retention window loses nothing and hears nothing (#1067)', async t => {
+  const root = await tempRoot(t);
+  await mkdir(join(root, 'app'));
+  const site = await behind(t, root);
+  let forwarded = 0;
+  for (let round = 0; round < 6; round++) {
+    await site.write(5);
+    const batch = await site.tap.peek(100);
+    forwarded += await site.tap.ack(batch.map(event => event.id));
+  }
+  assert.equal(forwarded, 30);
+  assert.deepEqual(await site.tap.status(), { lost: 0 });
+  assert.deepEqual(site.metrics(), { audit_pruned_unacked_total: 0 });
+  assert.deepEqual([site.warned, site.started], [[], []]);
+});
+
 test('audit: true refuses a collection mount no principal-providing policy guards', async t => {
   const root = await tempRoot(t);
   await mkdir(join(root, 'app'));
@@ -231,7 +295,7 @@ test('the version 7 upgrade moves events still waiting in the old outbox into th
   const events = ['b', 'a'].map((name, index) => validateAuditEvent({ id: `00000000-0000-4000-8000-00000000000${index + 1}`, source: 'store', action: 'store.record.created', actor: name, subject: `notes/${name}`, at: 1000 - index, metadata: { collection: 'notes', fields: ['code'] } }));
   const db = new DatabaseSync(database);
   try {
-    db.exec(`DROP TABLE store_audit_events;
+    db.exec(`DROP TABLE store_audit_events; DROP TABLE store_audit_tap;
       CREATE TABLE store_audit_outbox(seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, collection TEXT NOT NULL, at INTEGER NOT NULL, event TEXT NOT NULL CHECK (json_valid(event)));
       CREATE TABLE store_audit_drain(id INTEGER PRIMARY KEY CHECK (id = 1), drained_at INTEGER);
       PRAGMA user_version=6;`);

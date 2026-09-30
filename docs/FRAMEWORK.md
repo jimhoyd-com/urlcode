@@ -11,7 +11,7 @@ claim here is implemented in the linked repository; nothing is roadmap.
 |---|---|---|---|
 | `@jimhoyd/urlcode` | this repository | The runtime: YAML routes, functions and middleware (trusted by default, `sandbox: true` opt-in), pages and assets, policies, site conventions, CLI, provider adapters, a fetch handler for hosting inside another Node framework, the extension contract (the audit event contract and its tap included) | `urlcode.yaml` with `version: "1"` |
 | `@jimhoyd/urlcode-auth` | [`packages/auth`](../packages/auth) | A thin adapter over [Better Auth](https://better-auth.com/): Better Auth owns accounts, passwords, sessions, cookies and its tables (in the bundled SQLite file, or the owner's own database); the extension serves an allowlist of its endpoints on one mount, gates protected routes and hands their code the verified user id (`context.capabilities.auth.identity.userId`). No roles or permissions; Node only; requires nothing | `extensions.auth: {version: "1", config: {}}` plus an `/api/auth/*` mount (`methods: [GET, POST]`) and `auth: true` (`policies.extensions.auth: {}`) on protected routes |
-| `@jimhoyd/urlcode-store` | [`packages/store`](../packages/store) | Durable bounded collections in one SQLite database exposed as a typed JSON CRUD API; a collection with `audit: true` records its writes in the store's own audit log, in the transaction of each write, and `StoreExports.audit` is the tap a sink forwards them through | `extensions.store` plus a protected collection mount |
+| `@jimhoyd/urlcode-store` | [`packages/store`](../packages/store) | The bundled data store: durable bounded collections in one SQLite database exposed as a typed JSON CRUD API; a collection with `audit: true` records its writes in the store's own audit log, in the transaction of each write, and `StoreExports.audit` is the tap a sink forwards them through | `extensions.store` plus a protected collection mount |
 | `@jimhoyd/urlcode-mcp` | [`packages/mcp`](../packages/mcp) | Declarative [MCP](https://modelcontextprotocol.io) tool server over the official MCP SDK (stateless Streamable HTTP): a bounded, project-declared map of tools, resources and prompts with trusted handlers | `extensions.mcp` plus a `POST, HEAD` mount (streamed progress when the operator opts into `mcp({ streaming: true })`, not on aws); `urlcode extensions add mcp` wires the extension but leaves the server/tool declaration and its trusted handler module for the operator (every tool needs project code) |
 
 All four are Apache-2.0. Core is published through npm, GitHub Releases and
@@ -24,7 +24,9 @@ artifacts add`, never by choosing an npm package. See
 [add-ons](EXTENSIONS.md#add-ons-extensions-and-artifacts).
 
 Inspect the installed stack first; first-party extensions are defaults, not
-requirements. External/private extensions are also supported through the same public host contract; follow the
+requirements: URLCode needs none of them, nor SQLite or Better Auth
+([native, independent integration, or bundled default](EXTENSIONS.md#native-independent-integration-or-bundled-default)).
+External/private extensions are also supported through the same public host contract; follow the
 [external-extension workflow](EXTENSIONS.md#external-extensions-and-ai-tooling)
 for installation, AI discovery and validation outside the release catalog.
 
@@ -59,15 +61,17 @@ Each rung's YAML is valid on every rung above it.
    runtime injects into a function come only from an operator grant pinned to
    the project revision; the grant governs that injected context, not the
    ambient Node environment trusted in-process code can reach on its own.
-4. **Accounts.** The `auth` extension: Better Auth's sign-in, sign-out and
+4. **Accounts.** The bundled `auth` extension: Better Auth's sign-in, sign-out and
    sessions on one mount, and `auth: true` on protected routes, whose code reads
    the verified user id from `context.capabilities.auth.identity.userId`. The
    operator installs it in a host file outside the project; YAML only declares
    the mount and the empty configuration. Browsers sign in with Better Auth's
    own client. Roles, ownership and approvals stay application data keyed by
    the user id.
-5. **Bounded data.** The `store` extension supplies declared durable
+5. **Bounded data.** The bundled `store` extension supplies declared durable
    collections, a trusted operator extension rather than a core YAML handler.
+   A function route may instead call the owner's own database library
+   (see below).
    Add `auth: true` where a collection is per-account. A form is an ordinary
    frontend that posts JSON to a store mount, or to a function route whose
    `request.body.POST.schema` validates it before code runs (the
@@ -107,10 +111,13 @@ rather than emulated.
 Stored short links are a collection declared through the `store` extension
 above (see [docs/STORE.md](STORE.md)); core has no native `link` route.
 
-Rungs 1 to 3 need only the core package. Rungs 4 to 6 need an extension added
-to the site with `urlcode extensions add`, which wires it into the explicit
-operator host. Auth additionally needs the Node/SQLite
-runtime its package documents; mcp declares Node, AWS and Vercel targets (its opt-in streaming transport is
+Rungs 1 to 3 need only the core package. Rungs 4 to 6, as described here, use
+a bundled extension added to the site with `urlcode extensions add`, which
+wires it into the explicit operator host; an independent extension or a
+library called from a function route is the alternative
+([three ways](EXTENSIONS.md#native-independent-integration-or-bundled-default)).
+Auth additionally needs the Node runtime its package documents (SQLite only
+for its bundled database file); mcp declares Node, AWS and Vercel targets (its opt-in streaming transport is
 self-hosted only), while store (its database is `node:sqlite`) is Node-only. See each package's README ([auth](../packages/auth/README.md),
 [store](../packages/store/README.md),
 [mcp](../packages/mcp/README.md)) for the exact requirement.
@@ -238,7 +245,7 @@ first-party package of that name is not installed (for example an owner's own
 `audit` sink that `requires: [store]` and pulls the store's audit tap, see
 [STORE.md](STORE.md#audited-writes)).
 
-Treat that composition as one application with package ownership boundaries. Keep accounts, passwords and sessions in
+Treat that composition as one application with package ownership boundaries. In it, keep accounts, passwords and sessions in
 Better Auth behind the auth extension, roles and permissions in the
 application's own data, the audit log in the store and email delivery in the
 application's own function code, through the provider's library, and the
@@ -262,15 +269,19 @@ Activation likewise carries the canonical `origin` and the operator's full
 `isSiteOrigin`, and every write goes through core's one same-origin rule,
 `isSameOriginRequest`, so mcp, store and auth admit the same
 origins ([site origins](EXTENSIONS.md#site-origins-and-same-origin-checks)).
-A SQLite-backed extension refuses a network filesystem and a second serving
+A SQLite-backed extension (the bundled store, and auth on its bundled file)
+refuses a network filesystem and a second serving
 process through core's `refuseNetworkFilesystem` and `holdServerLock`
 (`@jimhoyd/urlcode/sqlite`, kept off the generic extension contract), an OS
-lock on a file beside its own database, so store and auth enforce one
-rule: one serving process per database ([request helpers](EXTENSIONS.md#request-helpers)).
+lock on a file beside its own database, so the bundled store and auth enforce one
+rule: one serving process per SQLite file ([request helpers](EXTENSIONS.md#request-helpers)).
 An extension reports a startup condition the operator should act on through
-the activation's generic `warn()`, which reaches the operator's startup log as
-an `extension_warning` event and never a response
-([activation warnings](EXTENSIONS.md#activation-warnings)).
+the activation's generic `warn()`, and one that arises while it serves through
+`runtimeWarn()`; both reach the operator's log as an `extension_warning` event
+and never a response ([activation warnings](EXTENSIONS.md#activation-warnings)).
+Its own numbers reach the metrics snapshot and Prometheus through an optional
+`metrics()` on its instance ([extension metrics](EXTENSIONS.md#extension-metrics)),
+which is how the store reports audit events a sink missed.
 Who a request is for travels the same generic way: an extension that declares
 `providesPrincipal` (auth) sets an opaque, bounded `ExtensionRequest.principal`
 from its `authorize()`, and another extension on the route (an owned store
@@ -349,7 +360,8 @@ These are the facts that keep generated projects valid. The full matrix is in
   not what it is handed. See docs/SPIKE-DEFAULT-TRUST-MODEL.md and
   docs/FUNCTION-SECURITY.md.
 - **Authentication is host processing.** Do not build login forms, session
-  cookies or password checks in functions. With the auth extension declared,
+  cookies or password checks in functions; a principal-providing extension
+  (the bundled auth, or an independent one) owns them. With the auth extension declared,
   use `auth: true` (it expands to `policies.extensions.auth: {}`, because `auth`
   is the declared extension that provides the principal; there is no
   role or permission key) and read `context.capabilities.auth.identity.userId`;

@@ -76,6 +76,14 @@ async function serveProcess(at: Awaited<ReturnType<typeof project>>, settings: o
   });
   return `http://127.0.0.1:${(JSON.parse(line) as { port: number }).port}`;
 }
+/** `urlcode-auth create-user` in its own process for `<name>@example.test`: its exit code and stderr. */
+const createUser = (at: Awaited<ReturnType<typeof project>>, name: string) => new Promise<{ code: number | null; stderr: string }>(resolve => {
+  const run = spawn(process.execPath, ['--conditions=development', cli, 'create-user', '--site', at.root], { env: { ...process.env, BETTER_AUTH_SECRET: secret } });
+  let stderr = '';
+  run.stderr.setEncoding('utf8').on('data', (chunk: string) => { stderr += chunk; });
+  run.on('exit', code => resolve({ code, stderr }));
+  run.stdin.end(JSON.stringify({ email: `${name}@example.test`, password: `${name}-local-password`, name }));
+});
 const signIn = (base: string, password: string) => fetch(`${base}/api/auth/sign-in/email`, { method: 'POST', headers: { 'content-type': 'application/json', origin }, body: JSON.stringify({ email: 'ann@example.test', password }) });
 async function withUser(at: Awaited<ReturnType<typeof project>>): Promise<string> {
   const options = betterAuthOptions({ database: at.database, secret }, origin, '/api/auth', true);
@@ -393,19 +401,34 @@ test('urlcode-auth create-user succeeds while a serving process commits continuo
   const load = (async () => { while (!stop) served.push((await fetch(`${base}/api/auth/ok`)).status); })();
   try {
     for (const name of ['bea', 'cai', 'dev']) {
-      const created = await new Promise<{ code: number | null; stderr: string }>(resolve => {
-        const run = spawn(process.execPath, ['--conditions=development', cli, 'create-user', '--site', at.root], { env: { ...process.env, BETTER_AUTH_SECRET: secret } });
-        let stderr = '';
-        run.stderr.setEncoding('utf8').on('data', (chunk: string) => { stderr += chunk; });
-        run.on('exit', code => resolve({ code, stderr }));
-        run.stdin.end(JSON.stringify({ email: `${name}@example.test`, password: `${name}-local-password`, name }));
-      });
+      const created = await createUser(at, name);
       assert.equal(created.code, 0, created.stderr);
     }
   } finally { stop = true; await load; }
   assert.ok(served.length > 20, `the server committed throughout (${served.length} requests)`);
   assert.deepEqual([...new Set(served)], [200]);
   assert.equal((await signIn(base, 'ann-local-password')).status, 200);
+});
+
+test('urlcode-auth create-user takes the write lock between the slow commits of a saturated server', async t => {
+  const at = await project(t); await withUser(at);
+  // A writer that holds the write lock for 100 ms of every commit and frees it for a 2 ms timer between commits (a
+  // request's response I/O), as a saturated server does when each flush is slow (FlushFileBuffers on Windows). SQLite's
+  // busy handler, polling up to every 100 ms for 2 seconds, mostly found the lock held and failed with "database is
+  // locked". A writer with no gap at all can still starve the operator command for its whole 10 seconds (README).
+  const writer = spawn(process.execPath, [fileURLToPath(new URL('./slow-commit-writer.ts', import.meta.url)), at.database, '100', '2'], { stdio: ['pipe', 'pipe', 'inherit'] });
+  const exited = new Promise(resolve => writer.once('exit', resolve));
+  let out = '';
+  writer.stdout.setEncoding('utf8').on('data', (chunk: string) => { out += chunk; });
+  at.defer(async () => { writer.stdin.end(); await exited; });
+  await new Promise<void>((resolve, reject) => { writer.stdout.on('data', () => { if (out.includes('ready')) resolve(); }); void exited.then(() => reject(new Error(`slow-commit-writer exited: ${out}`))); });
+  for (const name of ['eve', 'fay', 'gus']) {
+    const created = await createUser(at, name);
+    assert.equal(created.code, 0, created.stderr);
+  }
+  writer.stdin.end(); await exited;
+  const { commits } = JSON.parse(out.slice(out.indexOf('{'))) as { commits: number };
+  assert.ok(commits > 5, `the writer committed throughout (${commits} commits)`);
 });
 
 test('the scaffold writes the mount and a private secret; host() reads it; the CLI migrates and creates a user', async t => {

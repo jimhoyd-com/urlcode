@@ -5,6 +5,12 @@ Operator-installed data store extension for URLCode. Declare collections in
 `extension: store`, and the extension serves a bounded JSON CRUD API backed by
 one operator-owned SQLite database. No handler code.
 
+It is the bundled default for declared data, not a requirement: an
+application may keep its data in any database it chooses from a trusted
+function route or an independent extension instead
+([owner choice][extensions-owner-choice]). The SQLite file, its lock and
+backups below are this package's properties.
+
 ## Record schema
 
 A collection's `schema` is a JSON Schema 2020-12 object schema in the same
@@ -193,7 +199,9 @@ serving process, or a network filesystem, is refused at activation by an OS
 lock the first holds; a retiring activation during a reload, or an operator
 command on another declaration, has its writes refused with `503` by the
 declaration fence; a write blocked past the 2-second busy timeout answers
-`503`); every write is one SQLite
+`503`, while an operator command waits up to 10 seconds and tries for the write
+lock every millisecond, so it fails only beside a lock held that whole time or a
+writer that never leaves an idle gap); every write is one SQLite
 transaction that commits the record, its key, its `Idempotency-Key` claim and
 its audit event together or not at all; a retried `Idempotency-Key` replays the
 first status with the current record (a different request under it is `422`);
@@ -237,7 +245,13 @@ log (filters `--source`, `--actor`, `--subject`, `--action`, `--action-prefix`,
 `--from`, `--to`; `--after <next>`, `--limit 1-100`, `--order asc|desc`),
 opening the database read-only, beside the serving process. To forward events
 elsewhere, an extension that requires the store reads the tap,
-`StoreExports.audit` (`peek`, then `ack`, at least once). See
+`StoreExports.audit` (`peek`, then `ack`, at least once). Pruning never waits
+for a sink and never refuses a write; events pruned before the sink
+acknowledged them are counted instead: `StoreExports.audit.status()` resolves
+with `{lost}`, the metrics snapshot carries it as `audit_pruned_unacked_total`
+(Prometheus `urlcode_extension_store_audit_pruned_unacked_total`), and the
+serving process logs one `extension_warning` when it first becomes nonzero and
+again only per further `auditRetention` lost. See
 [audited writes][store-audited-writes] and
 [forwarding events to a sink][store-forwarding-events-to-a-sink].
 
@@ -461,6 +475,7 @@ version it describes; `npm run release:bump` moves them and scripts/check-local-
 [store-edit-and-delete-states]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#edit-and-delete-states
 [store-a-directory-by-a-unique-handle]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#a-directory-by-a-unique-handle
 [extensions-artifacts]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#artifacts
+[extensions-owner-choice]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#native-independent-integration-or-bundled-default
 <!-- urlcode-current-version:end -->
 
 <!-- extension-reference:start -->
