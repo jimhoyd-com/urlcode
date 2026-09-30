@@ -1112,9 +1112,16 @@ even when it is otherwise one valid message (the SDK would decode the bytes as
 U+FFFD; #1021); the session continues. A line that is not valid JSON (a leading
 byte-order mark included) answers a `-32700` parse error with a null id the same
 way, where the SDK would drop it without a reply (#1028); a line holding only
-whitespace is skipped. Every other line reaches the SDK byte for byte. Valid
-JSON that is not one JSON-RPC message (`{}`, a batch) is ignored and the session
-continues; an input message over 1 MiB ends the session. A tool
+whitespace is skipped. Valid JSON that is not one JSON-RPC message the SDK
+accepts (`{}`, `42`, an object without `"jsonrpc": "2.0"` or with an unknown
+member) answers a `-32600` Invalid Request, where the SDK would also drop it
+(#1032). Its id is the line's own when the line is an object with a string
+`method` and a string or number `id`, and null otherwise, the rule the MCP
+extension's HTTP endpoint applies. The protocol revisions negotiated here have
+no JSON-RPC batches (MCP removed them in 2025-06-18), so an array, empty or
+not, answers one `-32600` with a null id and none of its elements runs. The
+session continues in each case. Every other line reaches the SDK byte for byte;
+an input message over 1 MiB ends the session. A tool
 result over 1 MiB is returned as an `isError` result naming the limit. Import
 text is additionally capped at 512 KiB. Tool schemas reject
 unknown arguments. A `-32602` error names the problem: an unknown tool (and the

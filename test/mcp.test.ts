@@ -164,11 +164,11 @@ test('MCP validates tool schema, method and root confinement',async t=>{
  ].map((params,index)=>({jsonrpc:'2.0',id:index+2,method:'tools/call',params})),{jsonrpc:'2.0',id:8,method:'unknown'}]);
  for(const reply of replies.slice(1,4))assert.equal(reply.error.code,-32602);assert.equal(replies[4]!.result.isError,true);assert.equal(replies[5]!.error.code,-32601);
 });
-// The SDK owns framing (#846): JSON that is not one JSON-RPC message is ignored and the session goes on, and a
-// message over the 1 MiB bound ends the session instead of being buffered.
-test('MCP ignores JSON that is not a message and ends the session on an oversized one',async t=>{
+// The SDK owns framing (#846): a blank line is skipped and the session goes on, and a message over the 1 MiB bound
+// ends the session instead of being buffered.
+test('MCP skips a blank line and ends the session on an oversized message',async t=>{
  const root=await project(t,{}),ping={jsonrpc:'2.0',id:9,method:'ping'};
- for(const raw of ['[]\n','{}\n','\n',' \t\r\n']){
+ for(const raw of ['\n',' \t\r\n']){
   let text='';await serveMcp({project:root,input:Readable.from([raw,JSON.stringify(ping)+'\n']),output:new Writable({write(chunk,_encoding,done){text+=String(chunk);done();}})});
   assert.deepEqual(text.trim().split('\n').map(line=>JSON.parse(line) as unknown),[{jsonrpc:'2.0',id:9,result:{}}],String(raw));
  }
@@ -205,6 +205,32 @@ test('MCP answers a line of malformed JSON with a -32700 parse error and the ses
  const bytes=Buffer.from(' {"jsonrpc":"2.0", "id":9,\t"method":"ping"}\r\n');let text='';
  await serveMcp({project:root,input:Readable.from(Array.from(bytes,byte=>Buffer.from([byte]))),output:new Writable({write(chunk,_encoding,done){text+=String(chunk);done();}})});
  assert.deepEqual(JSON.parse(text),{jsonrpc:'2.0',id:9,result:{}});
+});
+// Valid JSON the transport's message schema refuses would be dropped without a reply: it answers -32600 Invalid
+// Request instead, with the id the SDK's HTTP transport would echo (a string method and a string or number id) or
+// null, and the session goes on (#1032). The negotiated protocol has no batches, so any array is one -32600 with a null
+// id and none of its elements runs.
+test('MCP answers valid JSON that is not a JSON-RPC message, or a batch, with -32600 and the session continues',async t=>{
+ const root=await project(t,{}),ping={jsonrpc:'2.0',id:9,method:'ping'};
+ const notMessage='Invalid Request: the line is not a JSON-RPC message',batch='Invalid Request: JSON-RPC batches are not supported';
+ const cases:[unknown,string|number|null,string][]=[
+  [{},null,notMessage],[42,null,notMessage],[null,null,notMessage],['ping',null,notMessage],[true,null,notMessage],
+  [{jsonrpc:'1.0',id:2,method:'ping'},2,notMessage],[{id:'two',method:'ping'},'two',notMessage],
+  [{jsonrpc:'2.0',id:2,method:5},null,notMessage],[{jsonrpc:'2.0',id:{},method:'ping'},null,notMessage],
+  [{jsonrpc:'2.0',id:2,method:'ping',extra:true},2,notMessage],[{jsonrpc:'2.0',id:2,result:'x'},null,notMessage],
+  [{jsonrpc:'2.0',method:'notifications/initialized',params:3},null,notMessage],
+  [[],null,batch],[[{}],null,batch],[[{...ping,id:2}],null,batch],[[{...ping,id:2},{...ping,id:3}],null,batch],
+ ];
+ for(const [value,id,message] of cases){
+  let text='';await serveMcp({project:root,input:Readable.from([Buffer.from(JSON.stringify(initialize)+'\n'),Buffer.from(JSON.stringify(value)+'\r\n'),Buffer.from(JSON.stringify(ping)+'\n')]),output:new Writable({write(chunk,_encoding,done){text+=String(chunk);done();}})});
+  const replies=text.trim().split('\n').map(line=>JSON.parse(line) as {id:unknown;error?:unknown});
+  assert.equal(replies.length,3,text);
+  assert.deepEqual(replies.filter(reply=>reply.error),[{jsonrpc:'2.0',id,error:{code:-32600,message}}],JSON.stringify(value));
+  assert.deepEqual(replies.filter(reply=>!reply.error).map(reply=>reply.id).sort(),[1,9],JSON.stringify(value));
+ }
+ // A response the client sends to the server is a valid message and reaches the SDK, which answers nothing.
+ const response=await session(root,[initialize,ready,{jsonrpc:'2.0',id:77,result:{}},ping]);
+ assert.deepEqual(response.map(reply=>(reply as unknown as {id:unknown}).id),[1,9]);
 });
 test('MCP never activates guest code or emits credential/error source content',async t=>{
  const root=await project(t,{'/':{function:{source:'f.mjs'},secrets:{KEY:{secret:'AMBIENT_NAME'}}}},{'f.mjs':'while(true){}; export default ()=>new Response("no");','.env.local':'not-valid=secret-content'});
