@@ -180,7 +180,7 @@
     "@hey-api/openapi-ts": "0.99.0",
     "@modelcontextprotocol/client": "2.1.0",
     "@types/mime-types": "3.0.1",
-    "@types/node": "26.6.2",
+    "@types/node": "26.6.3",
     "@types/semver": "7.8.0",
     "eslint": "10.11.0",
     "globals": "17.12.0",
