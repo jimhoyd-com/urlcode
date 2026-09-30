@@ -12,7 +12,7 @@ import type { MaterializeResult, SourceStageReport } from './source-stage.ts';
 type Print = (value: unknown) => boolean;
 interface AddonCliOptions { site?: string | undefined; json?: boolean | undefined; strict?: boolean | undefined; ack?: string[] | undefined; example?: boolean | undefined; materialize?: boolean | undefined; into?: string | undefined; 'allow-app'?: boolean | undefined }
 
-export const addonCommands = ['available', 'add', 'remove', 'list', 'verify', 'outdated', 'inspect', 'stage'] as const;
+const addonCommands = ['available', 'add', 'remove', 'list', 'verify', 'outdated', 'inspect', 'stage'] as const;
 const artifactOnly = new Set<string>(['inspect', 'stage']);
 
 /**

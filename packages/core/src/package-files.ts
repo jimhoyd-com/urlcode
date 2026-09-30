@@ -16,7 +16,7 @@ import { isCode, isRecord } from './object-guards.ts';
  * trustworthy as the moment it was written: it catches a later edit, not a package that was bad when installed.
  */
 export const ADDON_FILES_LOCK = 'addon-files.lock.json';
-export const packageFileLimits = {
+const packageFileLimits = {
   /** Most files hashed in one installed package. */
   maxFiles: 20000,
   /** Most bytes hashed in one installed package. */
@@ -65,19 +65,19 @@ const sha256File = async (path: string): Promise<string> => {
   return hash.digest('hex');
 };
 /** The sha256 of every file in an installed package directory, by POSIX relative path; its own `node_modules` is skipped. */
-export async function hashPackageFiles(directory: string, limits = packageFileLimits): Promise<Record<string, string>> {
+async function hashPackageFiles(directory: string): Promise<Record<string, string>> {
   const root = await realpath(directory), files: Record<string, string> = {};
   let count = 0, bytes = 0;
   const walk = async (dir: string, prefix: string): Promise<void> => {
     for (const entry of (await readdir(dir, { withFileTypes: true })).sort((a, b) => a.name < b.name ? -1 : 1)) {
       const path = join(dir, entry.name), rel = prefix + entry.name;
       if (!prefix && entry.name === 'node_modules') continue;
-      if (++count > limits.maxFiles) throw new ConfigError(`${directory} holds more than ${limits.maxFiles} files; too many to record`);
+      if (++count > packageFileLimits.maxFiles) throw new ConfigError(`${directory} holds more than ${packageFileLimits.maxFiles} files; too many to record`);
       if (entry.isSymbolicLink()) files[rel] = `symlink:${await readlink(path)}`;
       else if (entry.isDirectory()) await walk(path, `${rel}/`);
       else if (entry.isFile()) {
         bytes += (await lstat(path)).size;
-        if (bytes > limits.maxBytes) throw new ConfigError(`${directory} holds more than ${limits.maxBytes} bytes; too much to record`);
+        if (bytes > packageFileLimits.maxBytes) throw new ConfigError(`${directory} holds more than ${packageFileLimits.maxBytes} bytes; too much to record`);
         files[rel] = await sha256File(path);
       } else files[rel] = 'special';
     }
@@ -88,11 +88,11 @@ export async function hashPackageFiles(directory: string, limits = packageFileLi
 
 export interface Drift { added: string[]; removed: string[]; changed: string[]; counts: { added: number; removed: number; changed: number } }
 /** How `actual` differs from `expected`, each category sorted and listed up to `maxListed`. */
-export function compareFiles(expected: Record<string, string>, actual: Record<string, string>, limits = packageFileLimits): Drift {
+function compareFiles(expected: Record<string, string>, actual: Record<string, string>): Drift {
   const added = Object.keys(actual).filter(path => !Object.hasOwn(expected, path)).sort();
   const removed = Object.keys(expected).filter(path => !Object.hasOwn(actual, path)).sort();
   const changed = Object.keys(expected).filter(path => Object.hasOwn(actual, path) && actual[path] !== expected[path]).sort();
-  return { added: added.slice(0, limits.maxListed), removed: removed.slice(0, limits.maxListed), changed: changed.slice(0, limits.maxListed), counts: { added: added.length, removed: removed.length, changed: changed.length } };
+  return { added: added.slice(0, packageFileLimits.maxListed), removed: removed.slice(0, packageFileLimits.maxListed), changed: changed.slice(0, packageFileLimits.maxListed), counts: { added: added.length, removed: removed.length, changed: changed.length } };
 }
 const drifted = (drift: Drift): boolean => drift.counts.added + drift.counts.removed + drift.counts.changed > 0;
 export function describeDrift(drift: Drift): string {

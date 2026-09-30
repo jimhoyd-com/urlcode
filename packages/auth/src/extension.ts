@@ -88,7 +88,7 @@ export default defineExtension<AuthHostOptions>({
     if (options.testDatabase !== undefined && typeof options.testDatabase !== 'function') throw new Error('auth: testDatabase is a function returning a fresh Better Auth database for each hermetic run');
     const owner = options.database !== undefined && isOwnerDatabase(options.database) ? options.database : undefined;
     const common = { projectSha256: context.projectSha256, signUp: options.signUp, paths: options.paths, betterAuth: options.betterAuth };
-    // A hermetic run (test, audit, benchmark) never touches the site's accounts: a fresh database in the run's data
+    // A hermetic run (test, audit) never touches the site's accounts: a fresh database in the run's data
     // directory, or the owner's isolated one (the registration refuses without it and never serves `owner`), and a
     // signing secret that lives only as long as this host, whatever the operator's options name.
     if (context.hermetic) {

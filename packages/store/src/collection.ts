@@ -72,7 +72,7 @@ const UTC_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
 /** A grid origin (#945): RFC 3339 with `Z` or a fixed `±hh:mm` offset, at most millisecond precision. */
 const OFFSET_INSTANT = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?)(?:Z|([+-])(\d{2}):(\d{2}))$/;
 /** Readers mounts one collection may declare (#944). */
-export const READER_LIMITS = { mounts: 8 } as const;
+const READER_LIMITS = { mounts: 8 } as const;
 const MOUNT = { type: 'string', pattern: '^/[A-Za-z0-9._~/-]*[A-Za-z0-9._~-]$', maxLength: 256 } as const;
 const FIELD_NAME = '^[a-z][A-Za-z0-9_]{0,63}$';
 const SCALAR = { oneOf: [{ type: 'string', maxLength: 256 }, { type: 'number' }, { type: 'boolean' }] } as const;
@@ -289,14 +289,14 @@ export class StoreError extends Error {
  * of each amount property never changes, so a record leaves only at 0. 409 `balance_not_zero`, naming no amount; every
  * delete path (HTTP DELETE, a host transaction's `remove`) calls it before writing anything.
  */
-export function refuseBalance(spec: Pick<NormalizedSpec, 'transfers'>, record: Readonly<StoredRecord>): void {
+function refuseBalance(spec: Pick<NormalizedSpec, 'transfers'>, record: Readonly<StoredRecord>): void {
   for (const transfer of Object.values(spec.transfers)) {
     const held = record[transfer.amount];
     if (held !== undefined && held !== 0) throw new StoreError(409, 'balance_not_zero', 'The record still holds a balance; transfer it to another record before deleting it');
   }
 }
 /** The 422 for a record that breaks the collection schema (or a store rule on a named property). */
-export const invalidRecord = (issues: readonly BodySchemaIssue[]): StoreError => new StoreError(422, 'invalid_record', 'Record does not match the collection schema', { issues });
+const invalidRecord = (issues: readonly BodySchemaIssue[]): StoreError => new StoreError(422, 'invalid_record', 'Record does not match the collection schema', { issues });
 
 const describedKeywords = 'type, enum, const, minLength, maxLength, pattern, format, minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf, allOf, anyOf, oneOf, not, title, description, $comment, examples, deprecated';
 /** JSON Schema for the store-owned part of one property (its one scalar `type`); every other profile keyword is checked by core's profile. */
@@ -636,12 +636,12 @@ function stateOf(name: string, option: 'editable' | 'deletable', spec: Collectio
   return out;
 }
 /** Whether `record` is in `state`: it holds one of the listed values of every named property (no state: always). */
-export const inState = (state: NormalizedState | undefined, record: Readonly<StoredRecord>): boolean => !state || Object.entries(state).every(([field, values]) => record[field] !== undefined && values.includes(record[field]!));
+const inState = (state: NormalizedState | undefined, record: Readonly<StoredRecord>): boolean => !state || Object.entries(state).every(([field, values]) => record[field] !== undefined && values.includes(record[field]!));
 /**
  * Refuses a body write (`editable`) or a delete (`deletable`) of a record outside its declared states (#952): 409
  * `record_locked`, naming no state. Every update and delete step calls it under the write lock, after `If-Match`.
  */
-export function refuseLocked(spec: Pick<NormalizedSpec, 'editable' | 'deletable'>, option: 'editable' | 'deletable', record: Readonly<StoredRecord>): void {
+function refuseLocked(spec: Pick<NormalizedSpec, 'editable' | 'deletable'>, option: 'editable' | 'deletable', record: Readonly<StoredRecord>): void {
   if (!inState(spec[option], record)) throw new StoreError(409, 'record_locked', `The record cannot be ${option === 'editable' ? 'changed' : 'deleted'} in its current state`);
 }
 /**
@@ -922,7 +922,7 @@ export function declarationFingerprint(spec: NormalizedSpec): string {
  * during a reload overlap, or one changed in the database. Fixed, naming no record or value; activation names the
  * record to the operator.
  */
-export const STORED_OUTSIDE = 'A stored record does not match this collection\'s declaration';
+const STORED_OUTSIDE = 'A stored record does not match this collection\'s declaration';
 /** The 503 a write answers when the declaration fence refuses it: bounded, naming nothing. */
 export const REDECLARED = 'The collection was redeclared by a newer activation';
 /**

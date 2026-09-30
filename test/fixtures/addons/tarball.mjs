@@ -1,6 +1,5 @@
 // Test-only npm-style tarballs: `packTarball` writes a gzipped ustar archive of a directory under `package/`, the way
 // `npm pack` lays one out, and `extractTarball` unpacks one into a directory, the way npm installs a registry package.
-// Independent of core's own reader (packages/core/src/package-files.ts), so the two check each other.
 import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { gunzipSync, gzipSync } from 'node:zlib';

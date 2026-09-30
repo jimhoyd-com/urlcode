@@ -10,7 +10,7 @@ type Json=Record<string,unknown>;
 export interface OpenApiProblem {where:string;message:string}
 export interface OpenApiCheck {valid:boolean;schema:string;problems:OpenApiProblem[];schemaObjects:number;operations:number}
 /** The dated OpenAPI 3.1 schema iteration core ships, by its `$id`. */
-export const officialOpenApiSchema='https://spec.openapis.org/oas/3.1/schema/2025-09-15';
+const officialOpenApiSchema='https://spec.openapis.org/oas/3.1/schema/2025-09-15';
 const MAX_PROBLEMS=50;
 const methods=['get','put','post','delete','options','head','patch','trace'];
 
@@ -33,7 +33,7 @@ function operationsOf(document:Json):[string,string,Json][] {
   return entries(document.paths).flatMap(([path,item])=>methods.flatMap(method=>isRecord(item)&&isRecord(item[method])?[[path,method,item[method]] as [string,string,Json]]:[]));
 }
 /** Every Schema Object in the document (components, parameters, bodies, responses and headers), with where it is. */
-export function openApiSchemaObjects(document:Json):[string,unknown][] {
+function openApiSchemaObjects(document:Json):[string,unknown][] {
   const found:[string,unknown][]=[];
   const components=isRecord(document.components)?document.components:{};
   for(const [name,schema] of entries(components.schemas))found.push([`components.schemas.${name}`,schema]);
