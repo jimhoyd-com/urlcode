@@ -58,7 +58,7 @@ async function membershipCollection(options: MembershipOptions): Promise<Collect
 async function withCollection<T>(database: string, options: MembershipOptions, create: boolean, work: (collection: Collection) => T): Promise<T> {
   if (typeof database !== 'string' || !isAbsolute(database)) throw new Error('Store database must be an absolute path');
   const collection = await membershipCollection(options);
-  const db = await openStoreDatabase(database, { create });
+  const db = await openStoreDatabase(database, { create, operator: true });
   try {
     collection.open(db);
     return work(collection);

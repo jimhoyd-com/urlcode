@@ -110,6 +110,43 @@ export function storeDurability(value: unknown): StoreDurability {
 }
 /** How long one statement waits for a lock another process holds before failing (it blocks this process meanwhile). */
 export const BUSY_TIMEOUT_MS = 2000;
+/**
+ * How long an operator connection (`urlcode-store members`, `reassign`; `addMember`, `removeMember`, `reassignOwner`)
+ * waits for a lock beside a serving process. Nobody is waiting on a response, so it waits longer than a request would.
+ */
+export const OPERATOR_LOCK_WAIT_MS = 10_000;
+/** The pause between two operator attempts at the write lock: short, so the idle gap between two server commits is seen. */
+const OPERATOR_LOCK_POLL_MS = 1;
+
+/** SQLITE_BUSY, or one of its extended codes. */
+const isBusy = (error: unknown): boolean => {
+  const code = error !== null && typeof error === 'object' && 'errcode' in error ? error.errcode : undefined;
+  return typeof code === 'number' && (code & 0xff) === 5;
+};
+/**
+ * Runs `BEGIN IMMEDIATE`. With `lockWait` (an operator connection) it polls for the write lock rather than going
+ * through SQLite's busy handler, which sleeps up to 100 ms between attempts and is not a queue: beside a serving
+ * process that holds the write lock for most of each commit (a flush to a slow disk, such as FlushFileBuffers on
+ * Windows) with only a short idle gap between commits, its roughly 30 attempts in 2 seconds can all land on a held lock,
+ * and the command failed with "database is locked". An attempt every millisecond for `lockWait` ms sees such a gap; a
+ * lock that is really held (a stuck process) still fails once `lockWait` has passed, and so does a writer that leaves
+ * no idle gap at all. The connection's busy timeout is `lockWait` again afterwards.
+ */
+function beginImmediate(db: DatabaseSync, lockWait: number | undefined): void {
+  if (lockWait === undefined) { db.exec('BEGIN IMMEDIATE'); return; }
+  const deadline = Date.now() + lockWait;
+  const pause = new Int32Array(new SharedArrayBuffer(4));
+  db.exec('PRAGMA busy_timeout=0');
+  try {
+    for (;;) {
+      try { db.exec('BEGIN IMMEDIATE'); return; }
+      catch (error) {
+        if (!isBusy(error) || Date.now() >= deadline) throw error;
+        Atomics.wait(pause, 0, 0, OPERATOR_LOCK_POLL_MS);
+      }
+    }
+  } finally { db.exec(`PRAGMA busy_timeout=${lockWait}`); }
+}
 
 /** SQLite releases carrying the fixes URLCode's SQLite stores require (the same floor as audit). */
 export function patched(version: string): boolean { const [a = 0, b = 0, c = 0] = version.split('.').map(Number); return a > 3 || a === 3 && (b > 51 || b === 51 && c >= 3 || b === 50 && c >= 7 || b === 44 && c >= 6); }
@@ -142,7 +179,9 @@ export class StoreDatabase {
   private depth = 0;
   /** The database file (its directory's real path), whose server lock an operator command looks at. */
   readonly path: string;
-  constructor(db: DatabaseSync, path: string) { this.db = db; this.path = path; }
+  /** On an operator connection, how long a write transaction polls for the write lock (`beginImmediate`). */
+  private readonly lockWait: number | undefined;
+  constructor(db: DatabaseSync, path: string, lockWait?: number) { this.db = db; this.path = path; this.lockWait = lockWait; }
   get open(): boolean { return !this.closed; }
   private statement(sql: string): StatementSync {
     if (this.closed) throw new Error('The store database is closed');
@@ -161,7 +200,7 @@ export class StoreDatabase {
   transaction<T>(work: () => T, mode: 'IMMEDIATE' | 'DEFERRED' = 'IMMEDIATE'): T {
     if (this.closed) throw new Error('The store database is closed');
     if (this.depth) throw new Error('Store transactions do not nest');
-    this.db.exec(`BEGIN ${mode}`);
+    if (mode === 'IMMEDIATE') beginImmediate(this.db, this.lockWait); else this.db.exec('BEGIN DEFERRED');
     this.depth++;
     try { const result = work(); this.db.exec('COMMIT'); return result; }
     catch (error) { try { this.db.exec('ROLLBACK'); } catch { /* The original error wins. */ } throw error; }
@@ -185,20 +224,23 @@ function versionOf(db: DatabaseSync): number {
  * sets the connection's `synchronous` level (default `full`); the operator commands never pass it, so they always commit
  * with FULL whatever the serving process uses. Each missing step runs in its own
  * BEGIN IMMEDIATE transaction together with the new `user_version`, so a crash mid-upgrade leaves the previous version.
- * Opening an up-to-date database changes nothing.
+ * Opening an up-to-date database changes nothing. `operator` opens the operator commands' connection: its statements
+ * wait up to `OPERATOR_LOCK_WAIT_MS` instead of `BUSY_TIMEOUT_MS`, and its write transactions poll for the write lock
+ * (`beginImmediate`). The serving process never passes it.
  */
-export async function openStoreDatabase(path: string, options: { create?: boolean; durability?: StoreDurability; probe?: Partial<HostProbe> | undefined } = {}): Promise<StoreDatabase> {
+export async function openStoreDatabase(path: string, options: { create?: boolean; durability?: StoreDurability; probe?: Partial<HostProbe> | undefined; operator?: boolean } = {}): Promise<StoreDatabase> {
   const synchronous = storeDurability(options.durability).toUpperCase();
   if (!patched(process.versions.sqlite || '')) throw new Error(`The store requires a patched SQLite (3.44.6, 3.50.7, 3.51.3 or newer); this Node has ${process.versions.sqlite || 'none'}`);
   const file = await privateFile(path, options.create !== false);
   await refuseNetworkFilesystem(dirname(file), 'store', options.probe);
   const db = new DatabaseSync(file, { allowExtension: false });
+  const lockWait = options.operator === true ? OPERATOR_LOCK_WAIT_MS : undefined;
   try {
-    db.exec(`PRAGMA busy_timeout=${BUSY_TIMEOUT_MS}; PRAGMA trusted_schema=OFF;`);
+    db.exec(`PRAGMA busy_timeout=${lockWait ?? BUSY_TIMEOUT_MS}; PRAGMA trusted_schema=OFF;`);
     let version = versionOf(db);
     db.exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=${synchronous};`);
     while (version < STORE_SCHEMA_VERSION) {
-      db.exec('BEGIN IMMEDIATE');
+      beginImmediate(db, lockWait);
       try {
         // Re-read under the write lock: another opener may have upgraded it meanwhile.
         const current = versionOf(db);
@@ -211,7 +253,7 @@ export async function openStoreDatabase(path: string, options: { create?: boolea
       version = versionOf(db);
     }
   } catch (error) { db.close(); throw error; }
-  return new StoreDatabase(db, file);
+  return new StoreDatabase(db, file, lockWait);
 }
 
 /**

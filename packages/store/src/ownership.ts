@@ -24,7 +24,7 @@ import type { StoreDatabase } from './database.ts';
 /** Opens an existing store database (never creates one), runs `work` in one write transaction and closes it. */
 async function transaction<T>(database: string, work: (db: StoreDatabase) => T): Promise<T> {
   if (typeof database !== 'string' || !isAbsolute(database)) throw new Error('Store database must be an absolute path');
-  const db = await openStoreDatabase(database, { create: false });
+  const db = await openStoreDatabase(database, { create: false, operator: true });
   try { return db.transaction(() => work(db)); } finally { db.close(); }
 }
 const total = (db: StoreDatabase, collection: string): number => db.get<{ n: number }>('SELECT count(*) AS n FROM store_records WHERE collection = ?', collection)!.n;

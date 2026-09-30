@@ -199,7 +199,9 @@ serving process, or a network filesystem, is refused at activation by an OS
 lock the first holds; a retiring activation during a reload, or an operator
 command on another declaration, has its writes refused with `503` by the
 declaration fence; a write blocked past the 2-second busy timeout answers
-`503`); every write is one SQLite
+`503`, while an operator command waits up to 10 seconds and tries for the write
+lock every millisecond, so it fails only beside a lock held that whole time or a
+writer that never leaves an idle gap); every write is one SQLite
 transaction that commits the record, its key, its `Idempotency-Key` claim and
 its audit event together or not at all; a retried `Idempotency-Key` replays the
 first status with the current record (a different request under it is `422`);

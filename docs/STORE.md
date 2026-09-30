@@ -2182,9 +2182,24 @@ lock on its bundled `auth.sqlite` ([below](#every-sqlite-extension-takes-the-loc
 The `urlcode-store` operator commands (`members`, `reassign`, `audit`,
 `backup`, `restore`) never take the lock: they run beside the server through
 SQLite's own locking (`audit` opens the database read-only). Reads are never
-blocked by a writer, and a write that finds the other connection holding the
-write lock waits up to 2 seconds (`busy_timeout`, blocking the server's event
+blocked by a writer, and a serving write that finds the other connection holding
+the write lock waits up to 2 seconds (`busy_timeout`, blocking the server's event
 loop meanwhile) and then answers `503 storage_unavailable` with nothing written.
+
+An operator write (`members add` and `remove`, `reassign`, and `addMember`,
+`removeMember` and `reassignOwner`, which open the same operator connection)
+waits up to 10 seconds instead and tries for the write lock every millisecond,
+blocking its own process meanwhile. SQLite's busy handler sleeps up to 100 ms
+between attempts and is not a queue, so beside a busy server whose commits each
+hold the lock for most of their time (a slow disk flush) its roughly 30 attempts
+in 2 seconds could all find the lock held, and the command failed (#1072).
+Polling sees any idle gap of a millisecond or so between two commits. The
+limit: a lock held for the whole 10 seconds (a stuck process), or a writer that
+commits back to back with no idle gap at all, still fails the command with
+nothing written (`The store could not save this change` for `members`,
+`database is locked` for `reassign`); run it again, or when the server is
+quieter. No operator command ever makes the server wait longer than its own
+2 seconds.
 
 **The declaration fence.** Each activation records, per collection, a
 fingerprint of its normalized declaration (the record schema with a named
