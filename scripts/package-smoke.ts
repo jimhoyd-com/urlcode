@@ -2,6 +2,7 @@ import { mkdtemp, writeFile, readFile, rm, mkdir, cp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { parsePackJson } from './pack-json.ts';
@@ -77,6 +78,16 @@ try {
   const capabilities = JSON.parse(command(process.execPath,[cli,'capabilities','--target','cloudflare','--json'])) as { format: number; targets: { deployment: string }[] };
   assert.equal(capabilities.format,1);
   assert.equal(capabilities.targets[0]?.deployment,'unverified');
+  {
+    // #1106: the packed function entry carries the cookbook handler, and that handler runs from the installed package.
+    const text = command(process.execPath,[cli,'capabilities','function','--json']);
+    assert.ok(Buffer.byteLength(text)<=8192,'capabilities function --json is unbounded');
+    const {example} = JSON.parse(text) as {example:{project:string;module:{file:string;export:string;source:string}}};
+    const module = join(install,'node_modules',...pack.name.split('/'),example.project,example.module.file);
+    assert.equal(await readFile(module,'utf8'),example.module.source);
+    const handler = (await import(pathToFileURL(module).href) as Record<string,(request:Request,context:{args:Record<string,unknown>})=>Response>)[example.module.export]!;
+    assert.deepEqual(await handler(new Request('http://localhost/hello/Ada'),{args:{name:'Ada',excited:false,greeting:'Hello',punctuation:'!'}}).json(),{message:'Hello, Ada.'});
+  }
   {
     const recipes = JSON.parse(command(process.execPath,[cli,'recipes','list','--json'])) as {name:string}[];
     assert.ok(recipes.some(recipe=>recipe.name==='typescript'));

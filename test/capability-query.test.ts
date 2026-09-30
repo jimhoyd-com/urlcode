@@ -2,7 +2,8 @@ import test from 'node:test';import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';import {fileURLToPath} from 'node:url';
 import {Ajv} from 'ajv';
 import {capabilityNames,capabilityTargets,capabilityDetails} from '../packages/core/src/capabilities.ts';
-import {getCapability,formatCapability} from '../packages/core/src/capability-query.ts';
+import {getCapability,formatCapability,handlerExampleMaxBytes} from '../packages/core/src/capability-query.ts';
+import {readFileSync} from 'node:fs';import {parseYaml} from '../packages/core/src/config.ts';import type {FunctionContext} from '../packages/core/src/functions.ts';
 import {getSchemaFragment,schemaPathNames} from '../packages/core/src/schema-query.ts';
 import {bodySchemaProfile} from '../packages/core/src/body-validation.ts';
 import {getCapability as sdkCapability,getSchemaFragment as sdkSchema} from '../packages/core/src/tooling.ts';
@@ -82,4 +83,30 @@ test('get_schema and get_capability describe request.body per method, with GET/H
  assert.throws(()=>getSchemaFragment('request.body.schema'),/names under .*GET, HEAD, POST/);
  const constraints=getCapability('request.body').constraints.join('\n');
  assert.match(constraints,/request\.body\.<METHOD>/);assert.match(constraints,/GET, HEAD and DELETE entries may only set `maxBytes`/);
+});
+test('function discovery carries the cookbook handler example verbatim and bounded (#1106)',async()=>{
+ const entry=getCapability('function'),example=entry.example!;
+ assert.ok(example);assert.equal(example.project,'examples/cookbook');
+ for(const name of capabilityNames)if(name!=='function')assert.equal(getCapability(name).example,undefined,name);
+ const base=new URL('../'+example.project+'/',import.meta.url);
+ // Drift: the YAML is the canonical file's own lines and the module is the file itself, never a copy.
+ const text=readFileSync(new URL(example.file,base),'utf8');
+ assert.ok(text.includes(example.yaml.slice('routes:\n'.length)));
+ const route=(parseYaml(example.yaml) as {routes:Record<string,{function:{source:string;export?:string;args:Record<string,unknown>}}>}).routes[example.route]!;
+ assert.equal(route.function.source,example.module.file);assert.equal(route.function.export??'default',example.module.export);
+ assert.equal(example.module.source,readFileSync(new URL(example.module.file,base),'utf8'));
+ assert.deepEqual(Object.keys(route.function.args).sort(),['excited','greeting','name','punctuation']);
+ const module=await import(new URL(example.module.file,base).href) as Record<string,(request:Request,context:{args:Record<string,unknown>})=>Response>;
+ const reply=module[example.module.export]!(new Request('http://x/hello/Ada'),{args:{name:'Ada',excited:true,greeting:'Hello',punctuation:'!'}});
+ assert.deepEqual(await reply.json(),{message:'Hello, Ada!'});
+ // The contract names real FunctionContext members; renaming one fails typecheck here.
+ const members:(keyof FunctionContext)[]=['args','inputs','env','secrets','requestId'];
+ for(const member of members)assert.ok(example.contract.includes('context.'+member),member);
+ assert.ok(Buffer.byteLength(JSON.stringify(example))<=handlerExampleMaxBytes);
+ const json=run('capabilities','function','--json');assert.equal(json.status,0,json.stderr);
+ assert.ok(Buffer.byteLength(json.stdout)<=8192,'capabilities function --json stays bounded');
+ assert.deepEqual(JSON.parse(json.stdout).example,example);
+ const human=run('capabilities','function');assert.equal(human.status,0,human.stderr);
+ assert.match(human.stdout,/Example \(examples\/cookbook\/routes\/code\.yaml, \/hello\/\{name\}\):/);
+ assert.ok(human.stdout.includes('    export function hello(request, {args}) {'));assert.match(human.stdout,/context\.secrets/);
 });

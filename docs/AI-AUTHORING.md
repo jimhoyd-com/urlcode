@@ -22,7 +22,9 @@ destination, which runs `init` there once. See
 Then make the next retrieval one bounded query: the MCP tool `get_context` when the
 `urlcode` server is registered, otherwise `urlcode context --project DIR` (add
 `--budget N` when context is scarce). Then retrieve only what the task needs:
-`urlcode capabilities NAME` (MCP `get_capability`) for one capability's limits,
+`urlcode capabilities NAME` (MCP `get_capability`) for one capability's limits
+(for `function`, also a paired route and handler module showing the
+`(request, context)` signature and `context.args`),
 `get_schema` for one YAML fragment, `urlcode recipes search TEXT`
 (`search_recipes`), `explain` for a route's effective behavior and, when the
 operator supplies a host file, `get_extensions`. If the site has artifacts
