@@ -7,7 +7,7 @@ import { dirname, isAbsolute, join } from 'node:path';
 import { defineExtension } from '@jimhoyd/urlcode/extensions';
 import type { ScaffoldResult } from '@jimhoyd/urlcode/extensions';
 import type { BetterAuthOptions } from 'better-auth';
-import { authAuthoring, authConfigSchema, authPolicySchema, createAuthExtension, isOwnerDatabase } from './auth.ts';
+import { authAuthoring, authConfigSchema, authOpenApiSecurity, authPolicySchema, createAuthExtension, isOwnerDatabase } from './auth.ts';
 import type { OwnerDatabase } from './auth.ts';
 
 export const SECRET_FILE = 'data/auth.secret', DATABASE = 'data/auth.sqlite';
@@ -69,6 +69,7 @@ export default defineExtension<AuthHostOptions>({
   name: 'auth',
   targets: ['node'],
   providesPrincipal: true,
+  openapiSecurity: authOpenApiSecurity,
   description: 'Accounts and sessions from Better Auth on one mount; protected routes receive the signed-in user id',
   contract: 2,
   requires: [],

@@ -377,9 +377,10 @@ for.
   register the same value, and the build writes it into the package's
   `urlcode.json` and the release catalog. The
   [`auth` short form](#protecting-a-route-the-auth-short-form), the OpenAPI
-  security scheme and `urlcode review`'s session hint follow this declaration,
+  sign-in gate and `urlcode review`'s session hint follow this declaration,
   never the extension name `auth`, so an independent provider works with all
-  three.
+  three. A provider may also declare how a client presents its credential,
+  for OpenAPI only: see [its security scheme](#declaring-the-credentials-openapi-security-scheme).
 - **One per request.** When one extension has set a principal, a second
   extension on the same route that tries to set one is refused: the request
   fails with a server error rather than letting either identity win silently.
@@ -749,6 +750,57 @@ mount for OpenAPI: <message>`.
 The store describes each collection from its record schema
 ([store OpenAPI](STORE.md#openapi)); the other first-party extensions leave
 their mounts opaque.
+
+#### Declaring the credential's OpenAPI security scheme
+
+`providesPrincipal` says a route is signed in, not how a client presents the
+credential: a cookie, a bearer token or anything else an operator-installed
+verifier reads. A principal provider may declare that as `openapiSecurity`
+(#1047), a standard OpenAPI 3.1 Security Scheme Object, in its
+`defineExtension` definition; `host()` must register the same value
+(`composeHost` refuses a difference, and `defineExtension` and activation
+refuse it on an extension that does not declare `providesPrincipal`). The
+build writes it into `urlcode.json` and the release catalog, so the export
+reads it without a host file and without running the extension; with a host
+file, the registration's value is used.
+
+```ts
+openapiSecurity: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }
+openapiSecurity: { type: 'apiKey', in: 'header', name: 'X-Api-Key' }
+openapiSecurity: { type: 'apiKey', in: 'cookie', name: 'acme_sid' }
+openapiSecurity: { type: 'apiKey', in: 'cookie' }  // the operator's configuration names the cookie
+```
+
+It is data that names where a credential goes, never a credential. Core
+checks it (`openApiSecurityProblem`, exported with the type
+`ExtensionOpenApiSecurity` and `extensionOpenApiSecurityLimits`) and refuses
+anything else, naming the extension:
+
+| Type | Keys | Rules |
+|---|---|---|
+| `http` | `scheme`, optional `bearerFormat`, `description` | `scheme` is an HTTP authentication scheme token of at most 64 characters (`bearer`, `basic`); `bearerFormat` only with `bearer`, printable ASCII of at most 64 |
+| `apiKey` | `in`, `name`, optional `description` | `in` is `header`, `query` or `cookie`; `name` is a token of at most 128 characters, and may be left out only for a cookie whose name the operator configures |
+| `mutualTLS` | optional `description` | |
+
+Every `description` is at most 512 characters. `oauth2` and `openIdConnect`
+are not accepted: their URLs are operator configuration.
+
+The [OpenAPI export](TOOLING.md#openapi-export) writes a complete declaration
+as the provider's `components.securitySchemes` entry,
+`urlcodePrincipal.<name>`, which every operation it gates requires. A cookie
+declared without a name gets no scheme, because OpenAPI requires the name and
+the export never publishes operator configuration: the operation states it
+under `x-urlcode.authentication` as
+`{extension, credential: "cookie", cookieName: "operator-defined"}`. A
+provider that declares nothing is stated there as
+`{extension, credential: "unknown"}`. Neither case invents a credential that
+a generated client would then send; the gate's 401, 403 and 503 are declared
+either way.
+
+The first-party `auth` extension declares a cookie without a name: Better
+Auth's session cookie is named by its configuration (a cookie prefix,
+per-cookie names, and the secure prefix an https origin adds), which is the
+operator's.
 
 ### Streamed responses
 
@@ -1805,6 +1857,7 @@ export default defineExtension<MyHostOptions>({
   schema,                     // JSON Schema of extensions.<name>.config
   policySchema,               // optional: per-route policies.extensions.<name>
   hooks, authoring,           // optional project customization contracts
+  providesPrincipal, openapiSecurity,  // optional: sets the request principal, and its credential's OpenAPI scheme
   scaffold(request) { return { config, routes, files, env, notes }; },  // the capability
   example(request) { return { config, routes, notes }; },               // optional demo, only with --example
   host(ctx, options) { return { registration, exports, close }; },
