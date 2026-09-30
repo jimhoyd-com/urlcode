@@ -1864,14 +1864,17 @@ export default defineExtension<MyHostOptions>({
 The static fields (`name` to `authoring`) are what `npm run build:addons` writes
 into `urlcode.json`.
 
-`scaffold({site, project, installed, acknowledgements})` writes nothing. It
+`scaffold({site, project, installed, principalProviders, acknowledgements})` writes nothing. It
 returns `{config, routes, files?, env?, acknowledged?, routeNotes?, notes?}`,
 and core writes it as described above. `example` takes the same request and
 returns the same shape; with `--example` core merges it into the scaffold's
 result before writing: `config` deep-merges (plain objects key by key, any
 other example value replaces), a route both return refuses, and the lists and
 `env` are appended. `installed` lists every extension in the
-site after this add; `acknowledgements` holds the sorted `--ack` values. To
+site after this add; `principalProviders` lists, sorted, the installed ones
+whose descriptors declare `providesPrincipal`, so a scaffold that wants a
+protected mount asks for any sign-in provider rather than one package name;
+`acknowledgements` holds the sorted `--ack` values. To
 require an acknowledgement, a scaffold throws an `Error` carrying
 `acknowledgement: '<name>:<id>'` whose message states the risk, and lists each
 one it used in `acknowledged`. `routeNotes` are single-line comments written

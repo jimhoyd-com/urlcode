@@ -409,7 +409,7 @@ test('urlcode-auth create-user succeeds while a serving process commits continuo
 
 test('the scaffold writes the mount and a private secret; host() reads it; the CLI migrates and creates a user', async t => {
   const site = await mkdtemp(join(tmpdir(), 'urlcode-auth-site-')); t.after(() => rm(site, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }));
-  const scaffold = await extension.definition.scaffold!({ site, project: join(site, 'app'), installed: ['auth'], acknowledgements: [] });
+  const scaffold = await extension.definition.scaffold!({ site, project: join(site, 'app'), installed: ['auth'], principalProviders: ['auth'], acknowledgements: [] });
   assert.deepEqual(Object.keys(scaffold.routes), ['/api/auth/*']);
   const file = scaffold.files![0]!;
   assert.equal(file.path, 'data/auth.secret');

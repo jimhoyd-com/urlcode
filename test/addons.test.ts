@@ -246,6 +246,25 @@ test('an independent extension package installs by spec, is found by its descrip
   assert.ok((await readFile(log, 'utf8')).split('\n').filter(Boolean).every(line => JSON.parse(line).includes('--ignore-scripts')), 'npm never runs lifecycle scripts');
 });
 
+// #1052 S6: a scaffold learns which installed extensions provide the request principal from their descriptors, so an
+// independent sign-in provider serves a scaffold (the store's auth-protected example) as well as the bundled auth does.
+test('a scaffold request carries the installed principal providers from their descriptors, not from a package name', async t => {
+  const m = manifest();
+  const provider = async (providesPrincipal: boolean): Promise<string> => {
+    const target = await mkdtemp(join(tmpdir(), 'urlcode-principal-')); t.after(() => rm(target, { recursive: true, force: true }));
+    await cp(join(fixtures, 'greeting'), target, { recursive: true });
+    const descriptorFile = join(target, 'urlcode.json'), descriptor = JSON.parse(await readFile(descriptorFile, 'utf8')) as Record<string, unknown>;
+    await writeFile(descriptorFile, JSON.stringify({ ...descriptor, ...(providesPrincipal ? { providesPrincipal: true } : {}) }));
+    const source = join(target, 'extension.js');
+    await writeFile(source, (await readFile(source, 'utf8')).replace("scaffold: () => ({ config: { text: 'hi' },", "scaffold: request => ({ notes: [`principal providers: ${JSON.stringify(request.principalProviders)}`], config: { text: 'hi' },"));
+    return target;
+  };
+  const signIn = await addAddons(await site(t), 'extension', [await provider(true)], { manifest: m });
+  assert.ok(signIn.notes.includes('principal providers: ["greeting"]'), signIn.notes.join('\n'));
+  const plain = await addAddons(await site(t), 'extension', [await provider(false)], { manifest: m });
+  assert.ok(plain.notes.includes('principal providers: []'), plain.notes.join('\n'));
+});
+
 test('extensions add installs the capability only; --example adds the example on top (#711)', async t => {
   const m = manifest();
   const blank = await site(t);

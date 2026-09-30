@@ -11,9 +11,9 @@ import { storeConfigSchema } from '../src/store.ts';
 import { cleanup } from './cleanup.ts';
 
 const PROJECT_SHA256 = 'a'.repeat(64);
-const request = { site: '/tmp/site', project: '/tmp/site/app', installed: ['store'], acknowledgements: ['store:public-write'] } as const;
+const request = { site: '/tmp/site', project: '/tmp/site/app', installed: ['store'], principalProviders: [], acknowledgements: ['store:public-write'] } as const;
 /** The store's `--example` output (#711); the capability scaffold alone is checked separately below. */
-const scaffold = (overrides: Partial<{ installed: readonly string[]; acknowledgements: readonly string[] }> = {}) => store.definition.example!({ ...request, ...overrides });
+const scaffold = (overrides: Partial<{ installed: readonly string[]; principalProviders: readonly string[]; acknowledgements: readonly string[] }> = {}) => store.definition.example!({ ...request, ...overrides });
 
 test('the definition names the store, requires nothing and shares the runtime schema', () => {
   assert.equal(store.definition.name, 'store');
@@ -25,7 +25,7 @@ test('the definition names the store, requires nothing and shares the runtime sc
 
 test('a blank install declares no collection, no route and needs no acknowledgement (#711)', async () => {
   for (const installed of [['store'], ['audit', 'store'], ['auth', 'store']]) {
-    const blank = await store.definition.scaffold!({ ...request, installed, acknowledgements: [] });
+    const blank = await store.definition.scaffold!({ ...request, installed, principalProviders: installed.filter(name => name === 'auth'), acknowledgements: [] });
     assert.deepEqual(blank.config, { collections: {} });
     assert.deepEqual(blank.routes, {});
     assert.equal(blank.acknowledged, undefined);
@@ -55,7 +55,7 @@ test('the example returns the todos collection and its route, and validates with
 });
 
 test('scaffold protects the JSON mount with auth: true when auth is installed, and needs no acknowledgement', async () => {
-  const result = await scaffold({ installed: ['auth', 'store'], acknowledgements: [] });
+  const result = await scaffold({ installed: ['auth', 'store'], principalProviders: ['auth'], acknowledgements: [] });
   // The API takes JSON only, so auth admits its writes on same-origin provenance rather than a token header (decision 0.1).
   assert.deepEqual((result.routes['/api/todos/*'] as { auth?: unknown }).auth, true);
   // Behind auth the example collection is per-user (#331): the safer pattern to copy.
@@ -68,6 +68,24 @@ test('scaffold protects the JSON mount with auth: true when auth is installed, a
   assert.deepEqual(Object.keys(result.config), ['collections']);
 });
 
+
+// #1052 S6: the example asks for a principal provider, not the package named auth.
+test('an independent principal provider protects the example, and auth installed without one does not', async () => {
+  const independent = await scaffold({ installed: ['authjs', 'store'], principalProviders: ['authjs'], acknowledgements: [] });
+  assert.equal((independent.routes['/api/todos/*'] as { auth?: unknown }).auth, true);
+  assert.equal((independent.config as { collections: { todos: { ownership?: string } } }).collections.todos.ownership, 'owner');
+  assert.equal(independent.acknowledged, undefined);
+  assert.ok(independent.notes!.some(note => note.includes('authjs decides who is signed in')));
+  assert.ok(independent.notes!.every(note => !/Better Auth|session cookie/.test(note)));
+  // Two providers: `auth: true` would be refused, so the mount names the first one.
+  const two = await scaffold({ installed: ['auth', 'authjs', 'store'], principalProviders: ['auth', 'authjs'], acknowledgements: [] });
+  assert.deepEqual((two.routes['/api/todos/*'] as { policies?: unknown }).policies, { extensions: { auth: {} } });
+  assert.equal('auth' in (two.routes['/api/todos/*'] as object), false);
+  const document = validateDocument({ version: '1', extensions: { store: { version: '1', config: two.config } }, routes: two.routes });
+  assert.deepEqual(document.routes['/api/todos/*']?.policies?.extensions, { auth: {} });
+  // A name alone proves nothing: an `auth` that provides no principal leaves the mount unprotected.
+  await assert.rejects(async () => scaffold({ installed: ['auth', 'store'], principalProviders: [], acknowledgements: [] }), /anyone could write/);
+});
 
 test('scaffold refuses a writable mount nothing protects unless store:public-write is acknowledged', async () => {
   for (const installed of [['store'], ['audit', 'store']]) {
@@ -101,10 +119,10 @@ test('host() registers the store through composeHost with the operator database'
 });
 
 test('with audit installed the example collection records its writes, and says so', async () => {
-  const audited = await scaffold({ installed: ['audit', 'auth', 'store'], acknowledgements: [] });
+  const audited = await scaffold({ installed: ['audit', 'auth', 'store'], principalProviders: ['auth'], acknowledgements: [] });
   assert.equal((audited.config as { collections: { todos: { audit?: boolean } } }).collections.todos.audit, true);
   assert.ok(audited.notes!.some(note => note.includes('audit: true') && note.includes('503')));
-  const plain = await scaffold({ installed: ['auth', 'store'], acknowledgements: [] });
+  const plain = await scaffold({ installed: ['auth', 'store'], principalProviders: ['auth'], acknowledgements: [] });
   assert.equal('audit' in (plain.config as { collections: { todos: object } }).collections.todos, false);
   assert.ok(plain.notes!.every(note => !note.includes('audit')));
 });
