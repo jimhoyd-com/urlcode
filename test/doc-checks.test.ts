@@ -147,3 +147,10 @@ test('the guidance-claims check passes on this checkout (#1008)', () => {
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /no contradictions/);
 });
+
+test('the conflict-marker check finds <<<<<<< and >>>>>>> lines, never a setext =======', async () => {
+  const { conflictMarkers } = await import('../scripts/check-conflict-markers.ts');
+  const text = ['# Title', '', 'Heading', '=======', '<<<<<<< HEAD', 'ours', '=======', 'theirs', '>>>>>>> origin/main', 'a <<<<<<< b', ''].join('\n');
+  assert.deepEqual(conflictMarkers([{ path: 'CHANGELOG.md', text }]), ['CHANGELOG.md:5', 'CHANGELOG.md:9']);
+  assert.deepEqual(conflictMarkers([{ path: 'README.md', text: 'Heading\n=======\nbody\n' }]), []);
+});
