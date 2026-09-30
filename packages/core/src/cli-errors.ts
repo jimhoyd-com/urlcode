@@ -35,7 +35,7 @@ export function contextFromEnv(name: keyof typeof contextEnv, env: NodeJS.Proces
 /** Placeholders a refusal prints for context the operator has to supply; never a guessed value. */
 export const contextPlaceholders = { origin: '<https://your.site>', policy: '<operator/policy.json>' } as const;
 /** Commands that activate extensions, so they need the canonical origin as well as the reviewed revision. */
-const activatingCommands = new Set(['dev', 'serve', 'validate', 'test', 'routes', 'audit', 'benchmark', 'mcp']);
+const activatingCommands = new Set(['dev', 'serve', 'validate', 'test', 'routes', 'audit', 'mcp']);
 /** Refusals that name missing operator context; the CLI answers each with one complete command. */
 export const missingContextCodes: ReadonlySet<string> = new Set(['origin-required', 'revision-pin-required']);
 type ContextName = keyof typeof contextEnv;

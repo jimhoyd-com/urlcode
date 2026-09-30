@@ -144,9 +144,9 @@ holding an unpaired surrogate is `400 invalid_unicode`; see
 `transition_conflict`, or `interval_conflict` with
 [declared intervals](#non-overlapping-intervals)), `412` stale `If-Match`, `413` body or record too
 large, `415`, `422` `invalid_record` or `idempotency_key_reused`, `503`
-`storage_unavailable` when the database write failed, another process held its
-lock past the busy timeout or a newer activation redeclared the collection
-([fence](#several-serving-processes-on-one-host); nothing is written), `500` for anything unexpected
+`storage_unavailable` when the database write failed, another connection (an
+operator command) held its lock past the busy timeout or a newer activation redeclared the collection
+([fence](#one-serving-process-per-database); nothing is written), `500` for anything unexpected
 (no cause in the body).
 
 ## Bounded keyed transitions
@@ -880,16 +880,13 @@ collections and installs the extensions that may call `transaction`. The store
 adds no roles and no command to edit claims; `urlcode-store reassign` leaves
 claims as they are and moves membership with the owned records.
 
-**One process and several.** Every guarantee here is a SQLite `BEGIN
-IMMEDIATE` transaction on one database file, so it holds for every connection
-to that file: the tests race retries and approvals from separate threads, each
-with its own connection, run the declaration fence across real child
-processes, and race idempotency, a transition, transfers and intervals across
-three real `urlcode serve` processes over HTTP
-([the harness](#what-the-multi-process-harness-proves)). Several serving processes on one host, on one release, are
-supported ([several serving processes](#several-serving-processes-on-one-host));
-several hosts, network filesystems and clustered workers are unsupported, and
-nothing spans the store and another database.
+**One serving process.** Every guarantee here is a SQLite `BEGIN IMMEDIATE`
+transaction on one database file, so it holds for every connection to that
+file, the operator commands' included: the tests race retries, approvals,
+transfers and intervals from several connections of one process. One process
+serves a database ([one serving process per database](#one-serving-process-per-database));
+several servers, several hosts, network filesystems and clustered workers are
+unsupported, and nothing spans the store and another database.
 
 **Sandbox and targets.** The store declares `targets: ['node']`, so the aws
 and vercel targets refuse it before serving. Transitions and retries are
@@ -914,7 +911,7 @@ sorted lists are ordered in SQL since
 declared intervals and transfers save is
 [measured in the framework guide](FRAMEWORK.md#plumbing-removed-by-intervals-and-transfers).
 A `SIGKILL` and a full disk have their evidence
-([the harness](#what-the-multi-process-harness-proves),
+([the server lock tests](#what-the-server-lock-tests-prove),
 [the disk-full tests](#what-the-disk-full-tests-prove)).
 
 
@@ -1192,7 +1189,7 @@ Idempotency-Key: 5f0c...
   one), shorten the record or raise `maxRecordBytes`, or move balances back to
   the issuer, raise the lowest `min` or lower `maxRecords`. The check runs in
   the transaction that records the declaration (the
-  [fence](#several-serving-processes-on-one-host)), so no write through the previous
+  [fence](#one-serving-process-per-database)), so no write through the previous
   declaration lands between the check and the switch; a refused activation
   records nothing and the previous one keeps serving.
 - **The answer.** `200 {from, to?}`: each record as the transfer left it, with
@@ -1934,8 +1931,8 @@ operator says made the change, not proof of it. Commands that change nothing
 
 - One SQLite database per site, through Node's built-in `node:sqlite`:
   `store({database})` in `host.mjs`, else `STORE_DATABASE`, else
-  `data/store.sqlite` beside `host.mjs`. `urlcode test`, `audit` and
-  `benchmark`, and a `--local-review` `validate` or `routes` with no operator
+  `data/store.sqlite` beside `host.mjs`. `urlcode test` and `audit`,
+  and a `--local-review` `validate` or `routes` with no operator
   pin, ignore all three and use a fresh database of their own per run
   ([test data and seeds](READINESS.md#test-data-and-seeds)). It must be outside the project
   (checked after symlink resolution). Its directory is created `0700` and the
@@ -1950,13 +1947,13 @@ operator says made the change, not proof of it. Commands that change nothing
   `store_idempotency` (retained `Idempotency-Key` claims: the scoped key hash,
   the request fingerprint, the status and the record id, never record values) and
   `store_audit_outbox` (undelivered audit events), plus the one-row
-  `store_audit_drain` (when the audit drain last kept up, schema version 3;
-  and which process holds the drain's lease, schema version 5),
+  `store_audit_drain` (when the audit drain last kept up, schema version 3),
   `store_transaction_results` (retained
-  [host transaction](#host-transactions) keys and results; schema version 4),
-  `store_declarations` (the [declaration fence](#several-serving-processes-on-one-host):
-  each collection's served declaration fingerprint; schema version 5) and
-  `store_servers` (one lease row per serving process; schema version 5).
+  [host transaction](#host-transactions) keys and results; schema version 4)
+  and `store_declarations` (the [declaration fence](#one-serving-process-per-database):
+  each collection's served declaration fingerprint; schema version 5).
+  Schema version 6 dropped the previous release's `store_servers` lease table
+  and drain lease columns.
   Collections are rows, not
   tables, so declaring, changing or removing a collection never changes the
   tables; the rows of a collection that is no longer declared stay untouched.
@@ -1993,14 +1990,13 @@ operator says made the change, not proof of it. Commands that change nothing
 - Nothing is cached in memory: every read queries the database. Activation
   still validates every stored record against the declaration and refuses a
   database that no longer matches it rather than serving bad data.
-- **Several serving processes on one host** may share the database; see
-  [below](#several-serving-processes-on-one-host) for what that supports and
-  what the store refuses. SQLite's file locks keep every connection from
-  corrupting it: the `urlcode-store` operator commands and an online backup run
-  beside the servers, reads are never blocked by a writer, and a write that
-  finds another process holding the write lock waits up to 2 seconds
-  (`busy_timeout`, blocking the server's event loop meanwhile) and then answers
-  `503 storage_unavailable` with nothing written.
+- **One serving process per database**; a second one is refused
+  ([below](#one-serving-process-per-database)). SQLite's file locks keep every
+  connection from corrupting the file: the `urlcode-store` operator commands
+  and an online backup run beside the server, reads are never blocked by a
+  writer, and a write that finds another connection holding the write lock
+  waits up to 2 seconds (`busy_timeout`, blocking the server's event loop
+  meanwhile) and then answers `503 storage_unavailable` with nothing written.
 - Transactions span collections of this one database (`urlcode-store reassign`
   and [host transactions](#host-transactions) use that), but each HTTP request
   changes exactly one record: there is no multi-record or cross-collection
@@ -2036,19 +2032,44 @@ operator says made the change, not proof of it. Commands that change nothing
 
 Errors never contain record values, SQL or filesystem paths.
 
-### Several serving processes on one host
+### One serving process per database
 
-The supported topology is N `urlcode serve` processes or containers on **one
-host**, on distinct ports behind a proxy, all on **one release**, with the
-database on **local disk**. Every guarantee above is one `BEGIN IMMEDIATE`
-transaction, so it holds across processes. The tests race the invariants
-from threads, each with its own connection, run the declaration fence and
-the host lease across real `node` child processes, and run the race suites
-across real `urlcode serve` processes
-([below](#what-the-multi-process-harness-proves)). More processes do not add write throughput:
-SQLite takes one writer at a time, and each commit's fsync blocks its
-process ([capacity](CAPACITY.md#measured-the-sqlite-store)). `node:cluster`
-workers, several hosts and network filesystems stay unsupported.
+**One `urlcode serve` process serves a store database.** Several servers need
+a real database server, which URLCode does not provide. More processes would
+not add write throughput anyway: SQLite takes one writer at a time, and each
+commit's fsync blocks the process
+([capacity](CAPACITY.md#measured-the-sqlite-store)). `node:cluster` workers,
+several hosts and network filesystems are unsupported.
+
+**The server lock.** Before a serving process opens `store.sqlite`, it takes
+an exclusive lock on the file `store.sqlite.server-lock` beside it, and holds
+it until its last activation closes. The lock is SQLite's own file lock
+(`fcntl` on Linux and macOS, `LockFileEx` on Windows) on that file, held by a
+transaction that never ends. The operating system releases it when the
+process exits, however it exits (a crash, `kill -9`, an out-of-memory kill),
+so a restart never waits for anything to expire. There is no heartbeat,
+timestamp, hostname or clock involved. A second serving process on the same
+database is refused before it reads or writes the database:
+
+```text
+Another process is already serving this store database (/srv/site/data/store.sqlite):
+URLCode serves each database from one process. Stop that server first. Several servers
+need a real database server, which URLCode does not provide.
+```
+
+A pinned `urlcode validate` or `urlcode routes` activates the site's own data,
+so it is refused the same way while the site is served. The lock file stays
+beside the database after the server stops, empty; do not delete it while a
+server runs, and a backup can leave it out. The auth and audit extensions take
+the same lock on `auth.sqlite` and `audit.sqlite`
+([below](#every-sqlite-extension-takes-the-lock)).
+
+The `urlcode-store` operator commands (`members add|remove`, `reassign`,
+`ownerless-assign`, `ownerless-delete`, `backup`) never take the lock: they run
+beside the server through SQLite's own locking, as before. Reads are never
+blocked by a writer, and a write that finds the other connection holding the
+write lock waits up to 2 seconds (`busy_timeout`, blocking the server's event
+loop meanwhile) and then answers `503 storage_unavailable` with nothing written.
 
 **The declaration fence.** Each activation records, per collection, a
 fingerprint of its normalized declaration (the record schema with a named
@@ -2056,196 +2077,94 @@ schema resolved, defaults, `readOnlyProperties`, key, increments, limits,
 ownership, audit, transitions, membership, readers, intervals, transfers,
 idempotency and mounts) and the store schema version, in
 `store_declarations`. The newest activation wins: it replaces what any
-earlier activation, in this process or another, recorded. Every write
-transaction (HTTP writes, increments, transitions, transfers, short-link
-clicks, `StoreExports` writes and each collection a host `transaction()`
-writes) first reads, under the write lock and through the primary key, the
-recorded fingerprint and version and the file's `user_version`. When any of
-them differs from its own, the write answers `503 storage_unavailable` with
-the fixed message `The collection was redeclared by another process` and
-writes nothing. Reads keep working. So an older process, whether it runs the
-previous declaration or a previous release whose schema a newer one migrated,
-cannot keep writing rows the newer declaration forbids. Two processes on the
-same declaration both write. A retiring process never becomes current again
-by itself: to roll back, restart (or reload) the previous release, whose
-activation records its declaration again.
+earlier activation recorded. Every write transaction (HTTP writes,
+increments, transitions, transfers, short-link clicks, `StoreExports` writes
+and each collection a host `transaction()` writes) first reads, under the
+write lock and through the primary key, the recorded fingerprint and version
+and the file's `user_version`. When any of them differs from its own, the
+write answers `503 storage_unavailable` with the fixed message
+`The collection was redeclared by a newer activation` and writes nothing.
+Reads keep working. With one process, the fence serves two cases:
 
-The operator commands carry the project's declaration rather than an
-activation's. A `urlcode-store` command that writes (`members add|remove`,
-`reassign`, `ownerless-assign`, `ownerless-delete`) is refused when a live
-server has recorded a different declaration of a collection it touches, and
-proceeds when none is recorded or no server holds a live lease.
+- **A dev reload.** The retiring runtime finishes its in-flight requests
+  after the replacement recorded its declaration, so it cannot keep writing
+  rows the new declaration forbids ([reload](#reload)).
+- **The operator commands.** They carry the project's declaration rather than
+  an activation's. A `urlcode-store` command that writes is refused when the
+  serving process (the holder of the server lock) has recorded a different
+  declaration of a collection it touches, or runs another store schema. It
+  proceeds when none is recorded or no server holds the lock. A command of a
+  newer release that migrates the file also fences the running server's
+  writes through `user_version`.
 
-**Refused setups.** Opening the database (serving, or an operator command)
-refuses a database directory on a network filesystem, by the `statfs` type
-on Linux: NFS (`0x6969`), SMB (`0x517b`), SMB2 (`0xfe534d42`), CIFS
-(`0xff534d42`), FUSE (`0x65735546`, which includes sshfs, s3fs and Docker
-Desktop's gRPC FUSE file sharing), 9P (`0x01021997`, WSL2's `/mnt` drives),
-Ceph (`0x00c36400`) and AFS (`0x5346414f`). On macOS and Windows Node exposes
-no filesystem type the check can trust, so it is skipped there. The auth and
-audit extensions refuse the same list for `auth.sqlite` and `audit.sqlite`.
-A serving process also
-joins `store_servers`: a lease row with its instance id, hostname, Linux boot
-id (`/proc/sys/kernel/random/boot_id`, when readable) and pid, renewed every
-5 seconds. A peer on another host is one that reports a different boot id
-(or, when either side has none, a different hostname). Containers on one host
-have their own hostnames and share the boot id, so they are accepted. When an
-activation finds a live peer on this host, it logs one `extension_warning`:
-throttle policies and origin caches are per process, so each process applies
-its own limits and keeps its own cache.
+**Network filesystems are refused.** Taking the lock (and opening the
+database from an operator command) refuses a database directory on a network
+filesystem, by the `statfs` type on Linux: NFS (`0x6969`), SMB (`0x517b`),
+SMB2 (`0xfe534d42`), CIFS (`0xff534d42`), FUSE (`0x65735546`, which includes
+sshfs, s3fs and Docker Desktop's gRPC FUSE file sharing), 9P (`0x01021997`,
+WSL2's `/mnt` drives), Ceph (`0x00c36400`) and AFS (`0x5346414f`). File locks
+and SQLite's write-ahead log are unreliable there. On macOS and Windows Node
+exposes no filesystem type the check can trust, so it is skipped there.
 
-The lease never compares two hosts' clocks
-([#978](https://github.com/jimhoyd-com/urlcode/issues/978)). Each renewal
-writes a larger `heartbeat_at` than the last, and a process judges another
-row by whether that value changes, timed on its own monotonic clock:
+#### Every SQLite extension takes the lock
 
-- **Joining.** A row of another host makes activation wait and watch it, for
-  up to 20 seconds, and log one line saying so. If its heartbeat advances,
-  activation is refused. If it stays unchanged for 20 seconds, the process
-  deletes it and joins. So a crashed host blocks a restart for 20 seconds
-  whatever its clock said, and a joiner whose clock runs ahead never evicts a
-  live holder. A row of this host (one kernel, one clock) is also dropped once
-  its `expires_at` has passed.
-- **Serving.** Every heartbeat reads the table again. If it finds a row of
-  another host, whether or not its own row is still there, the lease is lost:
-  the process deletes its row, logs a line naming that host, and does not
-  re-insert it. Every store write checks the lease first, inside its own
-  transaction: under the write lock it reads the lease table and proceeds only
-  while its own row is there and no other host's is. Otherwise the write
-  answers `503 storage_unavailable` and writes nothing. Reads keep working.
-  The check never trusts the process's own clock or its last heartbeat
-  ([#1010](https://github.com/jimhoyd-com/urlcode/issues/1010)); it is one
-  read of a table of a few rows under a lock the write already holds (about
-  2 µs on an Apple-silicon laptop, against about 70 µs for a one-row commit
-  with `synchronous=FULL`).
-- **Recovering.** A process that lost the lease keeps watching. Once no
-  other host holds a row (that host closed, or its row stayed unchanged for
-  20 seconds), it rejoins at its next heartbeat and writes again.
+The lock and the network filesystem check are one implementation in core
+(`@jimhoyd/urlcode/extensions`: `holdServerLock`, `serverLockHeld`,
+`refuseNetworkFilesystem`). Each extension locks its own database: the store
+when it opens its connection, auth on each activation (`auth.sqlite`), and
+audit on its first activation until the audit host closes (`audit.sqlite`).
+So a site that runs auth or audit without the store is refused a second
+server too. Holders in one process share the lock, so a dev reload's two
+activations never refuse each other. An activation that fails releases its
+share ([#979](https://github.com/jimhoyd-com/urlcode/issues/979)). The
+`urlcode-auth` (`migrate`, `create-user`, `find-user`) and `urlcode-audit`
+(`list`, `backup`, `restore`) commands do not take it.
 
-A host inserts its row only in a transaction that found no other host's row,
-so at any moment the table holds rows of one host at most, and a write that
-passed the check holds the write lock until it commits. So a holder that
-stalled for longer than the TTL (a suspended VM whose clock stopped with it,
-`SIGSTOP`, a blocked event loop) and resumes after another host took over
-refuses its writes, whatever its clock says. It does not rejoin beside that
-host. A failed heartbeat is logged once and retried every 5 seconds.
+The serving process is the audit outbox's only drainer: it peeks and acks the
+outbox with no lease, and delivery stays at least once and stored once (audit
+inserts by event id and ignores a duplicate).
 
-**One audit drainer.** With the audit extension every process has a drain
-loop, but only the holder of the drain lease (`holder` and `lease_until` in
-`store_audit_drain`, 10 seconds, renewed once half is left) peeks and acks
-the outbox; another process peeks nothing. A peer takes the drain over once
-the lease expires, or at its next poll when the holder closes and releases
-it. Delivery stays at least once and stored once: audit inserts by event id
-and ignores a duplicate, and a holder that lost its lease between peek and
-ack leaves the rows for the new holder. An event written in any process is
-drained within the holder's 1 second poll. `audit.flush()` waits for its own
-process's drain only, so in a process that does not hold the lease it does
-not wait for a peer's delivery.
+#### What the lock does not do
 
-**Every SQLite extension detects another host.** The network filesystem check
-and the lease are one implementation in core
-(`@jimhoyd/urlcode/extensions`: `refuseNetworkFilesystem`, `joinHostLease`),
-and each extension keeps its lease in its own database: the store in
-`store_servers`, auth in `auth_servers` in `auth.sqlite` (one row per
-activation), and audit in `audit_servers` in `audit.sqlite` (from its first
-activation until the audit host closes). The rules above apply to each: a live
-peer on another host refuses activation, processes on one host never refuse
-each other, a row of another host is judged by whether its heartbeat advances,
-and a process that loses the lease stops writing until it holds it again. So a
-site that runs auth or audit without the store is refused on a second host too
-([#941](https://github.com/jimhoyd-com/urlcode/issues/941)). A process that
-lost the lease answers `503 auth_unavailable` on every auth request, and
-stores no audit event, so audit's producers keep their events and deliver them
-once it rejoins. Store and audit check the lease inside each write
-transaction. Auth checks it once per request before Better Auth runs (a quick
-`503`), and again inside every Better Auth write: Better Auth's statements
-cannot be wrapped in a transaction of auth's, so each of its tables has a
-temporary trigger, on auth's connection only, that runs the same check before
-every insert, update and delete, under that statement's write lock. A stall
-between the per-request check and Better Auth's writes therefore writes
-nothing once another host took over; the request answers
-`503 auth_unavailable`. Each extension releases its lease
-when an activation fails after joining
-([#979](https://github.com/jimhoyd-com/urlcode/issues/979)).
+- It guards each file separately. Pointing the store at one directory and
+  auth at another lets two servers each hold one lock; keep a site's data in
+  one `data/` directory.
+- An OS lock only works among processes that share a kernel's view of the
+  file. On macOS and Windows a network filesystem is not detected, and two
+  hosts sharing one there may both believe they hold the lock.
+- It does not stop another program from opening the database. SQLite's own
+  locking still keeps any connection from corrupting it.
+- On Windows the operating system releases a terminated process's file locks
+  after a delay it decides, not at the moment the process exits. A restart
+  straight after a crash can therefore be refused once; start it again.
+- Test runs (`urlcode test`, `urlcode audit`, `urlcode benchmark`, and
+  `--local-review`) use a fresh temporary data directory, so their locks
+  never meet a served site's.
 
-What the lease does not do:
+**Per process.** Throttle counters, origin caches and metrics live in the one
+serving process. Better Auth's sign-in limit counts in `auth.sqlite`, so it
+also survives a restart, unless the operator chose per-process storage
+([auth](../packages/auth/README.md#operator-options)).
 
-- Each lease guards only its own file. It cannot see a second host that
-  shares none of them. On macOS and Windows a network filesystem is noticed
-  only through the lease, once both hosts serve at once.
-- It detects a second host within one heartbeat or one write, but it does not
-  prevent the two from opening the file together. Over a network filesystem
-  SQLite's locks and write-ahead log are unreliable, so the lease's own
-  statements can fail there too. It is a check for a misconfiguration, not a
-  way to run on two hosts.
-- A process judges peers by its own monotonic clock, so clocks decide when a
-  take-over happens, never whether two hosts write. A clock that runs fast by
-  a large factor makes a process take over from a live holder too early; the
-  holder then refuses its writes rather than both
-  writing.
-- It guards writes, not reads. A process whose row is gone keeps serving
-  reads, which can be stale once the other host writes, until its next
-  heartbeat notices the other host. It keeps its connection and keeps
-  watching the lease table, which takes the write lock once per heartbeat.
-- Auth guards the tables that exist when it activates. A table created while
-  it serves (running `urlcode-auth migrate` for a new plugin against a live
-  server) has no trigger until the next activation.
-- A row that stays after a crash is watched for 20 seconds by the next
-  process to start, then deleted. An operator never needs to clear it by
-  hand. To clear it anyway, stop every server first, then run
-  `DELETE FROM store_servers` (`auth_servers`, `audit_servers`) on the stopped
-  database.
+#### What the server lock tests prove
 
-**Per process, not per host.** Throttle counters, origin caches and metrics
-stay per process: a `throttle` quota across N processes allows up to N times
-the declared budget, each process fills its own cache, and each serves its
-own `/_urlcode/metrics`
-([capacity](CAPACITY.md#several-serving-processes-on-one-host)). Better
-Auth's sign-in limit is the exception by default: it counts in `auth.sqlite`,
-so it is one budget across the processes, unless the operator chose
-per-process storage ([auth](../packages/auth/README.md#operator-options)).
+[`test/server-lock.test.ts`](../test/server-lock.test.ts) takes the lock in a
+real child `node` process and checks that this process is refused while it
+holds it, that holders in one process share it, and that after `kill -9` of
+the child the lock is free at once.
+[`packages/store/test/server-lock.test.ts`](../packages/store/test/server-lock.test.ts)
+starts the store in a child process, checks that a second server (a child, or
+this process) is refused and writes nothing, kills the first with `SIGKILL`
+in the middle of a burst of writes, and checks that `PRAGMA integrity_check`
+is `ok`, every answered write is stored, and a restart is accepted at once.
+The same file proves the declaration fence between two activations of one
+process, the operator commands' fence against a server in another process
+and in this one, and the upgrade that drops the previous release's lease
+tables. The auth and audit suites prove the same refusal and restart for
+their databases.
 
-#### What the multi-process harness proves
-
-`npm run test:multiprocess`
-([`test/multiprocess.integration.ts`](../test/multiprocess.integration.ts)),
-which CI runs on Linux in every code-lane run ([CI](CI.md#checking-this-repository)),
-starts three `urlcode serve` processes from the built CLI on distinct
-loopback ports. They serve one site whose `host.mjs` composes audit, auth and
-store over one data directory, and every collection declares `audit: true`
-behind `auth: true`. The harness asserts:
-
-- **Across the processes, released at once:** 240 interleaved transfers keep
-  the sum over the accounts at zero, with no account below its floor. Twelve
-  requests with one `Idempotency-Key` run the create once, and every other
-  answer replays that record. Of twelve claims of one ticket exactly one
-  transition wins. Of 24 overlapping bookings the committed ones never overlap.
-  An answer is either the documented refusal or a `503
-  storage_unavailable` that wrote nothing.
-- **One drainer, exactly once:** only one process holds the drain lease
-  throughout. Once the outbox is empty, `audit.sqlite` holds one event per
-  committed change and each event id once: one per created record, two per
-  committed transfer (counted by the retained `Idempotency-Key` claims) and one
-  per claimed ticket. They are stored in commit order: no event's `at` is
-  earlier than the one stored before it.
-- **No false 401:** 24 correct sign-ins spread over the processes run while
-  60 signed-in reads hit all three. Every sign-in answers `200`, `429` or
-  `503`, every read `200` or `503`, and at most the shared limit's remaining
-  budget signs in.
-- **`SIGKILL` mid-load:** the process holding the audit drain lease is killed
-  while all three write. A survivor takes the lease over and empties the
-  outbox, and a replacement process starts beside the dead one's lease row.
-  After the rest stop, `PRAGMA integrity_check` is `ok` on `store.sqlite`,
-  `auth.sqlite` and `audit.sqlite`, the sum and non-overlap invariants hold,
-  and the exactly-once count above still matches.
-
-It does not prove throughput, a power loss, long-running WAL growth, or
-anything about several hosts; a full disk is covered by the tests
-[below](#what-the-disk-full-tests-prove). Its load lasts
-seconds, so it is not a soak test, and it runs on CI's disk rather than a
-production one. The declaration fence and the host lease are proved
-separately in
-[`packages/store/test/multiprocess.test.ts`](../packages/store/test/multiprocess.test.ts).
+These tests do not prove throughput, a power loss or long-running WAL
+growth; a full disk is covered by the tests [below](#what-the-disk-full-tests-prove).
 
 #### What the disk-full tests prove
 
@@ -2284,24 +2203,20 @@ change, each id once.
   and sign-ins until each is refused. It checks that the server keeps running
   and reads still answer, then removes the filler, retries the refused keys,
   stops the server and checks the files. CI runs it on Linux in the
-  `multiprocess` job, on a 16 MiB `tmpfs` ([CI](CI.md#checking-this-repository));
+  `disk-full` job, on a 16 MiB `tmpfs` ([CI](CI.md#checking-this-repository));
   it has also passed on macOS on a 16 MiB HFS+ disk image.
 
 Before these tests, a sign-in whose session could not be stored answered
 Better Auth's bare `500` (a full disk) or core's `500` (a lock held past the
 busy timeout); the auth mount now answers `503 auth_unavailable`.
 
-They do not prove behaviour with several processes on a full disk, a
+They do not prove a
 **restart** while the disk is full (opening or migrating a database on a full
 disk is untested), a filesystem with reserved blocks or quotas (ext4, XFS), a
 power loss, or a disk that fills during a WAL checkpoint under sustained load.
 `max_page_count` caps the database file, not its `-wal` or `-shm`; only the
-filesystem test fills those. Neither test is a soak test. A heartbeat that
-cannot write is logged and retried. A write then confirms the lease under its
-own lock, so writes are not refused only because the heartbeat failed. After
-20 seconds without a heartbeat, another process may treat the row as dead: a
-peer on this host deletes it, and this process rejoins at its next heartbeat
-once space frees.
+filesystem test fills those. Neither test is a soak test. The server lock
+writes nothing, so a full disk never costs a serving process its lock.
 
 ### Durability
 
@@ -2351,7 +2266,7 @@ activation and closed with its last, so it needs no hand-off:
   refuses the reload, as it would refuse a restart), and a changed `key`
   recomputes the stored key column in one transaction. The replacement's
   activation records its declarations, so the
-  [declaration fence](#several-serving-processes-on-one-host) refuses the
+  [declaration fence](#one-serving-process-per-database) refuses the
   retiring runtime's writes to a changed collection with
   `503 storage_unavailable` while it finishes in-flight requests; its reads
   keep working. When the reload fails after the store activated, the

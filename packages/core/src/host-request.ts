@@ -1,4 +1,5 @@
-import { assert } from './errors.ts';
+import type { IncomingMessage } from 'node:http';
+import { assert, HttpError } from './errors.ts';
 import { resolveClient } from './client-address.ts';
 import type { Cidr } from './client-address.ts';
 import type { ErrorFormat, HandlerResult, HeaderPair } from './http-response.ts';
@@ -20,6 +21,27 @@ export function readHeaderLines(rawHeaders: readonly string[]): { headers: Heade
     headers.append(key, rawHeaders[i + 1] ?? ''); headerCounts[key] = (headerCounts[key] || 0) + 1;
   }
   return { headers, headerCounts };
+}
+
+/**
+ * A node:http request body, read whole up to `limit` bytes: a larger declared Content-Length or a longer stream is
+ * refused with 413, and a client that goes away mid-body with 400. Shared by the Node server and the Vercel handler.
+ */
+export async function readIncomingBody(req: IncomingMessage, limit: number): Promise<Buffer> {
+  if (req.headers['content-length'] && Number(req.headers['content-length']) > limit) throw new HttpError(413, 'Request body too large');
+  return new Promise((resolve, reject) => {
+    let size = 0; const chunks: Buffer[] = [];
+    const cleanup = () => { req.off('data', data); req.off('end', end); req.off('error', error); req.off('aborted', aborted); };
+    const error = (cause: Error) => { cleanup(); reject(cause); };
+    const aborted = () => error(new HttpError(400, 'Request aborted'));
+    const data = (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > limit) { req.pause(); error(new HttpError(413, 'Request body too large')); }
+      else chunks.push(chunk);
+    };
+    const end = () => { cleanup(); resolve(Buffer.concat(chunks)); };
+    req.on('data',data); req.once('end',end); req.once('error',error); req.once('aborted',aborted);
+  });
 }
 
 

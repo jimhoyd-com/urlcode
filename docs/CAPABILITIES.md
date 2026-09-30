@@ -209,8 +209,6 @@ The compiled table is internal, mutable during activation and **not serializable
 as an interchange contract**: bindings contain resolved secrets, validators are
 functions, assets contain bytes and policy chains own host state. The existing
 Cloudflare artifact is a separate versioned lowering, not a replacement IR.
-[Interchange](INTERCHANGE.md) projects a validated literal-redirect subset and
-explicitly reports unsupported semantics; it never dumps compiled routes.
 The next-phase schema extends this same IR with normalized condition cases,
 proxy headers and signal definitions. Resolved egress headers are private runtime
 state and must never be serialized. Capability analysis itself adds no authority

@@ -35,7 +35,7 @@ a wrong answer today.
   any of the five is refused at activation with the route named. Declare
   `vary` on the cache policy instead.
 - **`agents.denyEmpty`, `throttle` and the generated probes.** `urlcode
-  audit`, `urlcode test` and `urlcode benchmark` send generated probes as
+  audit` and `urlcode test` send generated probes as
   `Mozilla/5.0 (compatible; RouteProbe/0.1)`,
   so `denyEmpty` does not fail them; a deny pattern that matches that string
   would. A tight `throttle` fails an audit once the probes exceed `quota`

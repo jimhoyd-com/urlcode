@@ -63,7 +63,7 @@ There is one starter, and it starts with no routes. Initialization never overwri
 an existing directory. Once created, edits belong to your app repository; upgrading
 the runtime does not regenerate them. Each site has npm scripts (`dev`,
 `start`, `validate`, `test`, `routes`, `audit`) and a Makefile (`dev`, `serve`,
-the same four checks, `benchmark` and `doctor`). Both pass `--project app --host-file
+the same four checks and `doctor`). Both pass `--project app --host-file
 host.mjs`, and their `validate`, `test`, `routes` and `audit` also pass
 `--local-review` ([the local review loop](EXTENSIONS.md#the-local-review-loop)),
 so install the site before using them:

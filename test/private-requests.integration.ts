@@ -178,7 +178,7 @@ test('private-requests: packed consumer, upstream auth, owner-private records an
   // Every auth: true route is covered by the signed-in steps, so no note asks for a sign-in fixture.
   assert.ok(report.coverageNotes.every(note => note.code === 'unasserted-success'), audit.stdout);
   // The fixtures name the origin as {{origin}}, never a literal one: the same file is ready under another --origin.
-  // Its own data: Better Auth's sign-in limit is kept in auth.sqlite, shared by every process (#927), and the two runs
+  // Its own data: Better Auth's sign-in limit is kept in auth.sqlite, across runs, and the two runs
   // above already spent most of this minute's 10 sign-ins from 127.0.0.1.
   const movedEnv = { ...fixtureEnv, PRIVATE_REQUESTS_DATA: join(root, 'fixture-data-moved') };
   assert.equal(npm(t, site, ['run', '-s', 'setup'], movedEnv).status, 0);
@@ -339,15 +339,17 @@ test('private-requests: packed consumer, upstream auth, owner-private records an
 
   // The connected authoring workflow (#834): the operator starts the MCP server with the same host, origin and
   // reviewed policy; its runners validate and test the site with no PROJECT_SHA256 export. They pass the child only
-  // PATH, so they use the site's own data/, which is why this runs after the HTTP scenario.
+  // PATH, so they use the site's own data/, which is why this runs after the HTTP scenario, once the server stopped:
+  // one process serves a database, so a pinned validate is refused while the site is served.
   await t.test('the authoring MCP runners validate and test with the operator policy', async () => {
+    server.kill(); await exited;
     const messages = [
       { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'proof', version: '1' } } },
       { jsonrpc: '2.0', method: 'notifications/initialized' },
       ...['run_validate', 'run_test'].map((name, index) => ({ jsonrpc: '2.0', id: index + 2, method: 'tools/call', params: { name, arguments: {} } })),
     ];
     // The throttling scenario above spent this minute's sign-ins from 127.0.0.1, and Better Auth keeps that count in
-    // data/auth.sqlite for every process (#927); an operator resets it by clearing the table, which is safe to do.
+    // data/auth.sqlite across restarts; an operator resets it by clearing the table, which is safe to do.
     const counters = new DatabaseSync(join(site, 'data', 'auth.sqlite'), { timeout: 2000 });
     try { counters.exec('DELETE FROM rateLimit'); } finally { counters.close(); }
     const { PROJECT_SHA256: _pin, ...ambient } = process.env;

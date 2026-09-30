@@ -222,11 +222,11 @@ test('persists across restart in one private database file and refuses data the 
   const env = await boot(t);
   const made = await (await env.call('/api/todos', { method: 'POST', headers: json, body: JSON.stringify({ title: 'keep' }) })).json() as { id: string };
   assert.ok((await readdir(env.data)).includes('store.sqlite'));
-  assert.deepEqual((await readdir(env.data)).filter(name => !name.startsWith('store.sqlite')), [], 'no other file: no lock, temporary or per-collection file');
+  assert.deepEqual((await readdir(env.data)).filter(name => !name.startsWith('store.sqlite')), [], 'no other file: no temporary or per-collection file');
   // POSIX permission bits do not exist on Windows, which reports 0o666 for every file.
   if (process.platform !== 'win32') for (const name of await readdir(env.data)) assert.equal((await stat0(join(env.data, name))) & 0o777, 0o600, name);
   await env.stop();
-  assert.deepEqual(await readdir(env.data), ['store.sqlite'], 'the last close checkpoints the write-ahead log into the database');
+  assert.deepEqual(await readdir(env.data), ['store.sqlite', 'store.sqlite.server-lock'], 'the last close checkpoints the write-ahead log into the database; the lock file stays');
   const again = await env.start();
   try {
     const response = await fetch(`http://127.0.0.1:${again.address.port}/api/todos/${made.id}`);

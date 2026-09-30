@@ -105,8 +105,8 @@ The CLI and the embedding JS API accept `--workers`/`workers` (1–32),
 (response limit, 1–16 MiB), `--max-body-bytes`/`maxBodyBytes` (request limit, 1–16 MiB),
 `--max-in-flight`/`maxInFlightRequests` (1–1,024; default 64) and
 `--max-in-flight-health`/`maxInFlightHealthRequests` (1–1,024; default 16). Measure the effect with
-[load testing](LOAD-TESTING.md) rather than guessing; `shedResponses` names the
-limit that bound. These are
+[load testing](LOAD-TESTING.md) rather than guessing; a 503 or 504 count shows a
+limit binding. These are
 operator deployment controls on `urlcode serve`/`dev` and `startServer`, not
 supported YAML fields; without them the CLI and the API use the defaults in the
 table above. `urlcode --help` lists the flags under `capacity`.
@@ -374,38 +374,25 @@ the declared quota and a cached response is computed once per replica. Both
 tables are dropped on a snapshot reload. Sharing state across instances is a
 [plugin](PLUGINS.md) concern.
 
-### Several serving processes on one host
+### One serving process per database
 
-Several `urlcode serve` processes on one host, on distinct ports behind a
-proxy and sharing one site's SQLite files, are supported
-([store](STORE.md#several-serving-processes-on-one-host)). The per-instance
-state above stays per process there too. A `throttle` quota allows up to N
-times its budget across N processes, because each process counts only the
-requests the proxy sends to it. Each process fills its own `cache` origin
-cache, so a cached response is computed up to once per process. Metrics are
-per process: scrape each process's port, not the proxy. When the store finds a
-live peer at activation it logs one `extension_warning` saying so. The store,
-auth and audit each refuse to activate while a live peer serves their database
-from another host. A start that finds a row another host left behind waits up
-to the [lease's time to live](STORE.md#several-serving-processes-on-one-host)
-to see whether it is live, so allow for that in a restart budget
-after an unclean shutdown or a reboot. A budget
-that must hold across the processes belongs at the proxy or in a
-[plugin](PLUGINS.md). Better Auth's sign-in limit is the one shared counter,
-because by default it counts in `auth.sqlite`.
+A site whose extensions keep SQLite files (store, auth, audit) is served by
+**one** `urlcode serve` process. A second serving process on the same
+database is refused before it writes anything, by an OS-held lock that a
+crashed or killed process releases at once
+([store](STORE.md#one-serving-process-per-database)). Several servers need a
+real database server, which URLCode does not provide. Scale such a site up,
+not out: size store writes from
+[the SQLite store measurement](#measured-the-sqlite-store), since SQLite admits
+one writer at a time and each commit's fsync blocks the process's event loop.
+A site without SQLite-backed extensions has no such limit, with the
+per-instance caveats above.
 
-More processes add capacity for reads and for request work that does not
-write. They do not add store write throughput. SQLite admits one writer at a
-time, and a process waiting for the write lock blocks its own event loop for
-up to the 2 second busy timeout before it answers `503 storage_unavailable`.
-Size store writes from [the SQLite store measurement](#measured-the-sqlite-store)
-as one database, whatever the process count.
-
-`npm run test:multiprocess` checks correctness with three processes: the
-store invariants, one audit drainer delivering each event exactly once, no
-false `401` during a sign-in burst, and integrity after a `SIGKILL`
-([what it proves](STORE.md#what-the-multi-process-harness-proves)). It
-measures no throughput and is not a soak test.
+A restart after an unclean shutdown needs no wait: the lock is gone with the
+process. An operator command (`urlcode-store`, `urlcode-auth`,
+`urlcode-audit`) running beside the server shares the write lock; a server
+write that waits past the 2 second busy timeout answers
+`503 storage_unavailable`.
 
 ## Memory, startup and reload
 
@@ -448,8 +435,8 @@ TLS and logging configuration; no universal performance ratio applies.
    capacity for a replica loss. Verify the service recovers after load stops.
 6. Record the accepted load, error and latency budgets and repeat after changes.
 
-The built-in local benchmark is a quick correctness-aware signal, not the above
-production exercise. The readiness endpoint can stay 200 while all worker slots
+URLCode ships no load generator: run a general one, such as autocannon, against
+`urlcode serve` or the deployment ([load testing](LOAD-TESTING.md)). The readiness endpoint can stay 200 while all worker slots
 are busy. Use error/latency signals too. No universal safe RPS can be derived
 from the route count or these defaults alone. See [resilience](RESILIENCE.md).
 

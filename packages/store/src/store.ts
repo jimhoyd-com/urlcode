@@ -1,19 +1,17 @@
 import { createHash } from 'node:crypto';
 import { realpath } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
-import { ExtensionHttpError, isSameOriginRequest, jsonResponse, principalIdPattern, readBody } from '@jimhoyd/urlcode/extensions';
-import type { ExtensionActivation, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
+import { ExtensionHttpError, holdServerLock, isSameOriginRequest, jsonResponse, principalIdPattern, readBody } from '@jimhoyd/urlcode/extensions';
+import type { ExtensionActivation, ExtensionInstance, ExtensionRequest, HandlerResult, HostProbe, RuntimeExtension, ServerLock } from '@jimhoyd/urlcode/extensions';
 import { Collection, OWNER_FIELD, StoreError, canonical, collectionSchema, etagOf, redirectable } from './collection.ts';
 import type { CollectionAuditor, CollectionSpec, Page, Retry, Shown, StoredRecord, Transferred, Written } from './collection.ts';
 import type { AuditAttachment, AuditEvent, AuditExports } from '@jimhoyd/urlcode-audit';
-import { auditDrainHolder, holdsAuditDrain, markAuditDrained, openStoreDatabase, recordDeclarations, releaseAuditDrain, storeDurability } from './database.ts';
+import { markAuditDrained, openStoreDatabase, recordDeclarations, storeDurability } from './database.ts';
 import type { StoreDatabase, StoreDurability } from './database.ts';
 import { storeExports } from './records.ts';
 import { storeAuthoring } from './authoring.ts';
 import { describeStore } from './openapi.ts';
 import type { StoreExports } from './records.ts';
-import { hostProbe, joinServers } from './topology.ts';
-import type { HostProbe, ServerLease } from './topology.ts';
 import { OPERATOR_ACTOR } from './membership.ts';
 
 /** At most how often the drain's last-kept-up time is written (well inside the CLI's AUDIT_DRAIN_STALE_MS). */
@@ -38,10 +36,7 @@ export interface StoreExtensionOptions {
    * declares `audit: true` refuses to activate without an active one.
    */
   audit?: AuditExports | undefined;
-  /**
-   * Test seam for the setup checks (#927): the filesystem type, hostname and boot id the store reads. Defaults to the
-   * real machine; an operator never sets it.
-   */
+  /** Test seam for the network filesystem check: the platform and filesystem type the store reads. Never set by an operator. */
   probe?: Partial<HostProbe> | undefined;
   /**
    * A hermetic run's throwaway store (`HostContext.hermetic`, RIM-EXT-HERMETIC-001): the registration accepts a test seed
@@ -158,12 +153,12 @@ export function storeExtension(options: StoreExtensionOptions): RuntimeExtension
  * The registration owns one connection to the database, opened by its first activation and closed with its last. A
  * dev reload activates the replacement while the serving activation is still live (core RIM-EXT-HANDOFF-001); both
  * are views over the same connection, so there is no second writer. Each activation records its collections'
- * declarations (the fence, #927): a retiring activation whose declaration differs has its writes refused, in this
- * process as in another one serving the same database.
+ * declarations (the fence, #927): a retiring activation whose declaration differs has its writes refused.
  *
- * Opening the connection refuses a database on a network filesystem and joins the database's server leases, refusing a
- * live peer on another host (topology.ts). The lease instance also holds the audit drain's lease, so with several
- * serving processes one drains the outbox.
+ * One serving process per database: before the connection opens, the registration takes the database's server lock
+ * (core's `holdServerLock`, which also refuses a Linux network filesystem), so a second serving process is refused
+ * before it writes anything. The lock is held until the last activation closes; the operating system drops it if the
+ * process dies. That one process is also the audit outbox's only drainer.
  *
  * With `audit`, the store attaches itself as the audit producer `store` once, here: its outbox is the
  * `store_audit_outbox` table, which audit drains (peek, then ack in a transaction). `close` detaches it; the host
@@ -172,37 +167,33 @@ export function storeExtension(options: StoreExtensionOptions): RuntimeExtension
 export function createStore(options: StoreExtensionOptions): { registration: RuntimeExtension; exports: StoreExports; durability: StoreDurability; close(): Promise<void> } {
   if (typeof options.database !== 'string' || !isAbsolute(options.database)) throw new Error('Store database must be an absolute path');
   const database = resolve(options.database), durability = storeDurability(options.durability);
-  const shared = storeExports(), audit = options.audit, probe: HostProbe = { ...hostProbe, ...options.probe };
+  const shared = storeExports(), audit = options.audit, probe = options.probe;
   // The live activations, oldest first, with their collections. The newest is the one being served; the producer
   // drains only while one is live.
   const live: { token: symbol; collections: readonly Collection[] }[] = [];
-  // Whether this registration already warned that throttles and caches are per process (once, on seeing a live peer).
-  let warnedPeers = false;
   // The derived indexes (interval, #902; unique, #953; list, #951) each live activation reads through, so a reload drops only indexes nobody declares.
   const indexes = new Map<symbol, string[]>();
   // The one connection and how many live activations hold it.
   let connection: Connection | undefined;
-  const acquire = async (): Promise<{ db: StoreDatabase; lease: ServerLease; release(): Promise<void> }> => {
+  const acquire = async (): Promise<{ db: StoreDatabase; release(): Promise<void> }> => {
     const held: Connection = connection ?? opener(database, durability, probe);
     connection = held;
     held.refs++;
-    let opened: { db: StoreDatabase; lease: ServerLease };
+    let opened: { db: StoreDatabase; lock: ServerLock };
     try { opened = await held.opening; }
     catch (error) { if (--held.refs === 0 && connection === held) connection = undefined; throw error; }
-    const { db, lease } = opened;
+    const { db, lock } = opened;
     let released = false;
-    return { db, lease, async release() {
+    return { db, async release() {
       if (released) return;
       released = true;
       if (--held.refs > 0) return;
       if (connection === held) connection = undefined;
-      // A peer takes the drain over at its next poll, and this process's server lease goes with it.
-      try { releaseAuditDrain(db, lease.instance); } catch { /* The lease expires on its own. */ }
-      lease.close();
       db.close();
+      lock.release();
     } };
   };
-  const current = (): { db: StoreDatabase; instance: string } | undefined => live.length && connection?.db?.open && connection.lease ? { db: connection.db, instance: connection.lease.instance } : undefined;
+  const current = (): StoreDatabase | undefined => live.length && connection?.db?.open ? connection.db : undefined;
   // When the drain last kept up (an ack, or a peek that found the outbox empty) is written to the database at most
   // every AUDIT_DRAIN_MARK_MS, so the operator CLI can tell a live drain from none (#875) without a write per poll.
   let marked = 0;
@@ -215,27 +206,19 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
   const attachment: AuditAttachment | undefined = audit?.attach({
     source: 'store',
     // The oldest pending events across every collection: audit's flush settles once a peek holds only newer events,
-    // so an older event left behind would be missed.
-    // Only the drain lease's holder peeks and acks (#927): with several serving processes one drains the outbox, and a
-    // peer takes over once its lease expired or it closed. A process that does not hold it peeks nothing.
+    // so an older event left behind would be missed. The serving process is the outbox's only drainer.
     async peek(limit) {
-      const serving = current();
-      if (!serving || !holdsAuditDrain(serving.db, serving.instance, Date.now())) return [];
-      const events = serving.db.all<{ event: string }>('SELECT event FROM store_audit_outbox ORDER BY at, seq LIMIT ?', limit).map(row => JSON.parse(row.event) as AuditEvent);
-      if (!events.length) drained(serving.db);
+      const db = current();
+      if (!db) return [];
+      const events = db.all<{ event: string }>('SELECT event FROM store_audit_outbox ORDER BY at, seq LIMIT ?', limit).map(row => JSON.parse(row.event) as AuditEvent);
+      if (!events.length) drained(db);
       return events;
     },
     async ack(ids) {
-      const serving = current();
-      if (!serving || !ids.length) return;
-      const { db, instance } = serving;
-      // A holder that lost the lease meanwhile leaves the rows: the new holder delivers them again, stored once by id.
-      const acked = db.transaction(() => {
-        if (!auditDrainHolder(db, instance)) return false;
-        db.run('DELETE FROM store_audit_outbox WHERE id IN (SELECT value FROM json_each(?))', JSON.stringify(ids));
-        return true;
-      });
-      if (acked) drained(db);
+      const db = current();
+      if (!db || !ids.length) return;
+      db.run('DELETE FROM store_audit_outbox WHERE id IN (SELECT value FROM json_each(?))', JSON.stringify(ids));
+      drained(db);
     },
   });
   const auditor: CollectionAuditor | undefined = audit && attachment ? { validate: value => audit.validate(value), notify: () => attachment.notify() } : undefined;
@@ -322,14 +305,10 @@ export function createStore(options: StoreExtensionOptions): { registration: Run
         pending = checkOutbox(held.db, auditor);
         for (const collection of collections) collection.open(held.db);
         // The newest activation wins the declaration fence (#927): from here on a write through an older declaration
-        // of any of these collections, in this process or another, is refused.
+        // of any of these collections (a retiring activation during a reload) is refused.
         record(held.db, collections);
         if (context.seed !== undefined) seedMembers(collections, context.seed as StoreSeed);
       } catch (error) { await held.release(); throw error; }
-      if (held.lease.peers > 0 && !warnedPeers) {
-        warnedPeers = true;
-        context.warn?.(`${held.lease.peers === 1 ? 'another serving process uses' : `${held.lease.peers} other serving processes use`} this store database: throttle policies and origin caches are per process, so each process applies its own limits and caches`);
-      }
       const exported = shared.attach(collections);
       live.push({ token: exported, collections });
       indexes.set(exported, collections.flatMap(collection => collection.indexes));
@@ -382,26 +361,20 @@ function record(db: StoreDatabase, collections: readonly Collection[]): void {
   recordDeclarations(db, new Map(collections.map(collection => [collection.name, collection.fingerprint])), Date.now(), () => { for (const collection of collections) collection.balancesHeld(db); });
   for (const collection of collections) collection.fence = 'serving';
 }
-/** The registration's one connection while any activation holds it, and its server lease (topology.ts). */
-interface Connection { readonly opening: Promise<{ db: StoreDatabase; lease: ServerLease }>; db?: StoreDatabase; lease?: ServerLease; refs: number }
+/** The registration's one connection while any activation holds it, and the server lock taken before it opened. */
+interface Connection { readonly opening: Promise<{ db: StoreDatabase; lock: ServerLock }>; db?: StoreDatabase; refs: number }
 /**
- * Opens the database (refusing a network filesystem) and joins its server leases (refusing a live peer on another
- * host) before any activation reads it (#927).
+ * Takes the database's server lock (refusing a network filesystem, or another serving process) and only then opens
+ * the database, which may upgrade its schema: a refused process writes nothing.
  */
-function opener(database: string, durability: StoreDurability, probe: HostProbe): Connection {
+function opener(database: string, durability: StoreDurability, probe: Partial<HostProbe> | undefined): Connection {
   const opening = (async () => {
-    const db = await openStoreDatabase(database, { durability, probe });
-    let lease: ServerLease;
-    try { lease = await joinServers(db, probe); } catch (error) { db.close(); throw error; }
-    // Every write transaction checks the lease under its write lock first (#978): a process that lost it to another
-    // host answers 503 and writes nothing until it holds it again.
-    db.writeGuard = () => {
-      try { lease.verify(); } catch { throw new StoreError(503, 'storage_unavailable', 'The store is not available'); }
-    };
-    return { db, lease };
+    const lock = await holdServerLock(database, 'store', probe);
+    try { return { db: await openStoreDatabase(database, { durability, probe }), lock }; }
+    catch (error) { lock.release(); throw error; }
   })();
   const connection: Connection = { opening, refs: 0 };
-  opening.then(({ db, lease }) => { connection.db = db; connection.lease = lease; }, () => undefined);
+  opening.then(({ db }) => { connection.db = db; }, () => undefined);
   return connection;
 }
 interface ShortLinkSpec { mount: string; collection: string; destination: string; clicks: string }

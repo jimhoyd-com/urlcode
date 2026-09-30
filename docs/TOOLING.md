@@ -56,10 +56,6 @@ The tooling API consolidates authoring operations without starting a runtime:
   `schemas/urlcode.schema.json` for a dotted path (`route`, `redirect`,
   `policies.cache`, `site.sitemap`) with local `$ref`s inlined; `schemaPathNames()`
   lists the accepted top-level names. Both read bundled package data only.
-- `previewImport(options)` and `previewExport(project, format, acknowledgment?)`
-  return conversion reports and candidate text, never writing files. Provider
-  semantic differences require the existing explicit acknowledgment and remain
-  non-lossless.
 - `listRecipes()` and `showRecipe(name)` expose the fixed bundled recipe catalog.
 - `listAgentCatalog()` (from `@jimhoyd/urlcode/agent-context`) is the
   revision-pinned discovery index for hosted and local agent tooling. It lists
@@ -132,7 +128,7 @@ also in the error's `command` field. For a fresh `init --with auth` site:
 ```
 
 The origin placeholder appears for commands that activate extensions (`dev`,
-`serve`, `validate`, `test`, `routes`, `audit`, `benchmark`, `mcp`), the
+`serve`, `validate`, `test`, `routes`, `audit`, `mcp`), the
 policy placeholder when neither `--policy` nor a well-formed `PROJECT_SHA256`
 pins the revision. The error codes are `origin-required` and
 `revision-pin-required`. Nothing creates, finds or repins a policy: approval
@@ -168,8 +164,8 @@ inspection revision instead of refusing. Such a registration is reported as
 not pinned (`revisionMatch: false` in `explain`, `revisionPinned: false` and a
 note in `extensions`), and every activation refuses it with
 `revision-pin-required` before anything else is checked, so it can never serve.
-`serve`, `dev`, `validate` (with or without `--local`), `test`, `routes`,
-`audit` and `benchmark` still need the reviewed pin, except that `validate`,
+`serve`, `dev`, `validate` (with or without `--local`), `test`, `routes`
+and `audit` still need the reviewed pin, except that `validate`,
 `test`, `routes` and `audit` can review the current revision locally with
 `--local-review` instead, as the generated npm scripts do
 ([the local review loop][docs/EXTENSIONS.md#the-local-review-loop]).
@@ -1024,7 +1020,7 @@ operator-selected root on stdio. Its canonical, verb-first tools, in the order
 `tools/list` returns them (`get_context` first — it is the documented first
 call), are `get_context`, `inspect`, `validate`,
 `list_capabilities`, `get_capability`, `get_schema`, `explain`, `get_manifest`,
-`get_openapi`, `preview_import`, `preview_export`, `list_recipes`, `get_recipe`,
+`get_openapi`, `list_recipes`, `get_recipe`,
 `search_recipes`, `search_examples`, `list_skills`, `get_skill`, `list_agent_catalog`,
 `get_release_addon_catalog`, `search_docs`,
 `get_example`, `validate_yaml`, `explain_error`, `get_extension_artifacts`,
@@ -1377,8 +1373,8 @@ shared reference and skill catalog is useful.
 
 ## Authoring mode
 
-`urlcode mcp --allow-authoring --project DIR` adds eight tools to the thirty-two read
-tools above (thirty-three with `--host-file`). The flag is honored from the operator's command line only: no
+`urlcode mcp --allow-authoring --project DIR` adds eight tools to the thirty read
+tools above (thirty-one with `--host-file`). The flag is honored from the operator's command line only: no
 tool argument, environment variable or client capability enables it, and
 without it the server is exactly the read-only server described above.
 

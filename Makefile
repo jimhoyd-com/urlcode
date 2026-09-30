@@ -7,14 +7,14 @@ HOST ?= 127.0.0.1
 PORT ?= 3000
 DEST ?= ../my-links
 
-.PHONY: help setup dev serve validate test test-project lint check verify test-package init doctor tunnel routes audit benchmark
+.PHONY: help setup dev serve validate test test-project lint check verify test-package init doctor tunnel routes audit
 
 help:
 	@echo "make dev             Run PROJECT under the watcher (installs dependencies if needed)"
 	@echo "make setup           Reinstall dependencies from the lockfile"
 	@echo "make init            Create an independent site (DEST=../my-links; its route project is DEST/app)"
 	@echo "make validate        Validate PROJECT with local environment loading"
-	@echo "make routes / audit / benchmark  Inventory, readiness and local load checks (ARGS=...)"
+	@echo "make routes / audit  Inventory and readiness checks (ARGS=...)"
 	@echo "make test-project    Run PROJECT's HTTP assertions"
 	@echo "make test            Run runtime unit, HTTP and security tests"
 	@echo "make verify          Run lint, type checks, repository checks, build, runtime tests and workspace verification"
@@ -57,5 +57,5 @@ test-package: node_modules/.package-lock.json
 tunnel: node_modules/.package-lock.json
 	PROJECT="$(PROJECT)" PORT="$(PORT)" URLCODE="$(CURDIR)/packages/core/src/cli.ts" examples/tunnel/dev-with-ngrok.sh
 
-routes audit benchmark: node_modules/.package-lock.json
+routes audit: node_modules/.package-lock.json
 	$(NODE) packages/core/src/cli.ts $@ --project "$(PROJECT)" $(ARGS)

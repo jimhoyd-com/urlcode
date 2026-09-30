@@ -37,6 +37,11 @@ test('every job but the plan and the docs check needs the plan and skips only on
     assert(([] as string[]).concat(definition.needs ?? []).includes('plan'), name);
     assert.match(definition.if ?? '', /^needs\.plan\.outputs\.lane != 'docs'(?: && needs\.plan\.outputs\.\w+ != 'false')?$/, name);
   }
+  // The disk-full harness (#902) runs in every code lane, extension-only diffs included.
+  for (const name of ['static', 'workspace-verify', 'disk-full']) {
+    assert.deepEqual(workflowJob(workflow, name).needs, 'plan');
+    assert.equal(workflowJob(workflow, name).if, "needs.plan.outputs.lane != 'docs'");
+  }
   assert.deepEqual(workflowJob(workflow, 'workspace-integration').needs, ['plan', 'workspace-verify']);
   assert(Object.hasOwn(workflow.on, 'merge_group'));
 });
@@ -45,15 +50,14 @@ test('workflow command bodies call the tested CI scripts', async () => {
   const workflow = await ci();
   assert(runs(workflow, 'build-fidelity').includes('npm run ci:build-fidelity'));
   assert(runs(workflow, 'container').includes('npm run ci:container-smoke'));
-  // The multi-process harness (#927) runs on Linux against the built runtime and every built add-on.
-  assert.equal((workflowJob(workflow, 'multiprocess') as Job & { 'runs-on': string })['runs-on'], 'ubuntu-latest');
-  assert.deepEqual(runs(workflow, 'multiprocess').slice(-5), ['npm run build', 'node scripts/workspaces.ts run build', 'npm run test:multiprocess', 'sudo mkdir -p /mnt/urlcode-disk-full && sudo mount -t tmpfs -o size=16m,mode=1777 tmpfs /mnt/urlcode-disk-full', 'npm run test:disk-full']);
-  // The disk-full harness (#902) fills that tmpfs, which it finds through the step's environment.
-  assert.equal(workflowJob(workflow, 'multiprocess').steps.at(-1)!.env!.URLCODE_DISK_FULL_DIR, '/mnt/urlcode-disk-full');
+  // The disk-full harness (#902) runs on Linux against the built runtime and every built add-on.
+  assert.equal((workflowJob(workflow, 'disk-full') as Job & { 'runs-on': string })['runs-on'], 'ubuntu-latest');
+  assert.deepEqual(runs(workflow, 'disk-full').slice(-4), ['npm run build', 'node scripts/workspaces.ts run build', 'sudo mkdir -p /mnt/urlcode-disk-full && sudo mount -t tmpfs -o size=16m,mode=1777 tmpfs /mnt/urlcode-disk-full', 'npm run test:disk-full']);
+  // It fills that tmpfs, which it finds through the step's environment.
+  assert.equal(workflowJob(workflow, 'disk-full').steps.at(-1)!.env!.URLCODE_DISK_FULL_DIR, '/mnt/urlcode-disk-full');
   const { scripts } = JSON.parse(await readFile('package.json', 'utf8'));
   assert.equal(scripts['ci:build-fidelity'], 'node scripts/ci-build-fidelity.ts');
   assert.equal(scripts['ci:container-smoke'], 'node scripts/ci-container-smoke.ts');
-  assert.equal(scripts['test:multiprocess'], 'node --import ./test/scratch-tmpdir.ts --test test/multiprocess.integration.ts');
   assert.equal(scripts['test:disk-full'], 'node --import ./test/scratch-tmpdir.ts --test test/disk-full.integration.ts');
   const smoke = containerSmokeScript();
   for (const expected of ['recipes add typescript', 'build-typescript', '/_urlcode/ready', 'starters/default', 'examples/assets', 'trap \'docker logs urlcode; docker rm -f urlcode\' EXIT']) assert.match(smoke, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));

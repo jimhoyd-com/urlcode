@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
+import { connect } from 'node:net';
 import { join } from 'node:path';
 import { stringify } from 'yaml';
 import { startServer } from '../packages/core/src/server.ts';
@@ -102,6 +103,31 @@ test('invalid reload preserves last good snapshot; valid reload replaces functio
 test('missing function export refuses startup and releases workers', async t => {
   const root = await project(t,{ '/':{ function:{ source:'f.mjs' } } },{ 'f.mjs':'export const wrong = 1;' });
   await assert.rejects(startServer({ project:root,port:0 }),/initialization/);
+});
+test('a client that writes its whole oversized body before reading still reads the 413, not a reset (#1046)', async t => {
+  const root = await project(t,{ '/':{ methods:['POST'],function:{ source:'f.mjs' } } },{ 'f.mjs':'export default () => new Response("ok")' });
+  const app = await startServer({ project:root,port:0,log:()=>{},maxBodyBytes:1024 });
+  const port = app.address.port, size = 4 * 1024 * 1024, head = `POST / HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nContent-Length: ${size}\r\n\r\n`;
+  let open = true;
+  try {
+    for (let i = 0; i < 20; i++) {
+      const answer = await new Promise<string>(resolve => {
+        const socket = connect(port,'127.0.0.1'); let data = '';
+        socket.on('data', chunk => { data += chunk; });
+        socket.on('error', error => resolve(`${(error as NodeJS.ErrnoException).code}: ${data}`));
+        socket.on('close', () => resolve(data));
+        socket.write(head);
+        socket.end('x'.repeat(size));
+      });
+      assert.match(answer, /^HTTP\/1\.1 413 [^]*connection: close/i, `attempt ${i}`);
+    }
+    // A client that neither finishes its body nor closes does not hold shutdown open for the linger period.
+    const idle = connect(port,'127.0.0.1'); idle.on('error', () => {});
+    const closed = new Promise(resolve => idle.once('close', resolve));
+    await new Promise<void>(resolve => { idle.once('data', () => resolve()); idle.write(head + 'x'); });
+    const started = performance.now(); open = false; await app.close(); await closed;
+    assert.ok(performance.now() - started < 2000, 'close waited for a lingering connection');
+  } finally { if (open) await app.close(); }
 });
 test('chunked oversized body returns 413 and server remains usable', async t => {
   const root = await project(t,{ '/':redirect() });

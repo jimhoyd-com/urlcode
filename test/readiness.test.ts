@@ -4,7 +4,7 @@ import type { TestContext } from 'node:test';
 import { project,redirect,param } from './helpers.ts';
 import type { ProjectFiles, ProjectRoutes } from './helpers.ts';
 import { startServer } from '../packages/core/src/server.ts';
-import { auditProject,benchmarkProject,deploymentAdvisories } from '../packages/core/src/readiness.ts';
+import { auditProject,deploymentAdvisories } from '../packages/core/src/readiness.ts';
 async function appFor(t: TestContext,routes: ProjectRoutes,files: ProjectFiles={}) {
  const root=await project(t,routes,files);const app=await startServer({project:root,port:0,log:()=>{}});t.after(()=>app.close());return app;
 }
@@ -50,21 +50,6 @@ test('negative fixtures and empty projects do not qualify as ready',async t=>{
  const app=await appFor(t,{'/f':{function:{source:'f.mjs'}}},{'f.mjs':'export default () => new Response("broken",{status:500})','tests/requests.json':JSON.stringify([{path:'/f',status:500}])});
  assert.equal((await auditProject(app)).ready,false);
  assert.deepEqual((await auditProject(await appFor(t,{}))).notReadyReasons,['no-active-routes']);
-});
-test('benchmark is local, checks responses, reports counts/latency, and enforces thresholds',async t=>{
- const app=await appFor(t,{'/go':redirect('https://destination.invalid/not-followed')});
- const report=await benchmarkProject(app,{requests:20,concurrency:2});assert.equal(report.pass,true);assert.equal(report.completed,20);assert.equal(report.statuses[302],20);assert.ok(report.p99Ms!==null&&report.p50Ms!==null&&report.p99Ms>=report.p50Ms);
- const slow=await benchmarkProject(app,{requests:2,maxP95Ms:0.000001});assert.equal(slow.pass,false);
- for(const options of [{requests:0},{concurrency:100},{seconds:0}])await assert.rejects(benchmarkProject(app,options));
-});
-test('benchmark excludes POST fixtures and reports wrong response assertions',async t=>{
- const app=await appFor(t,{'/f':{methods:['GET','POST'],function:{source:'f.mjs'}}},{'f.mjs':'export default () => new Response("actual")','tests/requests.json':JSON.stringify([{path:'/f',method:'POST',status:200},{path:'/f',status:200,expectBody:'expected'}])});
- const report=await benchmarkProject(app,{requests:3,concurrency:1});assert.equal(report.workloadCases,1);assert.equal(report.failed,3);assert.equal(report.pass,false);
-});
-
-test('benchmark scheduling budget reports an incomplete run instead of claiming success',async t=>{
- const app=await appFor(t,{'/slow':{function:{source:'slow.mjs'}}},{'slow.mjs':'export default async () => { await new Promise(r=>setTimeout(r,100)); return new Response("ok"); }','tests/requests.json':JSON.stringify([{path:'/slow',status:200,expectBody:'ok'}])});
- const report=await benchmarkProject(app,{requests:1000,concurrency:1,seconds:1});assert.equal(report.complete,false);assert.equal(report.pass,false);assert.ok(report.completed>0&&report.completed<1000);
 });
 test('status-only success is not enough to cover a function response',async t=>{
  const app=await appFor(t,{'/f':{methods:['GET'],function:{source:'f.mjs'}}},{'f.mjs':'export default () => new Response("wrong-business-result")','tests/requests.json':JSON.stringify([{path:'/f',status:200}])});

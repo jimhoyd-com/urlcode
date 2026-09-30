@@ -17,7 +17,7 @@ const ready={jsonrpc:'2.0',method:'notifications/initialized'};
 async function session(root:string,messages:unknown[],raw?:string,options:{allowAuthoring?:boolean}={}) {let text='';const output=new Writable({write(chunk,_encoding,callback){text+=String(chunk);callback();}});await serveMcp({project:root,input:Readable.from([raw??messages.map(value=>JSON.stringify(value)+'\n').join('')]),output,...options});return text.trim().split('\n').filter(Boolean).map(value=>JSON.parse(value) as Reply).sort(byReplyId);}
 test('MCP negotiates explicit supported protocol and lists read-only implemented tools',async t=>{
  const root=await project(t,{'/a':redirect()});const replies=await session(root,[initialize,ready,{jsonrpc:'2.0',id:2,method:'tools/list'},{jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'inspect',arguments:{}}}]);
- assert.equal(replies[0]!.result.protocolVersion,'2025-11-25');assert.equal(replies[1]!.result.tools.length,32);assert.equal(JSON.parse(replies[2]!.result.content[0]!.text).routeCount,1);
+ assert.equal(replies[0]!.result.protocolVersion,'2025-11-25');assert.equal(replies[1]!.result.tools.length,30);assert.equal(JSON.parse(replies[2]!.result.content[0]!.text).routeCount,1);
  // get_context is documented as the first call an authoring agent makes; it is first in tools/list too.
  assert.equal((replies[1]!.result.tools[0] as {name:string}).name,'get_context');
 });
@@ -50,10 +50,10 @@ test('default MCP read tools never execute project code (#590)',async t=>{
  const {root,exists}=await markerProject(t);
  const replies=await session(root,[initialize,ready,...[
   {name:'get_context',arguments:{}},{name:'get_context',arguments:{task:'redirects'}},{name:'inspect',arguments:{}},{name:'validate',arguments:{}},{name:'explain',arguments:{target:'/f'}},
-  {name:'get_manifest',arguments:{}},{name:'preview_export',arguments:{format:'json'}},{name:'suggest_fixtures',arguments:{}},{name:'summarize_yaml_change',arguments:{before:'version: "1"\nroutes: {}\n'}},
+  {name:'get_manifest',arguments:{}},{name:'suggest_fixtures',arguments:{}},{name:'summarize_yaml_change',arguments:{before:'version: "1"\nroutes: {}\n'}},
   {name:'plan_feature',arguments:{goal:'contact form'}},{name:'review',arguments:{}},{name:'get_extension_artifacts',arguments:{}},{name:'get_addon_agent_tooling',arguments:{}},
  ].map((params,index)=>({jsonrpc:'2.0',id:index+2,method:'tools/call',params}))]);
- assert.equal(replies.length,14);for(const reply of replies.slice(1))assert.ok(reply.result,JSON.stringify(reply));
+ assert.equal(replies.length,13);for(const reply of replies.slice(1))assert.ok(reply.result,JSON.stringify(reply));
  assert.equal(await exists('loaded.marker'),false);assert.equal(await exists('ran.marker'),false);
 });
 test('with --allow-authoring, run_tests is listed as executing, non-read-only, and runs the project\'s trusted code (#590)',async t=>{

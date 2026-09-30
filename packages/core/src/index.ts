@@ -11,8 +11,6 @@ export { getCapabilities, routeCapabilities, analyzeProjectCapabilities, analyze
 export { capabilityDetails } from './capabilities.ts';
 export type { CapabilityTarget, CapabilityName, CapabilityKind, CapabilityDetail, CapabilitySupport, CapabilityDecision, CapabilityRequirement, CapabilityCatalog, CompatibilityReport, ProjectExtensionTargets } from './capabilities.ts';
 
-export { importRoutes, exportRoutes } from './interchange.ts';
-export type { InterchangeFormat, ConversionDiagnostic, ConversionCounts, ConversionReport, ImportRoutesOptions, ExportRoutesOptions } from './interchange.ts';
 
 export {listRecipes, searchRecipes, showRecipe, addRecipe} from './recipes.ts';
 export type {RecipeSummary, Recipe, RecipeAddReport, RecipeSearchResult} from './recipes.ts';
@@ -24,8 +22,8 @@ export type {CatalogMetadata, TargetVerdict, Complexity} from './catalog.ts';
 export {buildTypeScriptProject} from './typescript-authoring.ts';
 export type {TypeScriptBuildReport} from './typescript-authoring.ts';
 export {importBulkProject} from './bulk.ts';
-export type {BulkFormat, BulkFilePlan, BulkImportReport} from './bulk.ts';
-export {inspectProject, validateProject, explainRoute, explainProject, previewImport, previewExport, getCapability, getSchemaFragment, schemaPathNames, inspectExtensions, describeExtensions, buildContext, renderContext, estimateTokens, documentationTokens, buildTaskContext, renderTaskContext, contextTasks, buildBootstrap, renderBootstrap, bootstrapMaxCapabilities, planFeature, featurePlanMaxBytes, featurePlanMaxGoalLength} from './tooling.ts';
+export type {BulkFormat, BulkDiagnostic, BulkFilePlan, BulkImportReport} from './bulk.ts';
+export {inspectProject, validateProject, explainRoute, explainProject, getCapability, getSchemaFragment, schemaPathNames, inspectExtensions, describeExtensions, buildContext, renderContext, estimateTokens, documentationTokens, buildTaskContext, renderTaskContext, contextTasks, buildBootstrap, renderBootstrap, bootstrapMaxCapabilities, planFeature, featurePlanMaxBytes, featurePlanMaxGoalLength} from './tooling.ts';
 export type {InspectOptions, RouteExplanation, RouteMiss, ExplainedHandler, ExplainedCache, ExplainedExtensionRequirement, ExtensionProvider, TargetSupport, CapabilityEntry, CapabilityUsage, SchemaFragment, ExtensionInspection, ContextOptions, ProjectContext, ContextSection, ContextTask, TaskContext, TaskShape, Bootstrap, BootstrapOptions, BootstrapRuntime, BootstrapState, CapabilityPacketEntry, FeaturePlan, FeaturePlanOptions} from './tooling.ts';
 export {buildManifest, renderManifest, MANIFEST_SCHEMA_VERSION} from './manifest.ts';
 export type {Manifest, ManifestRoute, ManifestModule, RecipeProvenance} from './manifest.ts';

@@ -64,7 +64,12 @@ status or default `Cache-Control: no-store` on functions/redirects.
 | `request.body.<METHOD>.schema` | Requires `format: json`. A JSON Schema 2020-12 document in a bounded profile, compiled at load and checked after parsing; a body that breaks it returns 422 (see below) |
 
 The operator request limit remains an upper bound; YAML cannot raise it. A
-method without a body policy keeps the existing server limit. A configured body policy
+method without a body policy keeps the existing server limit. A declared
+`Content-Length` over the limit is answered 413 before any of the body is read.
+The Node server then closes the connection, but first discards what the client
+is still sending (up to 5 seconds, until the client closes) so a client that
+writes its whole body before reading receives the 413 rather than a connection
+reset. A configured body policy
 rejects nonidentity Content-Encoding for nonempty bodies; no automatic decompression.
 Empty optional bodies skip media/format checks. Inputs are validated before the
 handler; the original body remains available through function `request.text()` or

@@ -86,7 +86,7 @@ function jobs(scenario: Scenario): Record<string, string[]> {
   }
   return selected;
 }
-const code = ['static', 'verify', 'checks', 'package-floor-smoke', 'workspace-verify', 'multiprocess', 'audit', 'action', 'build-fidelity', 'container'];
+const code = ['static', 'verify', 'checks', 'package-floor-smoke', 'workspace-verify', 'disk-full', 'audit', 'action', 'build-fidelity', 'container'];
 const coreJobs = ['verify', 'checks', 'package-floor-smoke', 'audit', 'action', 'build-fidelity', 'container'];
 const shards = (...legs: string[]): string[] => legs.flatMap(leg => [1, 2, 3].map(shard => `${leg}/${shard}`));
 const EVERY_LEG = ['ubuntu-latest', 'macos-latest', 'windows-latest'].flatMap(os => ['22', '24', '26'].map(node => `${os}/${node}`));
@@ -154,7 +154,7 @@ test('an extension-only change skips the core proofs and runs the extension with
   ] as const) {
     const selected = jobs({ event: 'push', paths: [path] });
     for (const name of coreJobs) assert.equal(selected[name], undefined, `${name}: ${path}`);
-    assert(selected.static && selected.multiprocess, path);
+    assert(selected.static && selected['disk-full'], path);
     assert.deepEqual(selected['workspace-verify'], packages.map(pkg => `ubuntu-latest/24/${pkg}`), path);
   }
   assert.deepEqual(jobs({ event: 'push', paths: ['packages/auth/src/a.ts', 'packages/mcp/src/b.ts'] })['workspace-verify'], ['ubuntu-latest/24/auth', 'ubuntu-latest/24/mcp']);

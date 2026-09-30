@@ -9,8 +9,8 @@ import Ajv from 'ajv/dist/2020.js';
 import { isMap, isNode, isPair, isScalar, isSeq, parseDocument, stringify } from 'yaml';
 import { loadDocument, parseYaml, validateDocument } from './config.ts';
 import { parseInertYaml } from './inert-yaml.ts';
-import { ADDON_FILES_LOCK, checkPackageFiles, newestVersion, onlineProblem, readFilesLock, recordPackage, registrySpecName, verifyPackageOnline, writeFilesLock } from './package-files.ts';
-import type { AddonFilesLock, FileCheck, OnlineCheck } from './package-files.ts';
+import { ADDON_FILES_LOCK, checkPackageFiles, newestVersion, readFilesLock, recordPackage, registrySpecName, writeFilesLock } from './package-files.ts';
+import type { AddonFilesLock, FileCheck } from './package-files.ts';
 import type { LoadedDocument } from './types.ts';
 import { ConfigError, asConfigError, assert, boundedLine } from './errors.ts';
 import { checkExtensionPolicies, effectiveExtensionPolicies, emptyPolicyOnly, inspectExtensionRevision } from './extensions.ts';
@@ -1085,43 +1085,24 @@ export async function readArtifactMember(project: string, name: string, path: st
 
 export interface VerifiedAddon {
   name: string; package: string; version: string | null; independent: boolean; files: FileCheck;
-  /** `--online` only: the downloaded tarball compared with the lock and the installed files, or why it was not. */
-  online?: OnlineCheck | { skipped: string } | { error: string };
 }
-export interface VerifyReport { site: string; kind: AddonKind; online: boolean; addons: VerifiedAddon[]; problems: string[] }
+export interface VerifyReport { site: string; kind: AddonKind; addons: VerifiedAddon[]; problems: string[] }
 /**
- * `urlcode extensions|artifacts verify [name] [--online]` (#857). Offline, it compares every installed add-on of that
- * kind (or the one named) with addon-files.lock.json. `online` is an explicit network operation, never run
- * implicitly: it downloads each package's tarball from its package-lock.json `resolved` URL (a `file:` tarball is
- * read locally), checks it against the lock's sha512 integrity, and compares its files with the installed ones and
- * with the record. Nothing is changed and no package code is imported.
+ * `urlcode extensions|artifacts verify [name]` (#857): offline, it compares every installed add-on of that kind (or
+ * the one named) with the per-file hashes addon-files.lock.json recorded. Nothing is changed, nothing is downloaded
+ * and no package code is imported.
  */
-export async function verifyAddons(directory: string, kind: AddonKind, name: string | undefined, { online = false, manifest: given }: { online?: boolean; manifest?: AddonManifest } = {}): Promise<VerifyReport> {
+export async function verifyAddons(directory: string, kind: AddonKind, name: string | undefined, { manifest: given }: { manifest?: AddonManifest } = {}): Promise<VerifyReport> {
   assert(name === undefined || addonNamePattern.test(name), `Name an installed ${kind}`);
   const site = await openSite(directory), manifest = given ?? await readAddonManifest().catch(() => undefined);
   const lock = await lockPackages(site.site), files = await readFilesLock(site.site);
   const providers = [...(await installedProviders(site.site, manifest)).providers.values()].filter(provider => provider.descriptor.kind === kind && (name === undefined || provider.name === name));
   assert(name === undefined || providers.length, `${name} is not an installed ${kind} in ${site.site}`);
-  const report: VerifyReport = { site: site.site, kind, online, addons: [], problems: [] };
+  const report: VerifyReport = { site: site.site, kind, addons: [], problems: [] };
   for (const provider of providers) {
     const entry = lock[`node_modules/${provider.package}`], recorded = files.packages[provider.package];
     const item: VerifiedAddon = { name: provider.name, package: provider.package, version: entry?.version ?? null, independent: !provider.catalog, files: await checkPackageFiles(site.site, provider.package, entry, recorded, kind) };
     if (item.files.message) report.problems.push(`${provider.name}: ${item.files.message}`);
-    if (online) {
-      if (!entry || entry.link) item.online = { skipped: entry ? 'a linked directory: there is no tarball to download' : 'not in package-lock.json' };
-      else {
-        try {
-          const check = await verifyPackageOnline(site.site, provider.package, entry, recorded);
-          item.online = check;
-          const problem = onlineProblem(provider.package, check);
-          if (problem) report.problems.push(`${provider.name}: ${problem}`);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          item.online = { error: message };
-          report.problems.push(`${provider.name}: online verification failed: ${message}`);
-        }
-      }
-    }
     report.addons.push(item);
   }
   return report;

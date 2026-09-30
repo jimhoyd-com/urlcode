@@ -1,5 +1,5 @@
 import http from 'node:http';
-import type { IncomingMessage } from 'node:http';
+import { Socket } from 'node:net';
 import type { AddressInfo } from 'node:net';
 import { randomUUID, createHash } from 'node:crypto';
 import { readdir, lstat, mkdir } from 'node:fs/promises';
@@ -17,7 +17,7 @@ import { writeResponse, writeError } from './http-response.ts';
 import type { HandlerResult } from './http-response.ts';
 import { StreamHost } from './http-stream.ts';
 import { compileTrustedProxies, loopbackHostCheck } from './client-address.ts';
-import { handleHostRequest, hostErrorOptions, originForm, readHeaderLines } from './host-request.ts';
+import { handleHostRequest, hostErrorOptions, originForm, readHeaderLines, readIncomingBody } from './host-request.ts';
 
 export interface ServerOptions extends Omit<RuntimeOptions, 'observers' | 'acceptedExtensionPin' | 'replacing'> {
   /** `urlcode dev` only: on a reload, accept an extension registration still pinned to the revision this server
@@ -106,22 +106,6 @@ async function fingerprint(root: string, local: boolean, assets: string[] = []):
   for (const file of assets) await assetWalk(file);
   return hash.digest('hex');
 }
-async function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
-  if (req.headers['content-length'] && Number(req.headers['content-length']) > limit) throw new HttpError(413, 'Request body too large');
-  return new Promise((resolve, reject) => {
-    let size = 0; const chunks: Buffer[] = [];
-    const cleanup = () => { req.off('data', data); req.off('end', end); req.off('error', error); req.off('aborted', aborted); };
-    const error = (cause: Error) => { cleanup(); reject(cause); };
-    const aborted = () => error(new HttpError(400, 'Request aborted'));
-    const data = (chunk: Buffer) => {
-      size += chunk.length;
-      if (size > limit) { req.pause(); error(new HttpError(413, 'Request body too large')); }
-      else chunks.push(chunk);
-    };
-    const end = () => { cleanup(); resolve(Buffer.concat(chunks)); };
-    req.on('data',data); req.once('end',end); req.once('error',error); req.once('aborted',aborted);
-  });
-}
 const safeRequestId = /^[A-Za-z0-9_.:-]{1,128}$/;
 // Node 22.13.0-22.14.x throws ERR_HTTP_CONTENT_LENGTH_MISMATCH from a
 // byte-for-byte-correct `res.end()` whenever `strictContentLength` is set —
@@ -157,6 +141,27 @@ export async function startServer(options: ServerOptions = {}): Promise<Server> 
     if (!owned) return app;
     return { ...app, close: async () => { try { await app.close(); } finally { await removeRunDirectory(dir); } } };
   } catch (error) { if (owned) await removeRunDirectory(dir); throw error; }
+}
+/** How long a connection closed with request bytes still unread keeps discarding them before it is torn down. */
+const lingerMs = 5000;
+/**
+ * Closing a socket while request bytes are still unread makes the kernel answer the client with a reset, which can
+ * discard an answer the client has not read yet: a 413 refused on Content-Length before the body was read would reach
+ * a client still writing that body as ECONNRESET or EPIPE instead. When Node closes this request's connection
+ * (`Connection: close`) before the request was complete, only the write side is closed and the rest of the request is
+ * discarded until the client closes or `lingerMs` passes (RFC 9112 §9.6). The response has finished by then, so
+ * server shutdown treats the connection as idle and does not wait for it.
+ */
+function lingerBeforeClose(req: http.IncomingMessage): void {
+  const socket = req.socket;
+  // Node's http server ends a closing connection through destroySoon once the response is flushed.
+  socket.destroySoon = () => {
+    if (req.complete || socket.destroyed) { Socket.prototype.destroySoon.call(socket); return; }
+    const timer = setTimeout(() => socket.destroy(), lingerMs); timer.unref();
+    socket.once('end', () => socket.destroy());
+    socket.once('close', () => clearTimeout(timer));
+    socket.end();
+  };
 }
 async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000, watch = false,
   local = false, log = createJsonLogger(),
@@ -213,8 +218,7 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
   // `draining` flips /_urlcode/ready unhealthy ahead of `shuttingDown`, which stops
   // serving entirely; the gap between them is the pre-close readiness delay.
   let shuttingDown = false, draining = false, reloading = false, watching = false, interval: NodeJS.Timeout | undefined, lastFingerprint: string | undefined, inFlight = 0, healthInFlight = 0;
-  const retired = new Set<Promise<void>>();
-  const server = http.createServer({ maxHeaderSize: 16384, headersTimeout: headersTimeoutMs, requestTimeout: requestTimeoutMs, keepAliveTimeout: keepAliveTimeoutMs }, async (req, res) => {
+  const retired = new Set<Promise<void>>();  const server = http.createServer({ maxHeaderSize: 16384, headersTimeout: headersTimeoutMs, requestTimeout: requestTimeoutMs, keepAliveTimeout: keepAliveTimeoutMs }, async (req, res) => {
     const started = performance.now();
     const url = req.url ?? '', method = req.method ?? 'GET';
     // Upstream correlation is opt-in: an untrusted client must not choose the ID
@@ -227,6 +231,7 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
       if (values.length === 1 && only !== undefined && safeRequestId.test(only)) inbound = only;
     }
     const requestId = inbound || randomUUID();
+    lingerBeforeClose(req);
     const trace: RequestTrace = {};
     let status = 500;
     res.on('error', () => {});
@@ -270,7 +275,7 @@ async function startServerCore({ project = '.', host = '127.0.0.1', port = 3000,
         release = () => { if (!released) { released = true; inFlight--; counters.inFlight('requests', -1); } };
         res.once('finish', release); res.once('close', release);
         result = await handleHostRequest(current, { target: originForm(url), method, ...readHeaderLines(req.rawHeaders), peer: req.socket.remoteAddress,
-          readBody: limit => readBody(req, limit), requestId, signal: controller.signal, trace, origin: publicOrigin() }, { maxBodyBytes, trustedProxies: proxies });
+          readBody: limit => readIncomingBody(req, limit), requestId, signal: controller.signal, trace, origin: publicOrigin() }, { maxBodyBytes, trustedProxies: proxies });
       }
       if (result.stream !== undefined) {
         // From here the response counts against the stream limit, not the short-request admission.

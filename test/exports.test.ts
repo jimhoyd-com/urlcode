@@ -7,7 +7,7 @@ import { readFile } from 'node:fs/promises';
 // entry file declares. Published manifests deliberately have no source-only
 // condition: package-audit verifies every target exists in the tarball.
 const expected: Record<string, string[]> = {
-  '.': ['createRuntime','startServer','createEmbeddedHandler','loadDocument','validateDocument','parseYaml','observabilityEvents','createMetrics','renderPrometheus','getCapabilities','importRoutes','exportRoutes','listRecipes','searchRecipes','listExamples','searchExamples','addExample','buildTypeScriptProject','importBulkProject','inspectProject','explainRoute','explainProject','buildManifest','serveMcp','verifyProviderDeployment','matchesRoute','buildCloudflare','buildStatic','runProjectTests','scaffoldProject','initProject','addRedirect','initSite','initSiteWith','addAddons','removeAddon','listAddons','validateDeclaredExtensions','readAddonManifest','readAddonCatalog','composeHost','defineExtension'],
+  '.': ['createRuntime','startServer','createEmbeddedHandler','loadDocument','validateDocument','parseYaml','observabilityEvents','createMetrics','renderPrometheus','getCapabilities','listRecipes','searchRecipes','listExamples','searchExamples','addExample','buildTypeScriptProject','importBulkProject','inspectProject','explainRoute','explainProject','buildManifest','serveMcp','verifyProviderDeployment','matchesRoute','buildCloudflare','buildStatic','runProjectTests','scaffoldProject','initProject','addRedirect','initSite','initSiteWith','addAddons','removeAddon','listAddons','validateDeclaredExtensions','readAddonManifest','readAddonCatalog','composeHost','defineExtension'],
   './agent-context': ['listSkills','getSkill','listAgentCatalog','readAddonCatalog','searchDocs','getExample','validateYaml','explainError','suggestFixtures','summarizeYamlChange'],
   './aws': ['createLambdaHandler'],
   './cloudflare': ['rehydrate','createFetchHandler'],
@@ -17,7 +17,7 @@ const expected: Record<string, string[]> = {
   './policies': ['registry','targets','builtinProfiles','effectivePolicies','compilePolicies','compileErrorPolicy','errorHeaders','closePolicies','policyRequest'],
   './compliance': ['severities','builtinProfiles','profileNames','validateRules','resolveRules','loadComplianceRules','runCompliance'],
   './observability': ['events','validateObservers','createMetrics','createObserverSink','renderPrometheus','SNAPSHOT_VERSION'],
-  './extensions': ['inspectExtensionRevision','effectiveExtensionPolicies','hasExtensionPolicy','prepareExtensions','extensionResponse','defineExtension','clientKey','clientKeyIpv6Prefix','ExtensionHttpError','readBody','jsonResponse','isSameOriginRequest','hostProbe','joinHostLease','NETWORK_FILESYSTEMS','refuseNetworkFilesystem','SERVER_LEASE'],
+  './extensions': ['inspectExtensionRevision','effectiveExtensionPolicies','hasExtensionPolicy','prepareExtensions','extensionResponse','defineExtension','clientKey','clientKeyIpv6Prefix','ExtensionHttpError','readBody','jsonResponse','isSameOriginRequest','holdServerLock','hostProbe','NETWORK_FILESYSTEMS','refuseNetworkFilesystem','serverLockHeld','serverLockPath'],
   './host': ['composeHost'],
   './sandbox': ['SandboxPool','functionFile'],
   './body-schema': ['assertBodySchema','compileBodySchema','bodyIssues','bodySchemaIssues','checkBodySchema','bodySchemaLine','bodySchemaJson','bodySchemaEnvelope','bodySchemaProfile','bodySchemaDialect','declaredBodyNames','holdsIllFormedString','illFormedMember','maxRequestBodyBytes','uuidFormat'],

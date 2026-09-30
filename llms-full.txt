@@ -309,10 +309,10 @@ Activation likewise carries the canonical `origin` and the operator's full
 `isSiteOrigin`, and every write goes through core's one same-origin rule,
 `isSameOriginRequest`, so mcp, store and auth admit the same
 origins ([site origins](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#site-origins-and-same-origin-checks)).
-A SQLite-backed extension refuses a network filesystem and a live peer on
-another host through core's `refuseNetworkFilesystem` and `joinHostLease`, each
-with a lease table in its own database, and stops writing if another host
-takes the lease over, so store, auth and audit enforce one topology rule ([request helpers](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#request-helpers)).
+A SQLite-backed extension refuses a network filesystem and a second serving
+process through core's `refuseNetworkFilesystem` and `holdServerLock`, an OS
+lock on a file beside its own database, so store, auth and audit enforce one
+rule: one serving process per database ([request helpers](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#request-helpers)).
 An extension reports a startup condition the operator should act on through
 the activation's generic `warn()`, which reaches the operator's startup log as
 an `extension_warning` event and never a response
@@ -1266,7 +1266,6 @@ urlcode validate --local --project ./my-links/app
 urlcode routes --project ./my-links/app
 urlcode test --project ./my-links/app
 urlcode audit --project ./my-links/app --expect-routes 2
-urlcode benchmark --project ./my-links/app --requests 100 --concurrency 2
 ```
 
 Use the intentional actual count, not always 2. A site created by `init`
@@ -1274,7 +1273,7 @@ commits it once in `app/tests/audit.json`, which `audit` reads when the flag is
 absent, so its `npm run audit` and CI carry no count. Runtime checkout users can replace
 `urlcode` with `node packages/core/src/cli.ts`. Template users can use the equivalent npm scripts.
 External bindings require an already reviewed policy; add `--policy` where needed.
-The benchmark operates locally; it is not a load test of an external deployment.
+URLCode ships no load generator; see [load testing][docs/LOAD-TESTING.md].
 
 #### Request fixtures: `tests/requests.json`
 
@@ -1397,7 +1396,7 @@ maintainer to review; it is not a promise that the public contract will grow.
 | Named bindings and external revision-pinned binding/egress grants | Automatic provider secret stores, self-granted permissions |
 | Native assets/downloads and operator-granted bounded HTTPS proxy | Content sniffing, large-file streaming, arbitrary guest network access |
 | Parameter validation, JSON body syntax checks and `request.body.<METHOD>.schema` as a bounded JSON Schema 2020-12 profile (local `$defs`/`$ref`, type lists with `"null"`, `anyOf`/`oneOf`/`allOf`/`not`; [HTTP][docs/HTTP.md#body-schema-and-input-patterns]) | Remote or recursive `$ref`, `$id`/`$dynamicRef`, `if`/`then`/`else`, `unevaluated*`, `default`, formats other than `uuid`, `date`, `time`, `date-time`, `email`, `uri`, `hostname`, `ipv4` and `ipv6`, OpenAPI documents as a body schema, response schemas (the reverse direction exists: `urlcode openapi` describes the project as OpenAPI 3.1) |
-| Local test/audit/benchmark | Route-local YAML tests, managed monitoring, production load certification |
+| Local test/audit | Route-local YAML tests, managed monitoring, production load certification |
 | Local/self-hosted runtime; limited AWS/Vercel/Cloudflare implementations with local tests | Verified provider deployments or full cross-provider parity |
 | File authoring and snapshot reload; stored short links through the operator-installed `store` extension's `extensions.store.config.shortLinks` (bounded unique key, required HTTP(S) destination, one counter, public `GET`/`HEAD` redirect mount; see [data store][docs/STORE.md]) | General storage broker for `sandbox: true` code; stored-link needs beyond `shortLinks` (custom redirect status, non-HTTP(S) destinations, per-record ownership) |
 | Optional host `policies` (`throttle`, `agents`, `security`, `compression`, `cache`) and reusable `profiles` | Plugins named in YAML, shared multi-instance counters, CORS, verified-bot checks |
@@ -1580,9 +1579,7 @@ NEW_DIRECTORY` and `examples add NAME --out NEW_DIRECTORY` create a standalone
 project whose listed commands run from that directory. `bulk-import csv INPUT --out NEW_DIRECTORY`
 converts strict redirect rows into deterministic 1,000-route include files with
 source fingerprints. Both support `--dry-run`. See [recipes][docs/RECIPES.md],
-[bulk import and measured limits][docs/BULK.md], and [interchange][docs/INTERCHANGE.md].
-Provider conversion requires explicit acknowledgment of semantic differences;
-do not describe an acknowledged migration candidate as lossless.
+and [bulk import and measured limits][docs/BULK.md].
 
 Before handing a change back, `urlcode diff BEFORE --json` (MCP
 `summarize_yaml_change`) summarizes it against the earlier version: pass the
@@ -1855,7 +1852,7 @@ programmatic compatibility analysis and provider verification limits.
 [docs/RECIPES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RECIPES.md
 [docs/RECIPES.md#adding-a-recipe-to-an-existing-project]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RECIPES.md#adding-a-recipe-to-an-existing-project
 [docs/BULK.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/BULK.md
-[docs/INTERCHANGE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/INTERCHANGE.md
+[docs/LOAD-TESTING.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/LOAD-TESTING.md
 [docs/EXTENSIONS.md#project-level-lifecycle-hooks]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#project-level-lifecycle-hooks
 [docs/TYPESCRIPT-AUTHORING.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TYPESCRIPT-AUTHORING.md
 [docs/CONDITIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CONDITIONS.md
@@ -2653,7 +2650,7 @@ escape in a double-quoted scalar can write, fails with code `invalid-unicode`
 and its location (#1021): UTF-8 cannot carry one, so a `respond.text` body or a
 redirect URL would reach the client as U+FFFD and a `respond.json` string as the
 raw escape. A surrogate pair (`"\uD83D\uDE00"`) is one character and loads.
-Interchange import (`urlcode import`) parses JSON and YAML with the same rule.
+Bulk import (`urlcode bulk-import`) parses JSON and YAML rows with the same rule.
 Unknown schema fields fail. Files are limited to 32 MiB each, 256 includes and 100,000
 routes total, with a 64 MiB aggregate YAML source cap. Loading runs in a worker
 with a 256 MiB old-generation heap, a 10-second wall deadline and at most two
@@ -3138,11 +3135,8 @@ programmatic compatibility analysis and provider verification limits.
 
 ### Authoring, conversion and verification tools
 
-[Interchange](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/INTERCHANGE.md) imports and exports a strict literal redirect
-subset with source diagnostics and dry-run reports. Provider conversions refuse
-semantic differences by default; explicit acknowledgment retains warnings and
-never reports lossless behavior. [Bulk import](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/BULK.md) shards CSV/JSON/YAML rows
-into ordinary includes while retaining runtime resource limits. [Recipes](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RECIPES.md)
+[Bulk import](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/BULK.md) validates strict literal CSV/JSON/YAML redirect rows,
+with source diagnostics and dry-run reports, and shards them into ordinary includes while retaining runtime resource limits. [Recipes](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RECIPES.md)
 are local Git-owned examples; they grant no capabilities. [Build-time TypeScript](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TYPESCRIPT-AUTHORING.md)
 is separate from runtime execution.
 
@@ -3408,7 +3402,12 @@ status or default `Cache-Control: no-store` on functions/redirects.
 | `request.body.<METHOD>.schema` | Requires `format: json`. A JSON Schema 2020-12 document in a bounded profile, compiled at load and checked after parsing; a body that breaks it returns 422 (see below) |
 
 The operator request limit remains an upper bound; YAML cannot raise it. A
-method without a body policy keeps the existing server limit. A configured body policy
+method without a body policy keeps the existing server limit. A declared
+`Content-Length` over the limit is answered 413 before any of the body is read.
+The Node server then closes the connection, but first discards what the client
+is still sending (up to 5 seconds, until the client closes) so a client that
+writes its whole body before reading receives the 413 rather than a connection
+reset. A configured body policy
 rejects nonidentity Content-Encoding for nonempty bodies; no automatic decompression.
 Empty optional bodies skip media/format checks. Inputs are validated before the
 handler; the original body remains available through function `request.text()` or
@@ -4477,7 +4476,7 @@ URLs, so the runtime needs to know the origin the site is served from. It
 never guesses from a request: a generated file is a fixed response compiled at
 activation, and a `Host` header is client-controlled. The origin is the
 operator's `--origin https://links.example` flag on `serve`, `dev`,
-`validate`, `test`, `routes`, `audit`, `benchmark` and `build`, or the
+`validate`, `test`, `routes`, `audit` and `build`, or the
 `origin` option of `startServer`/`createRuntime`/`buildCloudflare`.
 
 - `site.robots.sitemap: true` without an origin omits the `Sitemap:` line and
@@ -5569,14 +5568,15 @@ string or key in a parsed value holds an unpaired surrogate, and
 `illFormedMember(object)` names the first top-level member that does, for an
 error that names the argument (the MCP extension answers `-32602` with it).
 
-An extension that keeps a SQLite database runs two setup checks before it
-serves, the ones the store, auth and audit share
-([several serving processes](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#several-serving-processes-on-one-host)):
+An extension that keeps a SQLite database is served by one process. The
+store, auth and audit share these helpers
+([one serving process per database](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#one-serving-process-per-database)):
 
 | Helper | What it does |
 |---|---|
-| `refuseNetworkFilesystem(directory, what, probe?)` | Refuses a database directory on a network filesystem by its Linux `statfs` type (`NETWORK_FILESYSTEMS`); skipped on macOS and Windows. |
-| `joinHostLease(db, {table, what, probe?, now?, log?})` | Creates the extension's lease table in its own database when absent, refuses while a live peer runs on another host (another Linux boot id, or another hostname when either has none), and inserts this process's row. Another host's row is live while its heartbeat advances, judged on this process's monotonic clock (`SERVER_LEASE`; the timing and rules are in [store](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#several-serving-processes-on-one-host)), so joining may wait up to the lease's time to live watching one. A heartbeat that finds another host's row loses the lease (`held` turns false, the loss is logged) until none is left. Call `verify()` inside every write, under its write lock: first in each write transaction, or from a trigger of statements you cannot wrap (auth's temporary triggers on Better Auth's tables). It reads the lease table every time and never trusts this process's clock. Refuse the write with a 503 when it throws. `renew()` is a cheap per-request gate (and runs the heartbeat that rejoins), never a write check. `close()` stops the heartbeat and deletes the row. `db` is a `node:sqlite` `DatabaseSync` or an object with `transaction`, `run` and `all`. |
+| `holdServerLock(database, what, probe?)` | Before serving: creates the database's directory (0700) when absent, refuses it on a network filesystem, then takes an exclusive OS lock on `<database>.server-lock` (SQLite's file lock, held by a transaction that never ends) and returns `{path, release()}`. Another process holding it refuses with `Another process is already serving this <what> database`. Holders in one process share it (a dev reload), and the operating system releases it when the process exits or is killed. No heartbeat, timestamp or clock. Call `release()` from the activation's `close()` and when activation fails. |
+| `serverLockHeld(database)` | Whether a serving process (this one or another) holds that lock now, read without taking it: an operator command asks before writing with a declaration the server may not share. |
+| `refuseNetworkFilesystem(directory, what, probe?)` | Refuses a database directory on a network filesystem by its Linux `statfs` type (`NETWORK_FILESYSTEMS`); skipped on macOS and Windows. Operator commands, which never take the lock, run it before they open the database. |
 
 #### OpenAPI description
 
@@ -5795,7 +5795,7 @@ current activation that way.
 
 #### Hermetic runs and test seeds
 
-`urlcode test`, `urlcode audit`, `urlcode benchmark`, the MCP server's
+`urlcode test`, `urlcode audit`, the MCP server's
 `run_tests`, and `validate` and `routes` with `--local-review` and no operator
 pin never touch the site's live data (`RIM-EXT-HERMETIC-001`). Each run
 imports `host.mjs` anew with a fresh, empty temporary directory set, and
@@ -5805,7 +5805,7 @@ imports `host.mjs` anew with a fresh, empty temporary directory set, and
 interface HostContext {
   // <site>/data, or the run's temporary directory (removed when the host closes).
   data: string;
-  // true for test, audit, benchmark, MCP run_tests and a --local-review
+  // true for test, audit, MCP run_tests and a --local-review
   // validate or routes.
   hermetic: boolean;
   // projectSha256, site, get as before
@@ -5872,7 +5872,7 @@ site-wide list, never in project YAML (issue #717):
 
 | Where | How |
 |---|---|
-| `urlcode dev`, `serve`, `validate`, `test`, `routes`, `audit`, `benchmark` | `--alias-origin https://www.site.example`, repeated once per origin, beside `--origin` |
+| `urlcode dev`, `serve`, `validate`, `test`, `routes`, `audit` | `--alias-origin https://www.site.example`, repeated once per origin, beside `--origin` |
 | `createRuntime`, `startServer`, `runProjectTests` | `aliasOrigins: ['https://www.site.example']` beside `origin` |
 | AWS and Vercel handlers | the `aliasOrigins` handler option, otherwise `URLCODE_ALIAS_ORIGINS` (comma-separated) beside `URLCODE_ORIGIN` |
 
@@ -6167,7 +6167,7 @@ instances but does not close caller-owned services. Host modules are not
 watched or automatically rediscovered. Restart to update them.
 
 The same explicit option is supported by dev, validate, test, routes, audit,
-benchmark, extensions and mcp. These commands execute trusted host activation and may access its
+extensions and mcp. These commands execute trusted host activation and may access its
 store; read-only project inspection commands never implicitly load a host file.
 A host-file path is resolved against the working directory and must be a
 `.mjs`/`.js` file whose real path lies outside the project, including after
@@ -6377,7 +6377,7 @@ The same verbs serve both kinds; every command takes `--site <directory>`
 | `urlcode extensions add <package spec or tarball>…` / `urlcode artifacts add <package spec or tarball>…` | Adds an [independent extension](#independent-extension-packages) or [artifact](#independent-artifact-packages) package the operator chose, outside core's catalog |
 | `urlcode extensions remove <name>` / `urlcode artifacts remove <name>` | Removes one add-on |
 | `urlcode extensions list [--strict]` / `urlcode artifacts list [--strict]` | Reports what is installed and whether it matches core's pins and its [installed file record](#the-installed-file-record) |
-| `urlcode extensions verify [<name>] [--online]` / `urlcode artifacts verify [<name>] [--online]` | Compares the installed files with the [installed file record](#the-installed-file-record), offline; `--online` also re-downloads each locked tarball and compares file by file |
+| `urlcode extensions verify [<name>]` / `urlcode artifacts verify [<name>]` | Compares the installed files with the [installed file record](#the-installed-file-record), offline |
 | `urlcode extensions outdated` / `urlcode artifacts outdated` | Reports, for each independent package, the newest registry version its spec resolves to; see [upgrading an independent package](#upgrading-an-independent-package) |
 | `urlcode artifacts inspect <name> [--strict]` | Reports, offline, the standard documents an installed, pin-verified artifact lists; see [inspecting artifact documents](#inspecting-artifact-documents) |
 
@@ -6529,16 +6529,10 @@ refused. To put the published files back, run `npm ci --ignore-scripts`.
 
 ```sh
 urlcode artifacts verify                      # offline: files against addon-files.lock.json
-urlcode artifacts verify petstore-docs --online
+urlcode artifacts verify petstore-docs
 ```
 
-`verify` exits 1 on any difference. `verify --online` is a network operation
-and runs only when asked: for each package it downloads the tarball from its
-`package-lock.json` `resolved` URL (a `file:` tarball is read from disk),
-refuses it unless its sha512 matches the lock's integrity, and then compares
-it file by file with the installed files and with the record. A private
-registry that needs credentials is not supported; the failure is reported.
-The record is only as trustworthy as the moment it was written: it catches a
+`verify` exits 1 on any difference and never downloads anything. The record is only as trustworthy as the moment it was written: it catches a
 later edit, not a package that was already bad when it was installed. A
 package installed some other way (for example by `npm install` from a committed
 `package.json`) has no record until it is named to `add` again, which records
@@ -6728,8 +6722,8 @@ revision or registers a schema that differs from the definition.
 
 `composeHost` takes the pin from the operator, never from the project:
 
-- When a CLI command (`serve`, `dev`, `validate`, `test`, `routes`, `audit`,
-  `benchmark`) receives both `--policy` and `--host-file`, core validates the
+- When a CLI command (`serve`, `dev`, `validate`, `test`, `routes`, `audit`)
+  receives both `--policy` and `--host-file`, core validates the
   policy and passes its `projectSha256` to `composeHost` while it imports the
   host file. Nothing else in the policy reaches the host.
 - Otherwise `composeHost` reads `PROJECT_SHA256`, as before.
@@ -6818,7 +6812,7 @@ The boundary holds for these reasons:
   `plan-feature`, `review`, `report` and `openapi`) accept it and ignore it
   ([#958](https://github.com/jimhoyd-com/urlcode/issues/958)), so the flag the check scripts pass works on every check. `serve`
   and `dev` refuse it because serving always needs the reviewed pin, and
-  every other command, such as `benchmark`, refuses it too; the refusal
+  every other command, such as `verify-deployment`, refuses it too; the refusal
   names the command (`code` `local-review-unsupported`). A served runtime is
   always pinned by the operator.
 - **Nothing is persisted.** The derived pin exists only in the process for
@@ -6998,8 +6992,7 @@ the last meaning npm's recorded integrity, not re-checked offline), and `files`,
 the comparison with the [installed file record](#the-installed-file-record)
 (`match`, or `linked` for a development link). Inspection is refused unless the
 artifact is inert, pin-verified and unmodified; a `file:` directory link is not
-pin-verified. `artifacts verify --online` is the explicit way to re-check a
-registry install against its published tarball. `--strict` exits 1 when any document has an error diagnostic.
+pin-verified. `--strict` exits 1 when any document has an error diagnostic.
 
 Inspection never imports package code, runs a lifecycle script, fetches a
 reference, follows a symlink, leaves the package directory or creates a grant.

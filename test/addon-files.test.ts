@@ -1,11 +1,8 @@
 // #857 items 2 and 6: `add` records the sha256 of every installed file in addon-files.lock.json; list --strict,
-// inspect and `verify` compare against it offline; `verify --online` re-downloads the locked tarball (here from a local
-// http server and a file: path, never the real registry); re-running `add <spec>` upgrades an independent package
-// through the same checks with full rollback; `outdated` asks the registry (the fake npm's `view`).
+// inspect and `verify` compare against it offline; re-running `add <spec>` upgrades an independent package through the
+// same checks with full rollback; `outdated` asks the registry (the fake npm's `view`).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -19,7 +16,7 @@ import { parseAddonManifest } from '../packages/core/src/addon-manifest.ts';
 import type { AddonManifest } from '../packages/core/src/addon-manifest.ts';
 import { inspectInstalledArtifact } from '../packages/core/src/artifact-inspect.ts';
 import { runAddonCommand } from '../packages/core/src/extensions-cli.ts';
-import { ADDON_FILES_LOCK, newestVersion, readFilesLock, readTarball, registrySpecName } from '../packages/core/src/package-files.ts';
+import { ADDON_FILES_LOCK, newestVersion, readFilesLock, registrySpecName } from '../packages/core/src/package-files.ts';
 import { loadDocument } from '../packages/core/src/config.ts';
 // @ts-expect-error: a plain JavaScript test fixture without type declarations.
 import { packTarball } from './fixtures/addons/tarball.mjs';
@@ -67,12 +64,7 @@ async function tarball(t: TestContext, into: string, name: string, version: stri
 const installedPetstore = (dir: string): string => join(dir, 'node_modules', '@example', 'urlcode-petstore-docs');
 const printer = (): { printed: unknown[]; print: (value: unknown) => boolean } => { const printed: unknown[] = []; return { printed, print: value => printed.push(value) > 0 }; };
 
-test('the core tarball reader, spec and version helpers', async t => {
-  const dir = await temp(t, 'urlcode-tar-');
-  const files = readTarball(await readFile(await tarball(t, dir, 'petstore-docs', '1.4.0')));
-  assert.deepEqual(Object.keys(files).sort(), ['README.md', 'openapi/petstore.yaml', 'package.json', 'schemas/order.json', 'schemas/pet.json', 'urlcode.json']);
-  assert.match(files['README.md']!, /^[a-f0-9]{64}$/);
-  assert.throws(() => readTarball(Buffer.from('not gzip')), /not gzip data/);
+test('the spec and version helpers', () => {
   assert.deepEqual(['name', 'name@^1.2.0', '@scope/name@1.2.3', '@scope/name', './x.tgz', '/abs/dir', 'file:x', 'https://example.test/x.tgz', 'github:user/repo', 'user/repo', 'name-1.0.0.tgz'].map(registrySpecName),
     ['name', 'name', '@scope/name', '@scope/name', undefined, undefined, undefined, undefined, undefined, undefined, undefined]);
   assert.equal(newestVersion(['1.10.0', '1.9.0', '2.0.0-alpha.2', '2.0.0-alpha.10', '1.2.3']), '2.0.0-alpha.10');
@@ -107,7 +99,7 @@ test('add records every installed file; list --strict, describe, inspect and ver
   await rm(join(installedPetstore(dir), 'schemas', 'pet.json'));
   const drift = { added: ['extra.json'], removed: ['schemas/pet.json'], changed: ['schemas/order.json'], counts: { added: 1, removed: 1, changed: 1 } };
   const listed = await listAddons(dir, 'artifact', { manifest });
-  assert.deepEqual(listed.addons.find(item => item.name === 'petstore-docs')!.files, { status: 'modified', recorded: 6, drift, message: `${petstorePackage}'s installed files differ from addon-files.lock.json (changed schemas/order.json; added extra.json; removed schemas/pet.json); reinstall with \`npm ci --ignore-scripts\`, or compare with the published tarball using \`urlcode artifacts verify --online\`` });
+  assert.deepEqual(listed.addons.find(item => item.name === 'petstore-docs')!.files, { status: 'modified', recorded: 6, drift, message: `${petstorePackage}'s installed files differ from addon-files.lock.json (changed schemas/order.json; added extra.json; removed schemas/pet.json); reinstall with \`npm ci --ignore-scripts\`` });
   assert.match(listed.problems.join('\n'), /petstore-docs: .*installed files differ from addon-files\.lock\.json/);
   const strict = printer();
   assert.equal(await runAddonCommand('artifacts', 'list', [], { site: dir, strict: true }, strict.print), 1);
@@ -115,69 +107,16 @@ test('add records every installed file; list --strict, describe, inspect and ver
   assert.equal(described.status, 'modified');
   await assert.rejects(inspectInstalledArtifact(dir, 'petstore-docs', { manifest }), /petstore-docs is modified: .*changed schemas\/order\.json; added extra\.json; removed schemas\/pet\.json/);
   const verified = await verifyAddons(dir, 'artifact', 'petstore-docs', { manifest });
-  assert.deepEqual([verified.online, verified.addons.map(item => [item.name, item.files.status]), verified.problems.length], [false, [['petstore-docs', 'modified']], 1]);
+  assert.deepEqual([verified.addons.map(item => [item.name, item.files.status]), verified.problems.length], [[['petstore-docs', 'modified']], 1]);
   const failing = printer();
   assert.equal(await runAddonCommand('artifacts', 'verify', ['petstore-docs'], { site: dir, json: true }, failing.print), 1);
   await assert.rejects(verifyAddons(dir, 'artifact', 'absent', { manifest }), /absent is not an installed artifact/);
-  await assert.rejects(runAddonCommand('artifacts', 'list', [], { site: dir, online: true }, failing.print), /--online is only supported by artifacts verify/);
 
   const removed = await removeAddon(dir, 'artifact', 'petstore-docs', { manifest });
   assert.equal(removed.removed, 'petstore-docs');
   assert.deepEqual(Object.keys((await readFilesLock(dir)).packages), ['@jimhoyd/urlcode-notes'], 'remove drops the record');
   await removeAddon(dir, 'artifact', 'notes', { manifest });
   await assert.rejects(stat(join(dir, ADDON_FILES_LOCK)), /ENOENT/, 'an empty record is no file at all');
-});
-
-test('verify --online downloads the locked tarball over http, checks its sha512 and compares file by file; a file: tarball is read locally', async t => {
-  const dir = await site(t), registry = await registryFor(t, dir);
-  await tarball(t, registry, 'petstore-docs', '1.4.0');
-  const { rename } = await import('node:fs/promises');
-  await rename(join(registry, 'petstore-docs-1.4.0.tgz'), join(registry, `${petstorePackage.replace('/', '+')}@1.4.0.tgz`));
-  let served = await readFile(join(registry, `${petstorePackage.replace('/', '+')}@1.4.0.tgz`));
-  const requests: string[] = [];
-  const server = createServer((request, response) => { requests.push(request.url ?? ''); response.writeHead(200, { 'content-type': 'application/octet-stream' }); response.end(served); });
-  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => new Promise<void>(resolve => server.close(() => resolve())));
-  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
-  env(t, { FAKE_NPM_REGISTRY: registry, FAKE_NPM_TARBALL_BASE: base });
-
-  await addAddons(dir, 'artifact', [`${petstorePackage}@1.4.0`], { manifest });
-  const recorded = (await readFilesLock(dir)).packages[petstorePackage]!;
-  assert.deepEqual([recorded.spec, recorded.resolved], [`${petstorePackage}@1.4.0`, `${base}${petstorePackage.replace('/', '+')}@1.4.0.tgz`]);
-  assert.deepEqual(requests, [], 'add, list and offline verify never download anything');
-  await listAddons(dir, 'artifact', { manifest });
-  await verifyAddons(dir, 'artifact', undefined, { manifest });
-  assert.deepEqual(requests, []);
-
-  const clean = await verifyAddons(dir, 'artifact', undefined, { online: true, manifest });
-  assert.deepEqual(clean.problems, []);
-  const none = { added: [], removed: [], changed: [], counts: { added: 0, removed: 0, changed: 0 } };
-  assert.deepEqual(clean.addons[0]!.online, { url: recorded.resolved, bytes: served.length, integrity: 'match', installed: none, recorded: none });
-  assert.equal(requests.length, 1);
-
-  await writeFile(join(installedPetstore(dir), 'openapi', 'petstore.yaml'), 'openapi: 3.1.0\ninfo: {title: edited, version: "1"}\npaths: {}\n');
-  const edited = printer();
-  assert.equal(await runAddonCommand('artifacts', 'verify', ['petstore-docs'], { site: dir, online: true }, edited.print), 1);
-  const text = String(edited.printed[0]);
-  assert.match(text, /--online: a network operation that downloaded each locked tarball/);
-  assert.match(text, /sha512 matches package-lock\.json/);
-  assert.match(text, /installed vs published: changed openapi\/petstore\.yaml/);
-  assert.match(text, /recorded vs published: identical/);
-
-  // A server answering with other bytes: the lock's integrity does not describe them, so nothing is compared.
-  served = Buffer.from('tampered');
-  const tampered = await verifyAddons(dir, 'artifact', 'petstore-docs', { online: true, manifest });
-  assert.deepEqual(tampered.addons[0]!.online, { url: recorded.resolved, bytes: 8, integrity: 'mismatch' });
-  assert.match(tampered.problems.join('\n'), /does not match the sha512 integrity package-lock\.json records/);
-  await new Promise<void>(resolve => server.close(() => resolve()));
-  const offline = await verifyAddons(dir, 'artifact', 'petstore-docs', { online: true, manifest });
-  assert.match(JSON.stringify(offline.addons[0]!.online), /"error":"downloading http:\/\/127\.0\.0\.1:\d+\/.* failed/);
-
-  // A package locked to a local tarball is compared the same way, read from disk.
-  const local = await site(t), packages = await temp(t, 'urlcode-tarballs-');
-  await addAddons(local, 'artifact', [await tarball(t, packages, 'petstore-docs', '1.4.0')], { manifest });
-  const fromFile = await verifyAddons(local, 'artifact', undefined, { online: true, manifest });
-  assert.deepEqual([fromFile.problems, (fromFile.addons[0]!.online as { integrity: string }).integrity], [[], 'match']);
 });
 
 test('re-running add upgrades an independent artifact in place through the same checks, and rolls back fully on refusal', async t => {

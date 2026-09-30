@@ -103,7 +103,7 @@ export function fastCheckProblems(check: string): string[] {
   try { parsed = parseArgs({ args, options: commandOptions, allowPositionals: true, strict: true }); }
   catch (error) { return [`\`${check}\`: ${(error as Error).message}`]; }
   const command = parsed.positionals[0] ?? '', scripts: Record<string, string> = projectScripts();
-  if (['serve', 'dev', 'benchmark'].includes(command)) return [`\`${check}\`: ${command} needs the reviewed revision pin, so it is not a fast check`];
+  if (['serve', 'dev'].includes(command)) return [`\`${check}\`: ${command} needs the reviewed revision pin, so it is not a fast check`];
   if (parsed.values['host-file'] === undefined || (pinFreeReviewCommands as readonly string[]).includes(command)) return [];
   if (!(localReviewCommands as readonly string[]).includes(command)) return [`\`${check}\`: ${command} with --host-file is not a local-review check (${localReviewCommands.join('/')})`];
   return check === scripts[command] ? [] : [`\`${check}\` would be refused without a pin; use the site's npm script command \`${scripts[command]}\``];

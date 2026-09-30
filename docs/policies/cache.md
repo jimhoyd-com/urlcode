@@ -105,9 +105,8 @@ origin decide that); conditional and range requests do, as below. Rules:
   bodies across the whole runtime; the least recently used entry is evicted
   first. The store belongs to one runtime instance and is dropped on close and
   reload, so a deploy never serves the previous code's output. Several
-  `urlcode serve` processes on one host each keep their own cache, even when
-  they share a store database, so a response is cached once per process
-  ([several serving processes](../CAPACITY.md#several-serving-processes-on-one-host)).
+  `urlcode serve` processes each keep their own cache, so a response is
+  cached once per process.
 - Stored entries hold the handler's headers as they were after YAML
   `response.headers` and this policy ran, before security headers and
   compression. Those run again on every hit, so a hit is compressed and

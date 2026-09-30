@@ -232,7 +232,6 @@ urlcode validate --local --project ./my-links/app
 urlcode routes --project ./my-links/app
 urlcode test --project ./my-links/app
 urlcode audit --project ./my-links/app --expect-routes 2
-urlcode benchmark --project ./my-links/app --requests 100 --concurrency 2
 ```
 
 Use the intentional actual count, not always 2. A site created by `init`
@@ -240,7 +239,7 @@ commits it once in `app/tests/audit.json`, which `audit` reads when the flag is
 absent, so its `npm run audit` and CI carry no count. Runtime checkout users can replace
 `urlcode` with `node packages/core/src/cli.ts`. Template users can use the equivalent npm scripts.
 External bindings require an already reviewed policy; add `--policy` where needed.
-The benchmark operates locally; it is not a load test of an external deployment.
+URLCode ships no load generator; see [load testing][docs/LOAD-TESTING.md].
 
 ### Request fixtures: `tests/requests.json`
 
@@ -363,7 +362,7 @@ maintainer to review; it is not a promise that the public contract will grow.
 | Named bindings and external revision-pinned binding/egress grants | Automatic provider secret stores, self-granted permissions |
 | Native assets/downloads and operator-granted bounded HTTPS proxy | Content sniffing, large-file streaming, arbitrary guest network access |
 | Parameter validation, JSON body syntax checks and `request.body.<METHOD>.schema` as a bounded JSON Schema 2020-12 profile (local `$defs`/`$ref`, type lists with `"null"`, `anyOf`/`oneOf`/`allOf`/`not`; [HTTP][docs/HTTP.md#body-schema-and-input-patterns]) | Remote or recursive `$ref`, `$id`/`$dynamicRef`, `if`/`then`/`else`, `unevaluated*`, `default`, formats other than `uuid`, `date`, `time`, `date-time`, `email`, `uri`, `hostname`, `ipv4` and `ipv6`, OpenAPI documents as a body schema, response schemas (the reverse direction exists: `urlcode openapi` describes the project as OpenAPI 3.1) |
-| Local test/audit/benchmark | Route-local YAML tests, managed monitoring, production load certification |
+| Local test/audit | Route-local YAML tests, managed monitoring, production load certification |
 | Local/self-hosted runtime; limited AWS/Vercel/Cloudflare implementations with local tests | Verified provider deployments or full cross-provider parity |
 | File authoring and snapshot reload; stored short links through the operator-installed `store` extension's `extensions.store.config.shortLinks` (bounded unique key, required HTTP(S) destination, one counter, public `GET`/`HEAD` redirect mount; see [data store][docs/STORE.md]) | General storage broker for `sandbox: true` code; stored-link needs beyond `shortLinks` (custom redirect status, non-HTTP(S) destinations, per-record ownership) |
 | Optional host `policies` (`throttle`, `agents`, `security`, `compression`, `cache`) and reusable `profiles` | Plugins named in YAML, shared multi-instance counters, CORS, verified-bot checks |
@@ -546,9 +545,7 @@ NEW_DIRECTORY` and `examples add NAME --out NEW_DIRECTORY` create a standalone
 project whose listed commands run from that directory. `bulk-import csv INPUT --out NEW_DIRECTORY`
 converts strict redirect rows into deterministic 1,000-route include files with
 source fingerprints. Both support `--dry-run`. See [recipes][docs/RECIPES.md],
-[bulk import and measured limits][docs/BULK.md], and [interchange][docs/INTERCHANGE.md].
-Provider conversion requires explicit acknowledgment of semantic differences;
-do not describe an acknowledged migration candidate as lossless.
+and [bulk import and measured limits][docs/BULK.md].
 
 Before handing a change back, `urlcode diff BEFORE --json` (MCP
 `summarize_yaml_change`) summarizes it against the earlier version: pass the
@@ -821,7 +818,7 @@ programmatic compatibility analysis and provider verification limits.
 [docs/RECIPES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RECIPES.md
 [docs/RECIPES.md#adding-a-recipe-to-an-existing-project]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RECIPES.md#adding-a-recipe-to-an-existing-project
 [docs/BULK.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/BULK.md
-[docs/INTERCHANGE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/INTERCHANGE.md
+[docs/LOAD-TESTING.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/LOAD-TESTING.md
 [docs/EXTENSIONS.md#project-level-lifecycle-hooks]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#project-level-lifecycle-hooks
 [docs/TYPESCRIPT-AUTHORING.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TYPESCRIPT-AUTHORING.md
 [docs/CONDITIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CONDITIONS.md

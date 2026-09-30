@@ -45,7 +45,6 @@ The [specification][docs/SPECIFICATION.md] owns implemented semantics; the
 | Generate robots.txt, sitemap.xml, favicon, security.txt and llms.txt | [Site conventions][docs/SITE.md] |
 | Organize YAML across folders | [Organization][docs/ORGANIZATION.md], [readability practices][docs/BEST-PRACTICES.md] |
 | Generate placeholders from YAML | [Scaffolding][docs/SCAFFOLDING.md] |
-| Convert provider redirect files | [Strict interchange and conversion reports][docs/INTERCHANGE.md] |
 | Import thousands of redirects | [Bulk import and scale evidence][docs/BULK.md] |
 | Reuse local project recipes | [Recipe catalog][docs/RECIPES.md] |
 | Check declared configuration against standards-referenced rules | [Compliance][docs/COMPLIANCE.md] |
@@ -137,7 +136,6 @@ limits are deployment settings, not fields to invent in route YAML.
 [docs/ORGANIZATION.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/ORGANIZATION.md
 [docs/BEST-PRACTICES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/BEST-PRACTICES.md
 [docs/SCAFFOLDING.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SCAFFOLDING.md
-[docs/INTERCHANGE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/INTERCHANGE.md
 [docs/BULK.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/BULK.md
 [docs/RECIPES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RECIPES.md
 [docs/COMPLIANCE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/COMPLIANCE.md

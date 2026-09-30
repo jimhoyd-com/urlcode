@@ -657,7 +657,7 @@ export default await composeHost(import.meta.url,[demo]);
     // Without the flag nothing changed: the run still needs the reviewed pin.
     assert.equal(lines(run(['validate','--local']).stderr).at(-1)?.code,'revision-pin-required');
   });
-  for(const [args,message] of [[['serve','--port','0'],/^serve does not take --local-review: serving always needs the reviewed revision pin/],[['dev','--port','0'],/^dev does not take --local-review: serving always needs the reviewed revision pin/],[['benchmark'],/^benchmark does not take --local-review; it is for the checks validate\/test\/routes\/audit and the pin-free read-only commands explain\/.*openapi$/]] as const)await t.test(`${args[0]} refuses --local-review, naming itself`,()=>{
+  for(const [args,message] of [[['serve','--port','0'],/^serve does not take --local-review: serving always needs the reviewed revision pin/],[['dev','--port','0'],/^dev does not take --local-review: serving always needs the reviewed revision pin/],[['verify-deployment'],/^verify-deployment does not take --local-review; it is for the checks validate\/test\/routes\/audit and the pin-free read-only commands explain\/.*openapi$/]] as const)await t.test(`${args[0]} refuses --local-review, naming itself`,()=>{
     const out=run([...args,'--local-review']);assert.equal(out.status,1,out.stdout+out.stderr);
     const error=lines(out.stderr).at(-1)!;
     assert.equal(error.code,'local-review-unsupported',out.stderr);

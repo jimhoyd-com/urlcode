@@ -2,7 +2,7 @@
 
 A trusted function that reads files from a directory the operator picks. The
 project declares only the *name* `DATA_DIR`; the host supplies the value, so a
-test run, a benchmark or a deployment can point the same reviewed project at a
+test run or a deployment can point the same reviewed project at a
 different directory without copying it.
 
 ```yaml

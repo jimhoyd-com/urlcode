@@ -90,13 +90,13 @@ was set. `1` otherwise, and for an unreachable target, a rejected certificate,
 a target that is not a bare HTTP(S) origin, or invalid options. The report is
 printed as one JSON line after one `{"event":"finding",...}` line per finding.
 
-## How it complements audit, compliance and benchmark
+## How it complements audit, compliance and load testing
 
 | Command | Runs against | Answers |
 |---|---|---|
 | `urlcode audit` | a local snapshot | are every route and method covered by passing checks, and do the counts reconcile |
 | `urlcode audit --compliance` | declared configuration | does the configuration meet the rule set |
-| `urlcode benchmark --target` | the deployment | how fast does it answer the workload |
+| a load tester such as autocannon ([load testing](LOAD-TESTING.md)) | the deployment | how fast does it answer the workload |
 | `urlcode verify-deployment` | the deployment | does it answer the way the project declares |
 
 `audit` proves the project; `verify-deployment` proves the deployment is that
@@ -110,7 +110,6 @@ urlcode audit --project app --expect-routes 12 --compliance baseline
 # deploy the candidate to the staging origin, then:
 urlcode verify-deployment --project app --target https://staging.links.example \
   --expect-routes 12 --fail-on medium
-urlcode benchmark --project app --target https://staging.links.example --requests 500 --max-p95-ms 50
 # switch traffic, then verify the production origin the same way:
 urlcode verify-deployment --project app --target https://links.example --expect-routes 12
 ```

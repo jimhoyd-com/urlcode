@@ -30,8 +30,6 @@ test:
 doctor:
 	$(URLCODE) doctor
 
-.PHONY: routes audit benchmark
+.PHONY: routes audit
 routes audit:
 	$(URLCODE) $@ $(REVIEW) $(ARGS)
-benchmark:
-	$(URLCODE) $@ $(SITE) $(ARGS)

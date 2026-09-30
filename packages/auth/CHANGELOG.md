@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Breaking: one serving process per database.** Each activation takes an exclusive OS-held lock on
+  `auth.sqlite.server-lock` (core's `holdServerLock`) before it opens the database, and a second serving process is
+  refused with `Another process is already serving this auth database`; the operating system releases the lock when
+  the process exits or is killed. This replaces the host lease (#941, #978, #1010): the `auth_servers` table (dropped
+  on activation), its heartbeat, the per-request check and the temporary write triggers on Better Auth's tables are
+  gone. `urlcode-auth migrate`, `create-user` and `find-user` never take the lock and run beside the server. The
+  network filesystem refusal stays, and an activation that fails still releases what it took (#979).
 - A site whose fixtures sign in more than ten times passes `urlcode test` and `audit` (#1019). Better Auth's limit of
   10 sign-ins a minute per client address applied to hermetic runs too, where every fixture comes from one address, so
   the eleventh sign-in answered `429` and every later step was skipped (store-booking and store-credits merged sign in
