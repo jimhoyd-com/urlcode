@@ -6,6 +6,7 @@ import { join, posix, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import ts from 'typescript';
 import { parsePackJson } from './pack-json.ts';
+import { publishedManifest } from './published-manifest.mjs';
 import { addons, repositoryRoot } from './workspaces.ts';
 import { isArtifactFile } from '../packages/core/src/addon-install.ts';
 
@@ -215,6 +216,9 @@ function targets(value: unknown): string[] {
   return Object.values(value).flatMap(targets);
 }
 
+/** Whether an export target names source rather than built output: anything under `src/`, or a `.ts` file that is not a declaration. */
+export const sourceTarget = (path: string): boolean => /(?:^|\/)src\//.test(path) || (/\.[cm]?ts$/.test(path) && !/\.d\.[cm]?ts$/.test(path));
+
 async function auditAll(): Promise<void> {
   // Every add-on is private (so a stray `npm publish` refuses), but its tarball is still a release asset that
   // core's addons.json pins, so `private` is never a reason to skip its package boundary.
@@ -227,7 +231,8 @@ async function auditAll(): Promise<void> {
 
 async function auditOne(target: string): Promise<void> {
   const directory = resolve(target);
-  const manifest = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8')) as {
+  // What the tarball's package.json says, not the checkout's: packing drops the `development` conditions (#1056).
+  const manifest = JSON.parse(publishedManifest(await readFile(join(directory, 'package.json'), 'utf8'))) as {
     name?: string;
     exports?: unknown;
     bin?: Record<string, string>;
@@ -300,6 +305,8 @@ async function auditOne(target: string): Promise<void> {
     // Core also carries its add-on pins and the release-wide add-on agent catalog beside them (#721).
     const required = [...targets(manifest.exports), ...Object.values(manifest.bin ?? {}), ...(kind === 'core' ? ['dist/addons.json', 'dist/addon-catalog.json'] : [])]
       .map(path => path.replace(/^\.\//, ''));
+    const source = targets(manifest.exports).filter(path => sourceTarget(path));
+    assert.deepEqual(source, [], `Published exports of ${pack.name} name TypeScript source, which never ships (#1056):\n${source.join('\n')}`);
     const missing = required.filter(path => !shipped.has(path));
     assert.deepEqual(missing, [], `Package exports or required files are missing:\n${missing.join('\n')}`);
     for (const peer of budget.optionalPeers ?? []) {

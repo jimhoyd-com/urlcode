@@ -45,7 +45,7 @@ function assertParses(source: string, path: string): void {
 
 interface Manifest {
   name: string; version: string; private: boolean; description: string; files: string[];
-  exports: Record<string, { types: string; default: string }>;
+  exports: Record<string, { development: string; types: string; default: string }>;
   devDependencies: Record<string, string>; peerDependencies: Record<string, string>; scripts: Record<string, string>;
 }
 
@@ -63,7 +63,7 @@ test('a blank scaffold creates the new extension shape, and the generated packag
   assert.equal(manifest.version, coreVersion, 'released with core at core\'s version');
   assert.equal(manifest.private, true);
   assert.equal(manifest.description, 'A generated test extension.');
-  assert.deepEqual(manifest.exports['./extension'], { types: './dist/extension.d.ts', default: './dist/extension.js' });
+  assert.deepEqual(manifest.exports['./extension'], { development: './src/extension.ts', types: './dist/extension.d.ts', default: './dist/extension.js' });
   assert.ok(manifest.exports['.']);
   assert.deepEqual(manifest.files, ['dist', 'urlcode.json', 'README.md', 'LICENSE', 'NOTICE', 'SECURITY.md']);
   assert.equal(manifest.devDependencies['@jimhoyd/urlcode'], 'file:../..');

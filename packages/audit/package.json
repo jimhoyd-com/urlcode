@@ -19,14 +19,17 @@
   },
   "exports": {
     ".": {
+      "development": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
     "./outbox": {
+      "development": "./src/outbox.ts",
       "types": "./dist/outbox.d.ts",
       "default": "./dist/outbox.js"
     },
     "./extension": {
+      "development": "./src/extension.ts",
       "types": "./dist/extension.d.ts",
       "default": "./dist/extension.js"
     }
