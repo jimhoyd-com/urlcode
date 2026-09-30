@@ -1109,9 +1109,12 @@ below. Tool calls run one at a time in arrival order, so a client can send
 Requests are UTF-8 newline-delimited JSON-RPC 2.0. A line that is not valid
 UTF-8 answers a `-32700` parse error with a null id and never reaches a tool,
 even when it is otherwise one valid message (the SDK would decode the bytes as
-U+FFFD; #1021); the session continues. Any other line that is not one JSON-RPC
-message (malformed JSON, a batch) is ignored and the session continues; an
-input message over 1 MiB ends the session. A tool
+U+FFFD; #1021); the session continues. A line that is not valid JSON (a leading
+byte-order mark included) answers a `-32700` parse error with a null id the same
+way, where the SDK would drop it without a reply (#1028); a line holding only
+whitespace is skipped. Every other line reaches the SDK byte for byte. Valid
+JSON that is not one JSON-RPC message (`{}`, a batch) is ignored and the session
+continues; an input message over 1 MiB ends the session. A tool
 result over 1 MiB is returned as an `isError` result naming the limit. Import
 text is additionally capped at 512 KiB. Tool schemas reject
 unknown arguments. A `-32602` error names the problem: an unknown tool (and the
@@ -1387,7 +1390,9 @@ What it can do, all inside the selected project root (resolved with realpath):
   the project the operator started the server for, and it writes under the same
   authoring lock as `create_route`. A clash, or an extension the project has not
   declared, refuses the whole merge as an error result whose text names every
-  clash, and nothing is written; an identical entry is not a clash. The result is
+  clash, and nothing is written; an identical entry is not a clash. Every clash,
+  refusal and note names paths relative to the project, never the server's
+  absolute path (#1029). The result is
   the CLI's `--json` report with `project` as `.` and `next` naming
   `run_validate`, `run_test` and `run_audit`. `dryRun` reports what would be
   added and written and writes nothing. It is a separate tool rather than an

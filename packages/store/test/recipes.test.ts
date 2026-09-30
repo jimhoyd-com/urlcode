@@ -177,7 +177,7 @@ test('two recipes merge into one site when they do not clash, sharing its auth m
   const before = await readFile(join(merged.project, 'tests', 'requests.json'), 'utf8');
   const refused = merged.add('store-booking');
   assert.notEqual(refused.status, 0);
-  assert.match(refused.stderr, /extensions\.store\.config\.collections\.bookings in app\/urlcode\.yaml differs/);
+  assert.match(refused.stderr, /extensions\.store\.config\.collections\.bookings in urlcode\.yaml differs/);
   assert.equal(await readFile(file, 'utf8'), text);
   assert.equal(await readFile(join(merged.project, 'tests', 'requests.json'), 'utf8'), before);
 });

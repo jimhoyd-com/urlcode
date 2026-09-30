@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {Readable,Writable} from 'node:stream';
-import {cp,mkdtemp,rm,readFile,readdir,writeFile,symlink,lstat,mkdir} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join,relative,resolve} from 'node:path';import {fileURLToPath} from 'node:url';
+import {cp,mkdtemp,rm,readFile,readdir,writeFile,symlink,lstat,mkdir,realpath} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join,relative,resolve} from 'node:path';import {fileURLToPath} from 'node:url';
 import {serveMcp} from '../packages/core/src/mcp.ts';import {confinedPath} from '../packages/core/src/mcp-authoring.ts';import {project,redirect,byReplyId} from './helpers.ts';
 import {scaffoldProject} from '../packages/core/src/scaffold.ts';import {buildContext,shellWord} from '../packages/core/src/context.ts';import {inspectExtensionRevision} from '../packages/core/src/extensions.ts';
 const initialize={jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'test',version:'1'}}};
@@ -136,8 +136,8 @@ test('merge_recipe refuses a clash as an error result naming every clash and wri
  ])],true);
  for(const reply of replies.slice(1,3)){
   assert.equal(reply.result.isError,true);const text=reply.result.content[0]!.text;
-  assert.match(text,/Refusing to add contact-form to .*: \d+ entries clash/);
-  assert.match(text,/route \/ in .*urlcode\.yaml differs/);assert.match(text,/file .*public\/index\.html differs from the recipe's/);
+  assert.match(text,/Refusing to add contact-form to the project: \d+ entries clash/);
+  assert.match(text,/^- route \/ in urlcode\.yaml differs$/m);assert.match(text,/^- file public\/index\.html differs from the recipe's$/m);
  }
  assert.equal(replies[3]!.result.isError,true);assert.match(replies[3]!.result.content[0]!.text,/store-booking needs the auth and store extensions/);
  // No argument names a target: an extra property fails the input schema before anything runs.
@@ -145,6 +145,25 @@ test('merge_recipe refuses a clash as an error result naming every clash and wri
  assert.equal(replies[6]!.result.isError,true);
  assert.deepEqual(await contents(root),files);
  await assert.rejects(lstat(resolve(root,'../elsewhere')),{code:'ENOENT'});
+});
+// #1029: merge_recipe names every path relative to the project, never the server's absolute project path, in a
+// result, a note or any refusal (clash, missing extension, symlinked target).
+test('merge_recipe never reveals the absolute project path in a result or refusal (#1029)',async t=>{
+ const root=await starter(t),real=await realpath(root);
+ await writeFile(join(root,'tests/audit.json'),'{"expectRoutes":"many"}\n');
+ const first=await session(root,[initialize,ready,...calls([
+  {name:'merge_recipe',arguments:{name:'static-page',dryRun:true}},{name:'merge_recipe',arguments:{name:'static-page'}},{name:'merge_recipe',arguments:{name:'static-page'}},
+  {name:'merge_recipe',arguments:{name:'contact-form'}},{name:'merge_recipe',arguments:{name:'store-booking'}},{name:'merge_recipe',arguments:{name:'no-such-recipe'}},
+ ])],true);
+ assert.match(JSON.stringify(payload(first[1]!).notes),/tests\/audit\.json is not one the audit reads/);
+ for(const index of [4,5,6])assert.equal(first[index]!.result.isError,true,JSON.stringify(first[index]));
+ await rm(join(root,'public'),{recursive:true});await mkdir(join(root,'elsewhere'));await symlink(join(root,'elsewhere'),join(root,'public'));
+ const linked=await session(root,[initialize,ready,...calls([{name:'merge_recipe',arguments:{name:'static-page'}}])],true);
+ assert.match(linked[1]!.result.content[0]!.text,/Refusing to write public\/index\.html: it passes through a symlink/);
+ for(const reply of [...first,...linked].slice(1)){
+  const text=JSON.stringify(reply);
+  for(const path of new Set([root,real,tmpdir(),await realpath(tmpdir())]))assert.equal(text.includes(path),false,`${path} in ${text}`);
+ }
 });
 test('scaffold_feature creates placeholders for a created route and refuses to overwrite',async t=>{
  const root=await project(t,{'/a':redirect()});
