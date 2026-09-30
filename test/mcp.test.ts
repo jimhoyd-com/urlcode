@@ -164,11 +164,11 @@ test('MCP validates tool schema, method and root confinement',async t=>{
  ].map((params,index)=>({jsonrpc:'2.0',id:index+2,method:'tools/call',params})),{jsonrpc:'2.0',id:8,method:'unknown'}]);
  for(const reply of replies.slice(1,4))assert.equal(reply.error.code,-32602);assert.equal(replies[4]!.result.isError,true);assert.equal(replies[5]!.error.code,-32601);
 });
-// The SDK owns framing (#846): input that is not one JSON-RPC message per line is ignored and the session goes on,
-// and a message over the 1 MiB bound ends the session instead of being buffered.
-test('MCP ignores malformed frames and ends the session on an oversized one',async t=>{
+// The SDK owns framing (#846): JSON that is not one JSON-RPC message is ignored and the session goes on, and a
+// message over the 1 MiB bound ends the session instead of being buffered.
+test('MCP ignores JSON that is not a message and ends the session on an oversized one',async t=>{
  const root=await project(t,{}),ping={jsonrpc:'2.0',id:9,method:'ping'};
- for(const raw of ['{oops}\n','[]\n','{}\n']){
+ for(const raw of ['[]\n','{}\n','\n',' \t\r\n']){
   let text='';await serveMcp({project:root,input:Readable.from([raw,JSON.stringify(ping)+'\n']),output:new Writable({write(chunk,_encoding,done){text+=String(chunk);done();}})});
   assert.deepEqual(text.trim().split('\n').map(line=>JSON.parse(line) as unknown),[{jsonrpc:'2.0',id:9,result:{}}],String(raw));
  }
@@ -189,6 +189,21 @@ test('MCP answers a line of invalid UTF-8 with a -32700 parse error and never ru
  // Split across chunks inside a character, a valid line still passes.
  const bytes=Buffer.from(JSON.stringify({...ping,params:{x:'\u00e9'}})+'\n'),at=bytes.indexOf(0xc3)+1;let text='';
  await serveMcp({project:root,input:Readable.from([bytes.subarray(0,at),bytes.subarray(at)]),output:new Writable({write(chunk,_encoding,done){text+=String(chunk);done();}})});
+ assert.deepEqual(JSON.parse(text),{jsonrpc:'2.0',id:9,result:{}});
+});
+// The transport would drop a line that is not JSON without a reply: it answers -32700 with a null id instead, as a
+// line of invalid UTF-8 does, and the session goes on (#1028). A leading BOM is not JSON either.
+test('MCP answers a line of malformed JSON with a -32700 parse error and the session continues',async t=>{
+ const root=await project(t,{}),ping={jsonrpc:'2.0',id:9,method:'ping'};
+ for(const raw of ['{oops}\n','{"jsonrpc":"2.0","id":2,"method":"ping"\n','\ufeff'+JSON.stringify({...ping,id:2})+'\n','nul\r\n']){
+  let text='';await serveMcp({project:root,input:Readable.from([Buffer.from(JSON.stringify(initialize)+'\n'),Buffer.from(raw),Buffer.from(JSON.stringify(ping)+'\n')]),output:new Writable({write(chunk,_encoding,done){text+=String(chunk);done();}})});
+  const replies=text.trim().split('\n').map(line=>JSON.parse(line) as {id:unknown});
+  assert.deepEqual(replies.map(reply=>reply.id).sort(),[1,9,null].sort(),raw);
+  assert.deepEqual(replies.find(reply=>reply.id===null),{jsonrpc:'2.0',id:null,error:{code:-32700,message:'Parse error: the line is not valid JSON'}});
+ }
+ // A valid message reaches the SDK unchanged, whitespace and all, in any number of chunks.
+ const bytes=Buffer.from(' {"jsonrpc":"2.0", "id":9,\t"method":"ping"}\r\n');let text='';
+ await serveMcp({project:root,input:Readable.from(Array.from(bytes,byte=>Buffer.from([byte]))),output:new Writable({write(chunk,_encoding,done){text+=String(chunk);done();}})});
  assert.deepEqual(JSON.parse(text),{jsonrpc:'2.0',id:9,result:{}});
 });
 test('MCP never activates guest code or emits credential/error source content',async t=>{
