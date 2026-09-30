@@ -203,3 +203,19 @@ test('feature planning offers the approval recipe for an approval goal, and book
  // Tags shared across the catalog ("store", "auth", "extension") are not a tag match on their own.
  assert.ok(!(await planFeature(root,'a store auth extension')).applicable.recipes.some(recipe=>['store-booking','store-credits','store-approval'].includes(recipe.name)));
 });
+
+test('a goal that writes several stored records at once names the missing capability and the declarative and owner-choice paths (#1086)',async t=>{
+ const root=await project(t,{});
+ const gap=(plan:Awaited<ReturnType<typeof planFeature>>)=>plan.unsupported.find(item=>item.requirement==='Multi-record store write from application code');
+ for(const goal of ['add a bulk action for the signed-in user to mark every one of their own todos as done in one request','update all of my stored records at once','batch archive items in the store']){
+  const plan=await planFeature(root,goal),found=gap(plan);
+  assert.ok(found,`${goal}: ${JSON.stringify(plan.unsupported)}`);
+  assert.match(found.reason,/no request-bound capability for its collections \(https:\/\/github\.com\/jimhoyd-com\/urlcode\/blob\/v[^/]+\/docs\/EXTENSIONS\.md#request-bound-capabilities\)/);
+  assert.match(found.reason,/transition \(POST <mount>\/<id>\/<name>\) changes one record per call/);
+  assert.match(found.reason,/transfer \(POST <mount>\/transfers\/<name>\) moves an amount between two records/);
+  assert.match(found.reason,/owner's choice: a trusted \(non-sandbox\) function over an independently owned database[^)]*\(reference: URLCode's proofs\/native-storage\)/);
+  assert.ok(Buffer.byteLength(JSON.stringify(plan))<=featurePlanMaxBytes);
+ }
+ // Reading many records, or one record's write, is not a multi-record write.
+ for(const goal of ['list all of my own todos newest first','let the owner mark a todo as done','durable persisted record'])assert.equal(gap(await planFeature(root,goal)),undefined,goal);
+});

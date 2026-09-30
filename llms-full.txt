@@ -1153,7 +1153,11 @@ installed inert artifacts and registrations already available to the session. Re
 its operator prerequisites and explicit gaps as constraints, not as permission
 to select packages, storage, keys or grants in project YAML. A list, filter,
 sort or paging goal plans the store's `filterable`/`sortable` properties and
-route query `parameters`, not a handler that parses the query string. It also
+route query `parameters`, not a handler that parses the query string. A goal
+that writes several of the caller's records at once ("mark every one of my
+todos done") is an explicit gap: application code has no store capability for
+it, so the plan names a per-record transition, a transfer, or the owner-choice
+path of an independently owned database. It also
 matches the goal against the authoring surfaces installed and catalog
 extensions publish (`extensions.surfaces`): "their own notes" names store
 `ownership` behind auth, and an approval goal names store `transitions`

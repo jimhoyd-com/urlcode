@@ -388,6 +388,18 @@ them and one of those tags is distinctive (carried by at most two recipes in
 the catalog), so a single generic word ("status") or generic tags such as
 `json`, `store`, `auth` or `extension` never select one.
 
+A goal that writes several stored or owned records at once ("bulk" or
+"batch", or "every", "all" or "each" with a write verb such as mark, update
+or delete) adds an `unsupported` entry, `Multi-record store write from
+application code` (#1086): the bundled store gives a function route no
+[request-bound capability][docs/EXTENSIONS.md#request-bound-capabilities] for its
+collections. It names the nearest declarative options, a transition (one
+record per call, so the client calls it per record) and a transfer (two
+records in one transaction), and the owner-choice path: an independently owned
+database in a trusted function ([native-storage proof][proofs/native-storage/README.md])
+or an extension that runs the writes in one `StoreExports.transaction`.
+Reading many records, or writing one, adds nothing.
+
 Extension surfaces come from the extensions' own authoring contracts, not from
 vocabulary kept in core (#913). Each surface of an extension's `authoring`
 contract may list `goals`, the lowercase words it answers; the planner lists
@@ -1176,15 +1188,21 @@ deterministic, local text matching; it reads these sources and nothing else:
 
 - **core**: `llms.txt`, `docs/AI-AUTHORING.md`, `docs/YAML-REFERENCE.md`,
   `docs/TOOLING.md` and `docs/FUNCTION-SECURITY.md`, packaged with the runtime;
-- **installed**: for each add-on core's own manifest pins, that the site
-  around the project (the project's parent directory) depends on, and whose
-  `package-lock.json` entry matches core's pin: its `urlcode.json` descriptor,
-  its `README.md` and the `.md`/`.json` agent references its descriptor
-  declares, at most six files of at most 256 KiB each, read from
-  `node_modules/@jimhoyd/urlcode-<name>/` as text or JSON data. No add-on
-  module is imported, no host file is loaded and no binding or secret is read.
-  An installed add-on that is not pin-verified is not read and is listed as not
-  searched, with the reason;
+- **installed**: each add-on package the site around the project (the
+  project's parent directory) depends on and can verify: one core's own
+  manifest pins, when its `package-lock.json` entry matches core's pin, and an
+  [independent package][docs/EXTENSIONS.md#independent-extension-packages], when its
+  lock entry carries npm's sha512 integrity (a local tarball still hashing to
+  it) and its installed files match what `addon-files.lock.json` recorded. For
+  each: its `urlcode.json` descriptor, its `README.md` and the `.md`/`.json`
+  agent references its descriptor declares, at most six files of at most
+  256 KiB each, read from `node_modules/<package>/` as text or JSON data. No
+  add-on module is imported, no host file is loaded and no binding or secret is
+  read. An installed add-on that fails verification (an unpinned, linked,
+  unrecorded or modified package) is not read and is listed as not searched,
+  with the reason. When an independent package provides a release-catalog name
+  (a name is a role), that catalog match's `next` names the independent package
+  whose guide was searched, not the catalog one;
 - **catalog**: this release's add-on catalog (`dist/addon-catalog.json`). A
   catalog match says the add-on exists in the release, never that the project
   has it: catalog matches are returned apart from results, each with
@@ -1202,9 +1220,10 @@ that names that one section or path to read. A query that is an add-on's name
 ranks that add-on's own guide first. When a query word is a
 core schema path, `next` also suggests `get_schema` for it.
 `coverage.searched` lists the core files, every installed add-on package and
-file that was read, and the catalog; `coverage.notSearched` lists what was
+file that was read (an independent one marked `independent: true`), and the
+catalog; `coverage.notSearched` lists what was
 not: release-catalog add-ons not installed in the site, installed add-ons that
-failed pin verification or a size limit, `llms-full.txt` and other `docs/`
+failed verification or a size limit, `llms-full.txt` and other `docs/`
 pages, project files and add-on source, and operator host registrations
 (registered state needs the host file and `get_extensions`). Without a project
 (the SDK default) no site is inspected, and coverage says so. An empty
@@ -1541,6 +1560,9 @@ and [MCP tools](https://modelcontextprotocol.io/specification/2025-11-25/server/
 [docs/TYPESCRIPT.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TYPESCRIPT.md
 [docs/EXTENSIONS.md#the-release-wide-agent-catalog]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-release-wide-agent-catalog
 [docs/EXTENSIONS.md#independent-artifact-packages]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#independent-artifact-packages
+[docs/EXTENSIONS.md#independent-extension-packages]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#independent-extension-packages
+[docs/EXTENSIONS.md#request-bound-capabilities]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#request-bound-capabilities
+[proofs/native-storage/README.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/native-storage/README.md
 [docs/EXTENSIONS.md#the-installed-file-record]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-installed-file-record
 [docs/EXTENSIONS.md#inspecting-artifact-documents]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#inspecting-artifact-documents
 [docs/EXTENSIONS.md#staging-source-assets]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#staging-source-assets
