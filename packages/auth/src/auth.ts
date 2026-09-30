@@ -30,6 +30,13 @@ export const clientAddressHeader = 'x-urlcode-client-address';
 export const defaultBasePath = '/api/auth';
 /** How long one statement waits for a lock another process holds before failing: the store's bound too. */
 const BUSY_TIMEOUT_MS = 2000;
+/**
+ * How long an operator command (`urlcode-auth create-user`) waits for the write lock beside a serving process. Nobody
+ * is waiting on a response, so it waits longer than a request would.
+ */
+export const OPERATOR_LOCK_WAIT_MS = 10_000;
+/** The pause between two operator attempts at the write lock: short, so the gap between two server commits is seen. */
+const OPERATOR_LOCK_POLL_MS = 1;
 const unsafe = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 /**
  * Default paths whose 401 means "no valid session" (Better Auth's session middleware). That middleware reads the session
@@ -85,21 +92,62 @@ export const authAuthoring: ExtensionAuthoringContract = {
  * once with SQLITE_BUSY_SNAPSHOT, which no busy timeout retries. Taking the write lock at `begin` (IMMEDIATE) waits up to
  * the busy timeout instead, so the transaction's reads are still current when it writes. Only that exact statement
  * changes; Better Auth still sees a DatabaseSync and keeps its own dialect.
+ *
+ * An operator connection (`lockWait`) also takes that lock by polling rather than through SQLite's busy handler. The
+ * busy handler sleeps up to 100 ms between attempts and is not a queue: beside a serving process that holds the write
+ * lock for most of each commit (a flush to a slow disk, such as FlushFileBuffers on Windows) with only a request's gap
+ * between commits, its roughly 30 attempts in 2 seconds can all land on a held lock, and `create-user` failed with
+ * "database is locked". An attempt every millisecond for `lockWait` ms sees such a gap; a lock that is really held
+ * (a stuck process) still fails once `lockWait` has passed.
  */
 class AuthDatabase extends DatabaseSync {
+  readonly #lockWait: number | undefined;
+  constructor(path: string, options: ConstructorParameters<typeof DatabaseSync>[1] & { timeout: number }, lockWait?: number) {
+    super(path, options);
+    this.#lockWait = lockWait;
+  }
   override prepare(...args: Parameters<DatabaseSync['prepare']>): ReturnType<DatabaseSync['prepare']> {
     const [sql, ...rest] = args;
-    return super.prepare(sql === 'begin' ? 'BEGIN IMMEDIATE' : sql, ...rest);
+    if (sql !== 'begin') return super.prepare(sql, ...rest);
+    const begin = super.prepare('BEGIN IMMEDIATE', ...rest);
+    const wait = this.#lockWait;
+    if (wait === undefined) return begin;
+    // Better Auth's dialect only calls run() (after columns()) on the statement it prepares for `begin`.
+    return new Proxy(begin, { get: (target, key) => {
+      if (key === 'run') return () => this.#beginPolling(target, wait);
+      const value: unknown = Reflect.get(target, key, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    } });
+  }
+  #beginPolling(begin: ReturnType<DatabaseSync['prepare']>, wait: number): ReturnType<ReturnType<DatabaseSync['prepare']>['run']> {
+    const deadline = Date.now() + wait;
+    const pause = new Int32Array(new SharedArrayBuffer(4));
+    this.exec('PRAGMA busy_timeout=0');
+    try {
+      for (;;) {
+        try { return begin.run(); }
+        catch (error) {
+          if (!isBusy(error) || Date.now() >= deadline) throw error;
+          Atomics.wait(pause, 0, 0, OPERATOR_LOCK_POLL_MS);
+        }
+      }
+    } finally { this.exec(`PRAGMA busy_timeout=${wait}`); }
   }
 }
+/** SQLITE_BUSY, or one of its extended codes. */
+const isBusy = (error: unknown): boolean => {
+  const code = error !== null && typeof error === 'object' && 'errcode' in error ? error.errcode : undefined;
+  return typeof code === 'number' && (code & 0xff) === 5;
+};
 
 /**
  * Opens Better Auth's SQLite file: creates it 0600 (its directory 0700) when absent and refuses anything but a private
  * regular file with one link, as the store does; then WAL with FULL synchronous commits and a busy timeout, so
  * the serving process and `urlcode-auth create-user` wait for each other's commits instead of failing with "database
- * is locked". SQLite creates the `-wal` and `-shm` files with the database file's permissions.
+ * is locked". SQLite creates the `-wal` and `-shm` files with the database file's permissions. `operator` is the
+ * operator commands' connection: it waits up to `OPERATOR_LOCK_WAIT_MS` and polls for the write lock (`AuthDatabase`).
  */
-export function openAuthDatabase(path: string): DatabaseSync {
+export function openAuthDatabase(path: string, { operator = false }: { operator?: boolean } = {}): DatabaseSync {
   const requested = resolve(path);
   mkdirSync(dirname(requested), { recursive: true, mode: 0o700 });
   const database = join(realpathSync(dirname(requested)), basename(requested));
@@ -108,7 +156,8 @@ export function openAuthDatabase(path: string): DatabaseSync {
   const info = lstatSync(database);
   if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1 || (process.platform !== 'win32' && (info.mode & 0o077) !== 0))
     throw new Error(`auth: ${database} must be a private regular file (mode 0600, one link); chmod 600 it`);
-  const db = new AuthDatabase(database, { allowExtension: false, timeout: BUSY_TIMEOUT_MS });
+  const db = operator ? new AuthDatabase(database, { allowExtension: false, timeout: OPERATOR_LOCK_WAIT_MS }, OPERATOR_LOCK_WAIT_MS)
+    : new AuthDatabase(database, { allowExtension: false, timeout: BUSY_TIMEOUT_MS });
   try { db.exec('PRAGMA trusted_schema=OFF; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;'); }
   catch (error) { db.close(); throw error; }
   return db;
@@ -180,8 +229,11 @@ export function emailAndPasswordEnabled(settings: Pick<AuthSettings, 'betterAuth
 /** The one activation warning for an owner database (RIM-EXT-WARN-001): which of the bundled file's guarantees are now the owner's. */
 export const ownerDatabaseWarning = 'auth serves the owner\'s Better Auth database, not the bundled SQLite file: its schema and migration state, backups, single-writer or multi-server rules and access control are the owner\'s; the one-server lock, the WAL and file checks and urlcode-auth migrate, create-user and find-user do not apply';
 
-/** The Better Auth options for one instance at `origin`, served at `basePath`. `bootstrap` lets the server API create accounts. */
-export function betterAuthOptions(settings: AuthSettings, origin: string, basePath: string, bootstrap = false): BetterAuthOptions {
+/**
+ * The Better Auth options for one instance at `origin`, served at `basePath`. `bootstrap` lets the server API create
+ * accounts; `operator` opens the bundled file as the operator commands' connection (`openAuthDatabase`).
+ */
+export function betterAuthOptions(settings: AuthSettings, origin: string, basePath: string, bootstrap = false, operator = false): BetterAuthOptions {
   if (typeof settings.secret !== 'string' || settings.secret.length < 32) throw new Error('auth needs a Better Auth secret of at least 32 characters; urlcode extensions add auth writes data/auth.secret');
   const extra = settings.betterAuth ?? {};
   if (extra.database !== undefined) throw new Error('auth: pass Better Auth\'s database as auth({database}), not betterAuth.database');
@@ -192,7 +244,7 @@ export function betterAuthOptions(settings: AuthSettings, origin: string, basePa
     baseURL: origin,
     basePath,
     secret: settings.secret,
-    database: isOwnerDatabase(settings.database) ? settings.database : openAuthDatabase(settings.database),
+    database: isOwnerDatabase(settings.database) ? settings.database : openAuthDatabase(settings.database, { operator }),
     // Email and password is the default sign-in method, not a forced one: the owner may turn it off and sign in with a
     // plugin's method instead. Sign-up over HTTP stays the operator's `signUp` choice either way.
     emailAndPassword: { enabled: true, ...extra.emailAndPassword, disableSignUp: !(bootstrap || settings.signUp === true) },
