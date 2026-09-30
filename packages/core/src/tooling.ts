@@ -57,7 +57,7 @@ export async function prepare(project:string,options:InspectOptions={}) {
  try {for(const route of routes){const chain=await compilePolicies(loaded.document,route,{route,shared,target:'node',root:loaded.root});if(anyPolicy)chains.set(route.pattern,chain);}}finally{await closePolicies(shared);}
  // Descriptor targets only decide when no registrations were supplied: a loaded registration is the authority.
  const declaredTargets:DeclaredExtensionTargets|undefined=options.extensions===undefined?await declaredExtensionTargetsOf(loaded):undefined;
- return {loaded,compiled,routes,chains,projectSha256:snapshot.projectSha256,declaredTargets};
+ return {loaded,compiled,routes,chains,trustedDependencies:snapshot.trustedDependencies,projectSha256:snapshot.projectSha256,declaredTargets};
 }
 function compatibilitySummary(report:CompatibilityReport) {return {target:report.target,compatible:report.compatible,deployment:report.deployment,requirementCount:report.requirements.length,issueCount:report.issues.length};}
 /** Semantic authoring inspection; no binding reads, sandbox execution or runtime activation. */
@@ -67,10 +67,10 @@ function inspectionPage(options:InspectOptions):{offset:number;limit:number} {
  if(!Number.isSafeInteger(offset)||offset<0||!Number.isSafeInteger(limit)||limit<1||limit>1000)throw new Error('Invalid inspection page');
  return {offset,limit};
 }
-function inspectPrepared({loaded,compiled,routes,projectSha256,declaredTargets}:Awaited<ReturnType<typeof prepare>>,options:InspectOptions) {
+function inspectPrepared({loaded,compiled,routes,projectSha256,declaredTargets,trustedDependencies}:Awaited<ReturnType<typeof prepare>>,options:InspectOptions) {
  const {offset,limit}=inspectionPage(options);
  const report=analyzeCompiledCapabilities(loaded.document,compiled,options.target??'self-hosted',options.extensions,declaredTargets);
- return {format:1,projectSha256,routeCount:compiled.count,offset,limit,routes:routes.slice(offset,offset+limit).map(route=>({path:route.pattern,methods:route.methods,enabled:route.enabled!==false,capabilities:routeCapabilities(route,loaded.document)})),compatibility:{...compatibilitySummary(report),offset,limit,hasMore:offset+limit<report.issues.length,issues:report.issues.slice(offset,offset+limit)}};
+ return {format:1,projectSha256,trustedDependencies,routeCount:compiled.count,offset,limit,routes:routes.slice(offset,offset+limit).map(route=>({path:route.pattern,methods:route.methods,enabled:route.enabled!==false,capabilities:routeCapabilities(route,loaded.document)})),compatibility:{...compatibilitySummary(report),offset,limit,hasMore:offset+limit<report.issues.length,issues:report.issues.slice(offset,offset+limit)}};
 }
 /**
  * Each declared extension's route requirements against the policy schema that will judge them at startup: the
