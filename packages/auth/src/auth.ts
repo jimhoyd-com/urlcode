@@ -178,7 +178,7 @@ export interface AuthSettings {
   paths?: readonly string[] | undefined;
   /**
    * Extra Better Auth options (plugins, other sign-in methods, session lifetimes, `emailAndPassword.enabled: false`).
-   * Trusted operator code; merged last, but it cannot turn telemetry or rate limiting off, and the database is
+   * Trusted operator code; merged last, but it cannot turn telemetry, rate limiting or the origin and CSRF checks off, and the database is
    * `database`, never `betterAuth.database`.
    */
   betterAuth?: Partial<BetterAuthOptions> | undefined;
@@ -228,7 +228,10 @@ export function betterAuthOptions(settings: AuthSettings, origin: string, basePa
     // (the `rateLimit` table `urlcode-auth migrate` creates, or the owner database's), so a restart does not reset
     // the limit; Better Auth's default keeps them in memory.
     rateLimit: rateLimitFor({ window: 60, max: 100, customRules: { '/sign-in/email': { window: 60, max: 10 }, [signUpPath]: { window: 60, max: 5 } }, storage: 'database', ...extra.rateLimit, enabled: true }, settings.hermetic === true),
-    advanced: { ...extra.advanced, ipAddress: { ...extra.advanced?.ipAddress, ipAddressHeaders: [clientAddressHeader] } },
+    // Better Auth skips its origin check (the Origin header and every callbackURL/redirectTo against trustedOrigins)
+    // and, through it, its CSRF check whenever NODE_ENV=test or TEST is truthy and disableOriginCheck is unset. Pinned
+    // off so a server started in such an environment keeps both; `trustedOrigins` is how an owner admits another origin.
+    advanced: { ...extra.advanced, ipAddress: { ...extra.advanced?.ipAddress, ipAddressHeaders: [clientAddressHeader] }, disableOriginCheck: false, disableCSRFCheck: false },
     telemetry: { enabled: false },
   };
 }
