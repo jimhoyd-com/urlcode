@@ -71,6 +71,10 @@
       "types": "./dist/types/host.d.ts",
       "default": "./dist/host.js"
     },
+    "./sqlite": {
+      "types": "./dist/types/sqlite.d.ts",
+      "default": "./dist/sqlite.js"
+    },
     "./sandbox": {
       "types": "./dist/types/sandbox.d.ts",
       "default": "./dist/sandbox.js"

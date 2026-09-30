@@ -2114,7 +2114,7 @@ exposes no filesystem type the check can trust, so it is skipped there.
 #### Every SQLite extension takes the lock
 
 The lock and the network filesystem check are one implementation in core
-(`@jimhoyd/urlcode/extensions`: `holdServerLock`, `serverLockHeld`,
+(`@jimhoyd/urlcode/sqlite`: `holdServerLock`, `serverLockHeld`,
 `refuseNetworkFilesystem`). Each extension locks its own database: the store
 when it opens its connection, auth on each activation (`auth.sqlite`), and
 audit on its first activation until the audit host closes (`audit.sqlite`).

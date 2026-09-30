@@ -63,7 +63,7 @@ claim here is implemented in the linked repository; nothing is roadmap.
 |---|---|---|---|
 | `@jimhoyd/urlcode` | this repository | The runtime: YAML routes, functions and middleware (trusted by default, `sandbox: true` opt-in), pages and assets, policies, site conventions, CLI, provider adapters, a fetch handler for hosting inside another Node framework, the extension contract | `urlcode.yaml` with `version: "1"` |
 | `@jimhoyd/urlcode-audit` | [`packages/audit`](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/audit) | The durable audit log: producers (audited store collections) write events into their own transactional outbox, and audit drains them into one bounded SQLite log with a query API, retention and an operator CLI | `extensions.audit`; no route |
-| `@jimhoyd/urlcode-auth` | [`packages/auth`](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth) | A thin adapter over [Better Auth](https://better-auth.com/): Better Auth owns accounts, passwords, sessions, cookies and its SQLite tables; the extension serves an allowlist of its endpoints on one mount, gates protected routes and hands their code the verified user id (`context.capabilities.auth.identity.userId`). No roles or permissions; Node only; requires nothing | `extensions.auth: {version: "1", config: {}}` plus an `/api/auth/*` mount (`methods: [GET, POST]`) and `auth: true` (`policies.extensions.auth: {}`) on protected routes |
+| `@jimhoyd/urlcode-auth` | [`packages/auth`](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth) | A thin adapter over [Better Auth](https://better-auth.com/): Better Auth owns accounts, passwords, sessions, cookies and its tables (in the bundled SQLite file, or the owner's own database); the extension serves an allowlist of its endpoints on one mount, gates protected routes and hands their code the verified user id (`context.capabilities.auth.identity.userId`). No roles or permissions; Node only; requires nothing | `extensions.auth: {version: "1", config: {}}` plus an `/api/auth/*` mount (`methods: [GET, POST]`) and `auth: true` (`policies.extensions.auth: {}`) on protected routes |
 | `@jimhoyd/urlcode-store` | [`packages/store`](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/store) | Durable bounded collections in one SQLite database exposed as a typed JSON CRUD API; a collection with `audit: true` records its writes through `audit` | `extensions.store` plus a protected collection mount |
 | `@jimhoyd/urlcode-mcp` | [`packages/mcp`](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/mcp) | Declarative [MCP](https://modelcontextprotocol.io) tool server over the official MCP SDK (stateless Streamable HTTP): a bounded, project-declared map of tools, resources and prompts with trusted handlers | `extensions.mcp` plus a `POST, HEAD` mount (streamed progress when the operator opts into `mcp({ streaming: true })`, not on aws); `urlcode extensions add mcp` wires the extension but leaves the server/tool declaration and its trusted handler module for the operator (every tool needs project code) |
 
@@ -310,7 +310,8 @@ Activation likewise carries the canonical `origin` and the operator's full
 `isSameOriginRequest`, so mcp, store and auth admit the same
 origins ([site origins](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#site-origins-and-same-origin-checks)).
 A SQLite-backed extension refuses a network filesystem and a second serving
-process through core's `refuseNetworkFilesystem` and `holdServerLock`, an OS
+process through core's `refuseNetworkFilesystem` and `holdServerLock`
+(`@jimhoyd/urlcode/sqlite`, kept off the generic extension contract), an OS
 lock on a file beside its own database, so store, auth and audit enforce one
 rule: one serving process per database ([request helpers](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#request-helpers)).
 An extension reports a startup condition the operator should act on through
@@ -5573,11 +5574,15 @@ string or key in a parsed value holds an unpaired surrogate, and
 `illFormedMember(object)` names the first top-level member that does, for an
 error that names the argument (the MCP extension answers `-32602` with it).
 
-An extension that keeps a SQLite database is served by one process. The
-store, auth and audit share these helpers
-([one serving process per database](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#one-serving-process-per-database)):
+The bundled store, auth and audit extensions each keep a SQLite file, served
+by one process
+([one serving process per database](https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#one-serving-process-per-database)).
+The helpers they share are published on their own subpath,
+`@jimhoyd/urlcode/sqlite`. They are helpers of that bundled implementation,
+not URLCode rules: an extension that keeps its data in another database does
+not use them, and `@jimhoyd/urlcode/extensions` never loads `node:sqlite`.
 
-| Helper | What it does |
+| Helper (`@jimhoyd/urlcode/sqlite`) | What it does |
 |---|---|
 | `holdServerLock(database, what, probe?)` | Before serving: creates the database's directory (0700) when absent, refuses it on a network filesystem, then takes an exclusive OS lock on `<database>.server-lock` (SQLite's file lock, held by a transaction that never ends) and returns `{path, release()}`. Another process holding it refuses with `Another process is already serving this <what> database`. Holders in one process share it (a dev reload), and the operating system releases it when the process exits or is killed. No heartbeat, timestamp or clock. Call `release()` from the activation's `close()` and when activation fails. |
 | `serverLockHeld(database)` | Whether a serving process (this one or another) holds that lock now, read without taking it: an operator command asks before writing with a declaration the server may not share. |
@@ -5882,7 +5887,10 @@ A hermetic host keeps every file under `ctx.data`, whatever the operator's
 options or environment name for serving (a `database` path, an environment
 variable), creates what serving expects an operator to have created (a schema,
 a signing secret that lives only as long as the host) and starts from nothing
-on every run. Only such a registration declares `seedSchema`. Core reads the
+on every run. A database the extension does not own, such as the owner's own
+Better Auth database given to auth, stays out of reach: the run serves an
+isolated one the host supplies (auth's `testDatabase`) or refuses, never
+the live one. Only such a registration declares `seedSchema`. Core reads the
 project's `tests/seed.json` (an object keyed by extension name, at most 1 MiB),
 validates each entry against the named registration's `seedSchema` and passes
 it as `context.seed` to that extension's first activation of the run only:

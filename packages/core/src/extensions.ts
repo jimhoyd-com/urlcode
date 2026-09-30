@@ -47,12 +47,6 @@ export { clientKey, clientKeyIpv6Prefix } from './client-address.ts';
 /** Bounded request reading, JSON responses, cookie reading and same-origin admission (RIM-EXT-HTTP-001). */
 export { ExtensionHttpError, readBody, jsonResponse, isSameOriginRequest } from './extension-http.ts';
 export type { ExtensionHttpErrorCode, ReadBodyOptions, SameOriginOptions } from './extension-http.ts';
-/**
- * One serving process per database, for every SQLite-backed extension: a Linux network filesystem refusal and the
- * server lock (`<database>.server-lock`), an OS lock a second serving process is refused on and a killed one leaves free.
- */
-export { holdServerLock, hostProbe, NETWORK_FILESYSTEMS, refuseNetworkFilesystem, serverLockHeld, serverLockPath } from './server-lock.ts';
-export type { HostProbe, ServerLock } from './server-lock.ts';
 export interface ExtensionDeclaration { version:'1'; config:Record<string,unknown> }
 export type ExtensionPolicies = Record<string,Record<string,unknown>|false>;
 /**

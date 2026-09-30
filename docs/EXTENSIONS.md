@@ -687,11 +687,15 @@ string or key in a parsed value holds an unpaired surrogate, and
 `illFormedMember(object)` names the first top-level member that does, for an
 error that names the argument (the MCP extension answers `-32602` with it).
 
-An extension that keeps a SQLite database is served by one process. The
-store, auth and audit share these helpers
-([one serving process per database](STORE.md#one-serving-process-per-database)):
+The bundled store, auth and audit extensions each keep a SQLite file, served
+by one process
+([one serving process per database](STORE.md#one-serving-process-per-database)).
+The helpers they share are published on their own subpath,
+`@jimhoyd/urlcode/sqlite`. They are helpers of that bundled implementation,
+not URLCode rules: an extension that keeps its data in another database does
+not use them, and `@jimhoyd/urlcode/extensions` never loads `node:sqlite`.
 
-| Helper | What it does |
+| Helper (`@jimhoyd/urlcode/sqlite`) | What it does |
 |---|---|
 | `holdServerLock(database, what, probe?)` | Before serving: creates the database's directory (0700) when absent, refuses it on a network filesystem, then takes an exclusive OS lock on `<database>.server-lock` (SQLite's file lock, held by a transaction that never ends) and returns `{path, release()}`. Another process holding it refuses with `Another process is already serving this <what> database`. Holders in one process share it (a dev reload), and the operating system releases it when the process exits or is killed. No heartbeat, timestamp or clock. Call `release()` from the activation's `close()` and when activation fails. |
 | `serverLockHeld(database)` | Whether a serving process (this one or another) holds that lock now, read without taking it: an operator command asks before writing with a declaration the server may not share. |
@@ -996,7 +1000,10 @@ A hermetic host keeps every file under `ctx.data`, whatever the operator's
 options or environment name for serving (a `database` path, an environment
 variable), creates what serving expects an operator to have created (a schema,
 a signing secret that lives only as long as the host) and starts from nothing
-on every run. Only such a registration declares `seedSchema`. Core reads the
+on every run. A database the extension does not own, such as the owner's own
+Better Auth database given to auth, stays out of reach: the run serves an
+isolated one the host supplies (auth's `testDatabase`) or refuses, never
+the live one. Only such a registration declares `seedSchema`. Core reads the
 project's `tests/seed.json` (an object keyed by extension name, at most 1 MiB),
 validates each entry against the named registration's `seedSchema` and passes
 it as `context.seed` to that extension's first activation of the run only:
