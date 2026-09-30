@@ -504,6 +504,16 @@ token outlives sign-out until it expires). Its protected routes say
 handlers read `context.capabilities.authjs.identity`. An independent package
 still cannot name itself `auth`, a reserved first-party catalog name.
 
+**Owner choice of storage.** The bundled store is a default, not a
+prerequisite. The [native-storage proof](../proofs/native-storage/README.md)
+keeps its records with `node:sqlite`, called directly from trusted function
+routes that read `context.capabilities.authjs.identity.userId`, in the
+directory the operator grants as `URLCODE_DATA_DIR`. Neither store nor audit is
+installed. URLCode supplies the routing, the `auth: true` gate, review and the
+hermetic `urlcode test` and `audit` runs. The store's guarantees do not carry
+over, and `extensions.store` without the store extension is refused before
+serving (`Not registered by the host file: store`), not emulated.
+
 ### Request context: route env and request id
 
 Every `ExtensionRequest` carries two more generic fields, whether it reaches an

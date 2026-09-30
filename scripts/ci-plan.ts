@@ -86,8 +86,8 @@ const HIGH_IMPACT: readonly RegExp[] = [
   // Integration and cleanup: the packed add-on suite and the per-package
   // fixture cleanup whose Windows SQLite ordering delayed a release (#673).
   /^test\/addons\.integration\.ts$/,
-  // The embedded-provider proofs (#843, and Auth.js as the second provider for #841): their packed-consumer suites run in the same job.
-  /^test\/(?:private-requests|authjs-provider)\.integration\.ts$/,
+  // The embedded-provider proofs (#843, Auth.js as the second provider for #841, native storage for #1052): their packed-consumer suites run in the same job.
+  /^test\/(?:private-requests|authjs-provider|native-storage)\.integration\.ts$/,
   // The ecosystem conformance fixture (#841): npm library use and a Hono host, packed consumer, same job.
   /^test\/ecosystem\.integration\.ts$/,
   /^proofs\//,
