@@ -12,6 +12,33 @@ test('YAML rejects ambiguity and nonportable constructs', () => {
   for (const source of ['x: 1\nx: 2','x: &x 1\ny: *x','x: !custom yes','x: .inf','x: .NaN','__proto__: bad','constructor: bad','x: 1\n---\ny: 2','x: !!str hi','x: {<<: bad}']) assert.throws(() => parseYaml(source));
   assert.deepEqual(parseYaml('version: "1"\nroutes: {}'),{ version:'1',routes:{} });
 });
+// Only a lone \uD800-\uDFFF escape in a double-quoted scalar writes an unpaired surrogate, which UTF-8 cannot carry: a
+// respond text and a redirect URL sent U+FFFD and a respond json the raw escape. Refused at load, naming where (#1021).
+test('YAML refuses an unpaired surrogate escape in a value or key, naming its location; a surrogate pair loads', async t => {
+  for (const [source, where] of [
+    ['version: "1"\nroutes:\n  /t:\n    respond:\n      text: "a\\ud800b"\n', /in route \/t, respond\.text at line 5, column 7;/],
+    ['version: "1"\nroutes:\n  /j:\n    respond:\n      json: {v: ["ok", "\\udc00"]}\n', /in route \/j, respond\.json\.v\.1 at line 5, column 24;/],
+    ['version: "1"\nroutes:\n  "/r\\udbff":\n    redirect: {url: "https://example.com/"}\n', /in a key of \/routes at line 3, column 3;/],
+  ] as const) {
+    assert.throws(() => parseYaml(source), (error: Error & { details?: { code?: string } }) => {
+      assert.match(error.message, /^Unpaired UTF-16 surrogate escape \(\\uD800-\\uDFFF\) /);
+      assert.match(error.message, where);
+      assert.equal(error.message.isWellFormed(), true, 'the value is never quoted');
+      assert.equal(error.details?.code, 'invalid-unicode');
+      return true;
+    });
+  }
+  assert.deepEqual(parseYaml('a: "\\ud83d\\ude00"'), { a: '\u{1F600}' });
+  // Through the loader and its includes the message names the file, and the server never starts.
+  const root = await project(t, { '/a': redirect() }, { 'routes/more.yaml': 'version: "1"\nroutes:\n  /b:\n    redirect: {url: "https://example.com/x\\ud800"}\n' });
+  await writeFile(join(root, 'urlcode.yaml'), stringify({ version: '1', routes: { '/a': redirect() }, includes: ['routes/more.yaml'] }));
+  await assert.rejects(loadDocument(root), (error: Error & { details?: Record<string, unknown> }) => {
+    assert.match(error.message, /^routes\/more\.yaml:4:16: Unpaired UTF-16 surrogate escape \(\\uD800-\\uDFFF\) in route \/b, redirect\.url;/);
+    assert.deepEqual({ code: error.details?.code, file: error.details?.file, line: error.details?.line }, { code: 'invalid-unicode', file: 'routes/more.yaml', line: 4 });
+    return true;
+  });
+  await assert.rejects(startServer({ project: root, port: 0, log: () => {} }), /Unpaired UTF-16 surrogate/);
+});
 test('strict schema rejects unknown features and multiple handlers', () => {
   for (const doc of [ { version:1,routes:{} },{ version:'1',routes:{},lambda:{} },{ version:'1',routes:{ '/':{ redirect:{ url:'https://example.com' },function:{ source:'x.mjs' } } } },{ version:'1',routes:{ '/':{ signals:{} } } } ]) assert.throws(() => validateDocument(doc));
 });

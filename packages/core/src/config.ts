@@ -64,17 +64,19 @@ function parseYamlLocated(text: string): { data: unknown; locate: YamlLocator } 
     if (isScalar(node)) assert(node.value === null || ['string', 'number', 'boolean'].includes(typeof node.value), 'Non-JSON YAML value', { code: 'invalid-yaml', ...at(node) });
   });
   const data: unknown = doc.toJS({ maxAliasCount: 0, mapAsMap: false });
-  const inspect = (value: unknown, depth = 0): void => {
+  // Runs once `locate` below is defined, so an unpaired surrogate is reported with its line.
+  const inspect = (value: unknown, pointer: string, depth = 0): void => {
     assert(depth < 40, 'Configuration nesting exceeds 40 levels');
     if (typeof value === 'number') assert(Number.isFinite(value), 'Non-finite YAML number');
+    if (typeof value === 'string' && !value.isWellFormed()) illFormed(pointer);
     if (value && typeof value === 'object') {
       for (const [key, child] of Object.entries(value)) {
         assert(!['__proto__', 'prototype', 'constructor', '<<'].includes(key), 'Reserved mapping key');
-        inspect(child, depth + 1);
+        if (!key.isWellFormed()) illFormed(pointer, key);
+        inspect(child, `${pointer}/${escapePointer(key)}`, depth + 1);
       }
     }
   };
-  inspect(data);
   const locate: YamlLocator = (pointer, key) => {
     let node: unknown = doc.contents, found: unknown = node;
     const path = pointerSegments(pointer);
@@ -92,6 +94,14 @@ function parseYamlLocated(text: string): { data: unknown; locate: YamlLocator } 
     }
     return at(found);
   };
+  // A double-quoted scalar's `\uD800`-`\uDFFF` escape is the only way to write an unpaired UTF-16 surrogate, which
+  // UTF-8 cannot carry: a respond text or redirect URL would reach the client as U+FFFD and a respond json as the raw
+  // escape. Refused like every JSON boundary refuses one (#988, #1016, #1021), naming where; the value is never quoted.
+  const illFormed = (pointer: string, key?: string): never => {
+    const position = locate(pointer, key);
+    throw new ConfigError(`Unpaired UTF-16 surrogate escape (\\uD800-\\uDFFF) in ${key === undefined ? '' : 'a key of '}${describeLocation(pointer)}${position ? ` at line ${position.line}, column ${position.column}` : ''}; UTF-8 cannot carry one, so write the character itself or a surrogate pair`, { code: 'invalid-unicode', pointer, ...position });
+  };
+  inspect(data, '');
   return { data, locate };
 }
 const MAX_NAMED_KEY = 64;

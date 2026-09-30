@@ -75,3 +75,12 @@ test('conversion counts distinguish returned output, runtime requirements and kn
   const invalid=await importRoutes({format:'json',text:'[{"path":"/a","url":"https://example.test"},{"path":"/*","url":"https://example.test"}]'});assert.equal(invalid.counts.unsupportedRows,1);assert.equal(invalid.counts.convertedRoutes,0);assert.equal(invalid.counts.fullyScanned,true);
   const syntax=await importRoutes({format:'json',text:'['});assert.equal(syntax.counts.fullyScanned,false);
 });
+test('an unpaired surrogate is refused in every import format, never written as an escape the redirect sends as U+FFFD (#1021)',async()=>{
+  for(const [format,text] of [['json','[{"path":"/a","url":"https://example.test/\\ud800","status":301}]'],['yaml','- {path: /a, url: "https://example.test/\\udc00", status: 301}\n'],['vercel','{"redirects":[{"source":"/a","destination":"https://example.test/\\ud800","permanent":true}]}'],['csv','path,url,status\n/a,https://example.test/\ud800,301\n'],['netlify','/a https://example.test/\udbff 301']] as const){
+    const result=await importRoutes({format,text,acceptProviderDifferences:true});
+    assert.equal(result.ok,false,format);assert.equal(result.output,undefined,format);
+    assert.match(result.diagnostics.find(d=>d.severity==='error')?.message??'',/unpaired UTF-16 surrogate/i,format);
+  }
+  const pair=await importRoutes({format:'json',text:'[{"path":"/a","url":"https://example.test/\\ud83d\\ude00","status":301}]'});
+  assert.equal(pair.ok,true);assert.equal(pair.document?.routes['/a']?.redirect?.url,'https://example.test/\u{1F600}');
+});

@@ -585,3 +585,18 @@ test('McpToolError data becomes structuredContent only when the tool declares an
   assert.match(errors[0]!, /^nonconforming: McpToolError data failed the tool's declared outputSchema/);
   assert.deepEqual(calls.map(info => info.outcome), ['tool_error', 'tool_error', 'tool_error']);
 });
+
+test('a body of invalid UTF-8 answers a -32700 parse error before any handler runs; media type and size are checked first (#1021)', async t => {
+  const { port } = await boot(t);
+  const post = (body: Uint8Array<ArrayBuffer>, contentType = 'application/json; charset=utf-8') => fetch(`http://127.0.0.1:${port}/mcp`, { method: 'POST', headers: { 'content-type': contentType, accept: 'application/json, text/event-stream' }, body });
+  // Otherwise one valid tools/call: the SDK decoded the 0xff byte as U+FFFD and the handler echoed it.
+  const call = Buffer.concat([Buffer.from('{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"echo","arguments":{"message":"a'), Buffer.from([0xff]), Buffer.from('"}}}')]);
+  const refused = await post(call);
+  assert.equal(refused.status, 400);
+  assert.deepEqual(await refused.json(), { jsonrpc: '2.0', error: { code: -32700, message: 'Parse error: the request body is not valid UTF-8' }, id: null });
+  assert.equal((await post(call, 'text/plain')).status, 415);
+  assert.equal((await post(Buffer.concat([call, Buffer.alloc(300 * 1024, 0x20)]))).status, 413);
+  // A well-formed body, a multi-byte character included, still reaches the handler.
+  const echoed = await jsonReply(await post(Buffer.from(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'echo', arguments: { message: 'café' } } }))));
+  assert.equal((await echoed.json() as { result: { structuredContent?: unknown; content: { text: string }[] } }).result.content[0]!.text, '{"echoed":"café"}');
+});

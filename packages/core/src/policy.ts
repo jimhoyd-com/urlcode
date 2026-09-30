@@ -6,6 +6,7 @@ import { functionFile } from './config.ts';
 import { collectFunctionSources, collectTrustedSources, routeFunctions } from './function-sources.ts';
 import type { FunctionDefinition, FunctionRoute, FunctionSources } from './function-sources.ts';
 import { assert, ConfigError, revisionPinHint, routeError } from './errors.ts';
+import { holdsIllFormedString } from './body-validation.ts';
 import type { LoadedDocument } from './types.ts';
 
 interface EgressGrants { proxy?:string[]; signals?:string[] }
@@ -72,6 +73,10 @@ export async function prepareFunctionSnapshot(loaded: LoadedDocument): Promise<F
 export function validatePolicy(value: unknown): OperatorPolicy {
   assert(value && typeof value === 'object' && !Array.isArray(value), 'Invalid operator policy');
   const policy = value as Record<string, unknown>; // trust boundary: operator JSON, checked field by field below
+  // Every other string is checked against an ASCII pattern or an exact origin, and a route grant under a key no route
+  // can have grants nothing, so an unpaired surrogate escape could not take effect; refused anyway, as every JSON
+  // input is (#1021), rather than kept as a grant that silently never matches.
+  assert(!holdsIllFormedString(value), 'Operator policy holds a string or key with an unpaired surrogate escape (\\uD800-\\uDFFF)', { code: 'policy-invalid' });
   assert(Object.keys(policy).every(k=>['version','projectSha256','routes'].includes(k)) && policy.version === 1 && typeof policy.projectSha256 === 'string' && /^[a-f0-9]{64}$/.test(policy.projectSha256), 'Policy requires version 1 and projectSha256');
   const routes = policy.routes;
   assert(routes && typeof routes === 'object' && !Array.isArray(routes), 'Policy requires route grants');
