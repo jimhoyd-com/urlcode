@@ -368,7 +368,7 @@ async function principalSite(t:{after(fn:()=>unknown):void},providers:Record<str
   const app=join(site,'app');await mkdir(app);
   const describe=async(current:Record<string,boolean>)=>{for(const [name,provides]of Object.entries(current)){
     const directory=join(site,'node_modules','@example',`urlcode-${name}`);await mkdir(directory,{recursive:true});
-    await writeFile(join(directory,'urlcode.json'),JSON.stringify({kind:'extension',name,description:`${name} stand-in`,contract:1,requires:[],targets:['node','aws','vercel'],...(provides?{providesPrincipal:true}:{}),schema:{type:'object'}}));
+    await writeFile(join(directory,'urlcode.json'),JSON.stringify({kind:'extension',name,description:`${name} stand-in`,contract:2,requires:[],targets:['node','aws','vercel'],...(provides?{providesPrincipal:true}:{}),schema:{type:'object'}}));
   }};
   await describe(providers);
   await writeFile(join(site,'package.json'),JSON.stringify({private:true,dependencies:Object.fromEntries(Object.keys(providers).map(name=>[`@example/urlcode-${name}`,'1.0.0']))}));
@@ -452,11 +452,17 @@ test('validate, test and dev print an extension activation error with its name (
   const dir=await mkdtemp(join(tmpdir(),'urlcode-host-'));t.after(()=>rm(dir,{recursive:true,force:true}));
   const {activate:_activate,...data}=await registration(root);
   const failing=join(dir,'failing.mjs'),broken=join(dir,'broken.mjs');
-  await writeFile(failing,`export default {extensions:[{...${JSON.stringify(data)},activate(){throw new Error('MCP server hosted: tool urlcode_yaml_validate inputSchema: maxLength must be an integer from 0 to 8192');}}]};`);
+  // Composed, as a hermetic test run requires (#976): composeHost confirms the data directory it gave host().
+  await writeFile(failing,`import {composeHost} from ${JSON.stringify(new URL('../packages/core/src/host.ts',import.meta.url).href)};
+const data=${JSON.stringify(data)};
+const demo={definition:{name:'demo',contract:2,targets:data.targets,schema:data.schema,host(context){return {registration:{...data,projectSha256:context.projectSha256,activate(){throw new Error('MCP server hosted: tool urlcode_yaml_validate inputSchema: maxLength must be an integer from 0 to 8192');}}};}},options:{}};
+export default await composeHost(import.meta.url,[demo]);
+`);
   // Loading the host module itself is not extension activation: it reports as the host file's own failure (#724).
   await writeFile(broken,`throw new Error('internal detail /secret/path');\n`);
   const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
-  const run=(command:string,...args:string[])=>spawnSync(process.execPath,[cli,command,'--project',root,'--origin',origin,...args],{encoding:'utf8',timeout:20000});
+  const env={...process.env,PROJECT_SHA256:data.projectSha256};
+  const run=(command:string,...args:string[])=>spawnSync(process.execPath,[cli,command,'--project',root,'--origin',origin,...args],{encoding:'utf8',timeout:20000,env});
   const lastError=(stderr:string)=>JSON.parse(stderr.trim().split('\n').at(-1)!) as {event:string;message:string;code?:string;extension?:string};
   for(const command of ['validate','test'])await t.test(command,()=>{
     const out=run(command,'--host-file',failing);assert.equal(out.status,1,out.stderr);
@@ -480,8 +486,8 @@ test('validate, test and dev print a host file load failure and an extension hos
   const files={
     topLevel:[`throw new Error('host.mjs setup failed:\\n  line two');\n`],
     missing:[`import '@jimhoyd/urlcode-not-installed/extension';\nexport default {};\n`],
-    hook:[`import {composeHost} from ${JSON.stringify(hostModule)};\nconst demo={definition:{name:'demo',contract:1,host(){throw new Error('CSRF key data/csrf.key must be 32 bytes\\n'+'x'.repeat(2000));}},options:{}};\nexport default await composeHost(import.meta.url,[demo]);\n`],
-    refusal:[`import {composeHost} from ${JSON.stringify(hostModule)};\nconst demo={definition:{name:'demo',contract:1,host(){return {registration:{name:'other'}};}},options:{}};\nexport default await composeHost(import.meta.url,[demo]);\n`],
+    hook:[`import {composeHost} from ${JSON.stringify(hostModule)};\nconst demo={definition:{name:'demo',contract:2,host(){throw new Error('CSRF key data/csrf.key must be 32 bytes\\n'+'x'.repeat(2000));}},options:{}};\nexport default await composeHost(import.meta.url,[demo]);\n`],
+    refusal:[`import {composeHost} from ${JSON.stringify(hostModule)};\nconst demo={definition:{name:'demo',contract:2,host(){return {registration:{name:'other'}};}},options:{}};\nexport default await composeHost(import.meta.url,[demo]);\n`],
   };
   const paths=Object.fromEntries(await Promise.all(Object.entries(files).map(async([name,[text]])=>{const file=join(dir,`${name}.mjs`);await writeFile(file,text!);return [name,file] as const;})));
   const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
@@ -522,7 +528,7 @@ test('a verified --policy pins the extension host; PROJECT_SHA256 must agree and
   // host() sees the revision, the site, its data directory and whether the run is hermetic: no policy grants, no policy path.
   await writeFile(host,`import {composeHost} from ${JSON.stringify(new URL('../packages/core/src/host.ts',import.meta.url).href)};
 const data=${JSON.stringify(data)};
-const demo={definition:{name:'demo',contract:1,targets:data.targets,schema:data.schema,host(context){
+const demo={definition:{name:'demo',contract:2,targets:data.targets,schema:data.schema,host(context){
   if(Object.keys(context).sort().join()!=='data,get,hermetic,projectSha256,site')throw new Error('unexpected host context '+Object.keys(context));
   return {registration:{...data,projectSha256:context.projectSha256,activate(){return {handle(){return {status:200,headers:[['content-type','text/plain']],body:'pinned '+context.projectSha256};}};}}};
 }},options:{}};
@@ -625,7 +631,7 @@ test('--local-review pins a non-serving run to the current revision, never serve
   const host=join(dir,'host.mjs'),stale=join(dir,'stale.json');
   await writeFile(host,`import {composeHost} from ${JSON.stringify(new URL('../packages/core/src/host.ts',import.meta.url).href)};
 const data=${JSON.stringify(data)};
-const demo={definition:{name:'demo',contract:1,targets:data.targets,schema:data.schema,host(context){
+const demo={definition:{name:'demo',contract:2,targets:data.targets,schema:data.schema,host(context){
   // Stands in for an extension whose serving data is not set up yet (auth's unmigrated tables, #954).
   if(process.env.DEMO_SITE_DATA_UNSET&&!context.hermetic)throw new Error('demo: the site data is not set up; run demo migrate');
   return {registration:{...data,projectSha256:context.projectSha256,activate(){return {handle(){return {status:200,headers:[['content-type','text/plain']],body:'pinned'};}};}}};

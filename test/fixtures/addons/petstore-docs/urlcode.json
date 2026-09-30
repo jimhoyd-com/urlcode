@@ -2,7 +2,7 @@
   "kind": "artifact",
   "name": "petstore-docs",
   "description": "Independent fixture artifact outside the first-party namespace: standard OpenAPI and JSON Schema documents",
-  "contract": 1,
+  "contract": 2,
   "requires": [],
   "documents": [
     { "path": "openapi/petstore.yaml", "mediaType": "application/vnd.oai.openapi" },

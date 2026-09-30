@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 const schema = { type: 'object', additionalProperties: false, properties: { greeting: { type: 'string' } } };
 const definition = {
-  name: 'alpha', description: 'Fixture extension with a mount and a key file', contract: 1, requires: [], targets: ['node'], schema,
+  name: 'alpha', description: 'Fixture extension with a mount and a key file', contract: 2, requires: [], targets: ['node'], schema,
   scaffold: ({ installed }) => ({
     config: { greeting: 'hello' },
     routes: { '/alpha/*': { extension: 'alpha', methods: ['GET', 'HEAD'] } },

@@ -30,7 +30,7 @@ the npm registry; nothing after it does.
 | `app/functions/echo.mjs`, `stream.mjs` | application | What a function sees of a request; a `stream: true` body |
 | `app/tests/requests.json` | application | Declarative fixtures for `urlcode test` |
 | `sandboxed/` | application | The same zod import on a `sandbox: true` route; expected to be refused |
-| `host.mjs` | operator | Two plain extension registrations: `probe` reports the origin, client address and same-origin verdict URLCode computed; `hono` mounts a whole Hono app |
+| `host.mjs` | operator | Two plain extensions with no package, defined with `defineExtension` and composed by `composeHost` (which a hermetic `urlcode test` requires): `probe` reports the origin, client address and same-origin verdict URLCode computed; `hono` mounts a whole Hono app |
 | `hono/server.mjs` | operator | The Hono application hosting URLCode (`createRuntime` and `createEmbeddedHandler` from `@jimhoyd/urlcode`) |
 
 ## Run it

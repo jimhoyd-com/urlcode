@@ -1,16 +1,24 @@
 // Trusted operator host: keep it outside app/ and review it like any other code you deploy. The same file serves
 // both hosting modes: `urlcode serve --host-file host.mjs` loads it, and hono/server.mjs imports it and passes the
 // same registrations to createRuntime. Both extensions are plain host code with no package, descriptor or catalog
-// entry. PROJECT_SHA256 is the reviewed project revision (`urlcode extensions --project app --host-file host.mjs`).
+// entry, composed by composeHost, which pins them to PROJECT_SHA256, the reviewed project revision (`urlcode
+// extensions --project app --host-file host.mjs`), and confirms to a hermetic `urlcode test` that they were composed
+// on its temporary data directory (#976). Neither keeps any files.
 import { Hono } from 'hono';
-import { isSameOriginRequest } from '@jimhoyd/urlcode/extensions';
+import { defineExtension, isSameOriginRequest } from '@jimhoyd/urlcode/extensions';
+import { composeHost } from '@jimhoyd/urlcode/host';
 
-const registration = { version: '1', projectSha256: process.env.PROJECT_SHA256 ?? '', targets: ['node'], schema: { type: 'object', additionalProperties: false } };
+const schema = { type: 'object', additionalProperties: false };
+/** A plain operator extension: a registration with no package, built for the revision composeHost hands it. */
+const plain = ({ name, description, activate }) => defineExtension({
+  name, description, contract: 2, targets: ['node'], schema,
+  host: context => ({ registration: { name, version: '1', projectSha256: context.projectSha256, targets: ['node'], schema, activate } }),
+});
 
 // Answers with the origin, client address and same-origin verdict URLCode handed it, so the two hosting modes can be
 // compared request for request.
-const probe = {
-  ...registration, name: 'probe',
+const probe = plain({
+  name: 'probe', description: 'Reports the origin, client address and same-origin verdict URLCode computed',
   activate(_config, context) {
     const site = { origin: context.origin, origins: context.origins };
     return {
@@ -22,12 +30,12 @@ const probe = {
       },
     };
   },
-};
+});
 
 // A whole Hono application behind an `extension:` mount (the reverse direction, operator side). The mount is a
 // wildcard, so the app's own router decides the paths below it; review sees only the mount.
-const hono = {
-  ...registration, name: 'hono',
+const hono = plain({
+  name: 'hono', description: 'A whole Hono application behind an extension mount',
   activate(_config, context) {
     const [mount] = context.mounts;
     const app = new Hono().basePath(mount);
@@ -44,6 +52,6 @@ const hono = {
       },
     };
   },
-};
+});
 
-export default { extensions: [probe, hono] };
+export default await composeHost(import.meta.url, [probe(), hono()]);

@@ -1,5 +1,6 @@
 // jimhoyd-com/urlcode#930, RIM-EXT-HERMETIC-001: a check run composes the operator host on a fresh, empty data
 // directory, and `tests/seed.json` reaches only a registration built for one, on the run's first activation only.
+import './scratch-tmpdir.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { access, mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -29,7 +30,7 @@ async function site(t: TestContext): Promise<string> {
   await writeFile(join(dir, 'host.mjs'), `import { composeHost } from ${core('host.ts')};
 import { defineExtension } from ${core('extensions.ts')};
 const schema = { type: 'object', additionalProperties: false };
-const vault = defineExtension({ name: 'vault', description: 'Synthetic vault', contract: 1, targets: ['node'], schema, host(ctx) {
+const vault = defineExtension({ name: 'vault', description: 'Synthetic vault', contract: 2, targets: ['node'], schema, host(ctx) {
   globalThis.__hermeticSeen.push({ data: ctx.data, hermetic: ctx.hermetic, site: ctx.site });
   return { registration: { name: 'vault', version: '1', projectSha256: ctx.projectSha256, targets: ['node'], schema,
     ...(ctx.hermetic ? { seedSchema: { type: 'object', additionalProperties: false, required: ['greeting'], properties: { greeting: { type: 'string' } } } } : {}),

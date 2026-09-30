@@ -148,7 +148,7 @@ test('MCP inspect_extension_artifact returns exactly the facts urlcode artifacts
  const {site,project:app}=await artifactSite(t,'sample');
  // The installed package links the fixture copy; its descriptor now lists its schema as a standard document.
  const installed=join(site,'node_modules','@jimhoyd','urlcode-sample','urlcode.json');
- await writeFile(installed,JSON.stringify({kind:'artifact',name:'sample',description:'Fixture artifact',contract:1,requires:[],documents:[{path:'schemas/config.json',mediaType:'application/schema+json'}]}));
+ await writeFile(installed,JSON.stringify({kind:'artifact',name:'sample',description:'Fixture artifact',contract:2,requires:[],documents:[{path:'schemas/config.json',mediaType:'application/schema+json'}]}));
  const replies=await session(app,[initialize,ready,...[{name:'inspect_extension_artifact',arguments:{name:'sample'}},{name:'inspect_extension_artifact',arguments:{name:'missing'}},{name:'inspect_extension_artifact',arguments:{}}].map((params,index)=>({jsonrpc:'2.0',id:index+2,method:'tools/call',params}))]);
  const inspected=JSON.parse(replies[1]!.result.content[0]!.text);
  assert.deepEqual(inspected,JSON.parse(JSON.stringify(await inspectInstalledArtifact(site,'sample'))));

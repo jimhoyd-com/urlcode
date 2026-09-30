@@ -343,12 +343,13 @@ function formatExtensions(report: ExtensionInspection): string {
 // An unhandled rejection anywhere in the process (this CLI's own code, a
 // trusted project function, an observer) must not fail silently as a bare
 // Node warning: log a structured event and exit non-zero so a supervisor
-// notices and restarts.
+// notices and restarts. The operator host is released first (bounded), and the
+// exit hook removes any run directory still left (#977).
 process.on('unhandledRejection', reason => {
   const message = reason instanceof Error ? reason.message : String(reason);
   process.stderr.write(JSON.stringify({ event:'error', message:'Unhandled rejection: ' + message }) + '\n');
   process.exitCode = 1;
-  process.exit(1);
+  shutdown(1);
 });
 /**
  * `dev --signal-sink stdout|<file.jsonl>`: record would-be signal deliveries as JSON lines instead of sending them. A
@@ -364,6 +365,25 @@ async function signalSink(target: string, project: string): Promise<SignalRecord
   return SignalRecorder.sink(file);
 }
 let operatorHost: OperatorHost = {};
+/**
+ * #977: exits with `code` after releasing the operator host, which removes a hermetic run's data directory, for at
+ * most three seconds. `process.exit` then runs the exit hook that removes every run directory still left
+ * (`temp-dirs.ts`); a second call exits at once.
+ */
+let exiting = false;
+function shutdown(code: number): void {
+  if (exiting) process.exit(code);
+  exiting = true;
+  setTimeout(() => process.exit(code), 3000).unref();
+  void (async () => { try { await operatorHost.close?.(); } catch { /* exiting anyway */ } process.exit(code); })();
+}
+/** A non-serving command stopped by SIGINT or SIGTERM cleans up and exits 130 or 143; a serving one replaces this with its graceful stop. */
+const interrupted = (signal: NodeJS.Signals): void => shutdown(signal === 'SIGINT' ? 130 : 143);
+process.on('SIGINT', interrupted); process.on('SIGTERM', interrupted);
+const serveSignals = (stop: () => unknown): void => {
+  process.off('SIGINT', interrupted); process.off('SIGTERM', interrupted);
+  process.once('SIGINT', stop); process.once('SIGTERM', stop);
+};
 let verifiedPolicy: OperatorPolicy | undefined;
 let serving = false;
 /** The operator context the command ran with, for a refusal that has to name what is still missing (#834). */
@@ -527,7 +547,7 @@ try {
       print(human?`URLCode Studio on ${studio.url}${opened?' (opened in your browser)':''} — reload the page after a change; Ctrl+C stops it\n`:{event:'listening',mode:'studio',url:studio.url,opened});
       serving=true;
       const stop=async()=>{try{await studio.close();}finally{await operatorHost.close?.();}};
-      process.once('SIGINT',stop);process.once('SIGTERM',stop);
+      serveSignals(stop);
     }else if(command==='bootstrap'){
       if(parsed.project!==undefined)throw new ConfigError('bootstrap takes the site directory as its argument, not --project');
       if(values.create&&arg===undefined)throw new ConfigError('--create needs an explicit destination: urlcode bootstrap <directory> --create');
@@ -739,7 +759,7 @@ try {
             }
             finally { signalRecorder?.close(); await operatorHost.close?.(); }
           };
-          process.once('SIGINT',stop); process.once('SIGTERM',stop);
+          serveSignals(stop);
           break;
         }
         default: throw new ConfigError('Unknown command; use --help');

@@ -138,6 +138,8 @@ async function mergeIntoProject(root:string,args:Record<string,unknown>,origin?:
  } finally {if(lock){await lock.close();await rm(lockPath,{force:true});}}
 }
 const outputLimit=32768;
+/** How long a runner child may take, and how long it then has after SIGTERM before SIGKILL. */
+const runnerTimeoutMs=120000,runnerGraceMs=5000;
 function bounded(chunks:Buffer[]):{text:string;truncated:boolean} {
  const all=Buffer.concat(chunks);return {text:all.subarray(0,outputLimit).toString('utf8'),truncated:all.length>outputLimit};
 }
@@ -157,8 +159,11 @@ async function runCli(root:string,command:'validate'|'test'|'audit',operator:Ope
  const stdout:Buffer[]=[],stderr:Buffer[]=[];let total=0;
  const collect=(sink:Buffer[])=>(chunk:Buffer)=>{if(total<outputLimit*4){sink.push(chunk);total+=chunk.length;}};
  child.stdout.on('data',collect(stdout));child.stderr.on('data',collect(stderr));
- const timer=setTimeout(()=>child.kill('SIGKILL'),120000);
- const exit=await new Promise<{code:number|null;signal:NodeJS.Signals|null}>((resolve,reject)=>{child.once('error',reject);child.once('close',(code,signal)=>resolve({code,signal}));}).finally(()=>clearTimeout(timer));
+ // #977: SIGTERM first, so the child releases its operator host and removes its run directories; SIGKILL only if it
+ // has not exited after the grace period (a later run sweeps what that leaves).
+ let kill:NodeJS.Timeout|undefined;
+ const timer=setTimeout(()=>{child.kill('SIGTERM');kill=setTimeout(()=>child.kill('SIGKILL'),runnerGraceMs);},runnerTimeoutMs);
+ const exit=await new Promise<{code:number|null;signal:NodeJS.Signals|null}>((resolve,reject)=>{child.once('error',reject);child.once('close',(code,signal)=>resolve({code,signal}));}).finally(()=>{clearTimeout(timer);clearTimeout(kill);});
  const out=bounded(stdout),err=bounded(stderr);
  return {command,exitCode:exit.code,signal:exit.signal,stdout:out.text,stderr:err.text,truncated:out.truncated||err.truncated};
 }

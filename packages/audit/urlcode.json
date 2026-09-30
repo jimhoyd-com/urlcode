@@ -2,7 +2,7 @@
   "kind": "extension",
   "name": "audit",
   "description": "Durable, bounded audit log other extensions record privileged actions into",
-  "contract": 1,
+  "contract": 2,
   "requires": [],
   "targets": [
     "node"

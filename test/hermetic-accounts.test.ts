@@ -2,6 +2,7 @@
 // `urlcode-auth migrate`, `create-user` or `urlcode-store members add`, never touches the site's data/, and passes again
 // on a rerun, because each run composes the host on a fresh data directory and seeds it from tests/seed.json.
 // Needs the built core (npm run build): the packages import @jimhoyd/urlcode/extensions from dist.
+import './scratch-tmpdir.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { access, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';

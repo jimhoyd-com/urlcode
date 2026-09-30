@@ -180,15 +180,20 @@ test('scaffold_feature creates placeholders for a created route and refuses to o
 const widgetYaml='version: "1"\nextensions:\n  widget:\n    version: "1"\n    config: {}\nroutes:\n  /widget/*:\n    extension: widget\n    methods: [GET, HEAD]\n';
 // `extraRoutes` adds YAML under routes; `pinned` names the directory whose revision the registration pins (default:
 // root); `policySchema` is the registration's route-requirement schema.
-async function widgetProject(t:{after(fn:()=>Promise<void>):void},{extraRoutes='',pinned,policySchema}:{extraRoutes?:string;pinned?:(root:string)=>Promise<string>;policySchema?:object}={}) {
+async function widgetProject(t:{after(fn:()=>Promise<void>):void},{extraRoutes='',pinned,policySchema,composed=false}:{extraRoutes?:string;pinned?:(root:string)=>Promise<string>;policySchema?:object;composed?:boolean}={}) {
  const root=await mkdtemp(join(tmpdir(),'urlcode-widget-'));t.after(()=>rm(root,{recursive:true,force:true}));
  await writeFile(join(root,'urlcode.yaml'),widgetYaml+extraRoutes);
  await mkdir(join(root,'tests'));await writeFile(join(root,'tests/requests.json'),JSON.stringify([{path:'/widget/',status:200,expectBody:'ok'}]));
  const dir=await mkdtemp(join(tmpdir(),'urlcode-widget-host-'));t.after(()=>rm(dir,{recursive:true,force:true}));
  const registration={name:'widget',version:'1',projectSha256:await inspectExtensionRevision(pinned?await pinned(root):root),targets:['node'],schema:{type:'object',additionalProperties:false},...(policySchema?{policySchema}:{})};
  const hostFile=join(dir,'host.mjs');
- await writeFile(hostFile,`export default {extensions:[{...${JSON.stringify(registration)},activate(){return {handle(){return {status:200,headers:[['content-type','text/plain']],body:'ok'};}};}}]};`);
- return {root,hostFile};
+ const activate=`activate(){return {handle(){return {status:200,headers:[['content-type','text/plain']],body:'ok'};}};}`;
+ // A hermetic run (run_test, run_tests) needs a composed host, which confirms its data directory (#976); it takes the
+ // pin from PROJECT_SHA256 rather than baking one in.
+ await writeFile(hostFile,composed
+  ?`import {composeHost} from ${JSON.stringify(new URL('../packages/core/src/host.ts',import.meta.url).href)};\nconst data=${JSON.stringify(registration)};\nconst widget={definition:{name:'widget',contract:2,targets:data.targets,schema:data.schema,host(ctx){return {registration:{...data,projectSha256:ctx.projectSha256,${activate}}};}},options:{}};\nexport default await composeHost(import.meta.url,[widget]);\n`
+  :`export default {extensions:[{...${JSON.stringify(registration)},${activate}}]};`);
+ return {root,hostFile,revision:registration.projectSha256};
 }
 const widgetOrigin='https://widget.example.test';
 async function hostSession(root:string,messages:unknown[],options:{hostFile?:string;origin?:string}) {
@@ -222,7 +227,9 @@ test('buildContext commands repeat the operator host file and origin and name wh
  assert.equal(shellWord('~/host.mjs','linux'),`'~/host.mjs'`);
 });
 test('with the operator host file the runners validate and test the widget route like run_tests, and get_context carries it (#778)',async t=>{
- const {root,hostFile}=await widgetProject(t);
+ const {root,hostFile,revision}=await widgetProject(t,{composed:true});
+ const previous=process.env.PROJECT_SHA256;process.env.PROJECT_SHA256=revision;
+ t.after(async()=>{if(previous===undefined)delete process.env.PROJECT_SHA256;else process.env.PROJECT_SHA256=previous;});
  const messages=[initialize,ready,...calls([{name:'run_validate',arguments:{}},{name:'run_test',arguments:{}},{name:'run_tests',arguments:{}},{name:'get_context',arguments:{}}])];
  const replies=await hostSession(root,messages,{hostFile,origin:widgetOrigin});
  const validated=payload(replies[1]!),tested=payload(replies[2]!),inProcess=payload(replies[3]!),context=payload(replies[4]!) as {commands:Record<string,string>;prerequisites?:unknown};

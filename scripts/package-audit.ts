@@ -45,8 +45,11 @@ export interface Budget {
 // store-schema (packed/unpacked bytes/entries), each limit rounded up to a KiB.
 export const budgets: Record<string, Budget> = {
   '@jimhoyd/urlcode': {
-    packed: 1060 * 1024,
-    unpacked: 4176 * 1024,
+    // #976/#977 on top of #1027: 1086691 packed / 4275527 unpacked bytes, 548 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
+    packed: 1066 * 1024,
+    // #976/#977 on top of #1027: 1086691 packed / 4275527 unpacked bytes, 548 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
+    // #976/#977 on top of #1031: 1087004 packed / 4276331 unpacked bytes, 548 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
+    unpacked: 4180 * 1024,
     entries: 555,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],

@@ -1,6 +1,6 @@
 const schema = { type: 'object' };
 const definition = {
-  name: 'beta', description: 'Fixture extension that requires alpha', contract: 1, requires: ['alpha'], targets: ['node'], schema,
+  name: 'beta', description: 'Fixture extension that requires alpha', contract: 2, requires: ['alpha'], targets: ['node'], schema,
   policySchema: { type: 'object', additionalProperties: false, properties: { level: { type: 'integer' } } },
   scaffold: ({ acknowledgements }) => {
     if (!acknowledgements.includes('beta:risky')) throw Object.assign(new Error('beta is risky'), { acknowledgement: 'beta:risky' });
