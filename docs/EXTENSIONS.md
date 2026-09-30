@@ -14,13 +14,15 @@ required HTTP(S) destination field and one counter, served on a public
 `GET`/`HEAD` redirect mount with no function. See
 [short links in the data store](STORE.md).
 
-The `store` extension is the data-owning counterpart: it serves declared,
-bounded collections as a CRUD API from an operator-owned directory. See
-[data store](STORE.md).
+The bundled `store` extension is the data-owning counterpart: it serves
+declared, bounded collections as a CRUD API from one SQLite database in an
+operator-owned directory. See [data store](STORE.md). It is one way to keep
+data, not the only one
+([native, independent integration, or bundled default](#native-independent-integration-or-bundled-default)).
 
-The store also keeps the audit log: a collection with `audit: true` records
-each write's event in the store database, in the same transaction as the
-change ([audit log](#audit-log)).
+The bundled store also keeps an audit log: a collection with `audit: true`
+records each write's event in the store database, in the same transaction as
+the change ([audit log](#audit-log)).
 
 No extension renders or processes forms. A form is an ordinary frontend that
 posts JSON to a store mount, or to a route whose `request.body.POST.schema`
@@ -67,6 +69,38 @@ routes:
       extensions:
         auth: {}
 ```
+
+## Native, independent integration, or bundled default
+
+The project owner chooses how each capability is implemented. URLCode does
+not require SQLite, Better Auth or any first-party extension; those are tested
+defaults. There are three ways to get a capability:
+
+1. **Use a library directly.** A trusted `function` or `middleware` route
+   imports any installed npm package and calls its own API, with no adapter or
+   descriptor ([using npm libraries directly](FRAMEWORK.md#using-npm-libraries-directly)).
+   The [native-storage proof](../proofs/native-storage/README.md) keeps its
+   records this way, with no store extension installed.
+2. **Install an independent extension.** Write or install one when a library
+   has to take part in URLCode's own behavior: a verified principal, admission,
+   lifecycle or an operator-hosted mount
+   ([independent extension packages](#independent-extension-packages)). The
+   name is the role: a package named `auth`, `store` or `audit` stands in for
+   the first-party one while that is not installed
+   ([a name is a role](#audit-log)). The
+   [Auth.js proof](../proofs/private-requests-authjs/README.md) runs the same
+   application behind an independent sign-in provider, with no core edit.
+3. **Use the bundled default.** `urlcode extensions add auth|store|mcp`
+   installs the first-party package core pins
+   ([add-ons](#add-ons-extensions-and-artifacts)). Its guarantees, such as the
+   store's ownership, transitions and one serving process per SQLite file, are
+   the package's, documented in its own page, and do not carry over to the
+   other two paths.
+
+Before choosing, inspect what the project already uses (`urlcode extensions
+list`, MCP `get_extensions`, its `package.json` and trusted modules) and keep
+it. Whatever the path, the enforcement boundary is the same: operator grants,
+revision pins, `sandbox: true` isolation and target refusals apply unchanged.
 
 ## Protecting a route: the `auth` short form
 
@@ -125,8 +159,9 @@ next to `policies.extensions.<provider>`, or next to
 project directory (`suggestFixtures`, `summarizeYamlChange`) have no installed
 descriptors and resolve the short form against the release catalog only.
 
-A route protected this way answers `401 {"error":"authentication_required"}`
-without a session Better Auth verifies from the request's cookie, and
+With the first-party auth extension, a route protected this way answers
+`401 {"error":"authentication_required"}` without a session Better Auth
+verifies from the request's cookie, and
 `403 {"error":"cross_origin_refused"}` for a `POST`, `PUT`, `PATCH` or `DELETE`
 that core's [same-origin rule](#site-origins-and-same-origin-checks) (with
 `whenAbsent: 'refuse'`) does not admit. When the auth database cannot be read
@@ -695,7 +730,9 @@ string or key in a parsed value holds an unpaired surrogate, and
 `illFormedMember(object)` names the first top-level member that does, for an
 error that names the argument (the MCP extension answers `-32602` with it).
 
-The bundled store and auth extensions each keep a SQLite file, served
+The bundled store keeps a SQLite file, and so does the bundled auth
+extension unless the operator gives it the owner's own database
+([your own database](../packages/auth/README.md#your-own-database)); each file is served
 by one process
 ([one serving process per database](STORE.md#one-serving-process-per-database)).
 The helpers they share are published on their own subpath,
@@ -1167,17 +1204,19 @@ internals. An add-on **must** follow them:
 
 ## External extensions and AI tooling
 
-External and private extensions are supported. Prefer a first-party extension
-when it satisfies the requirement: those add-ons are tested with the runtime
-and pinned together by its release catalog. This is a preference, not a ban on
-external code or a claim of independent security assessment. Use an external
-extension for a missing capability or an explicit project requirement, following
-the same generic authoring rules and trusted operator boundary.
+External and private extensions are supported on the same footing as
+first-party ones. First-party extensions are defaults, not requirements: they
+are tested with the runtime and pinned together by its release catalog, which
+is not a claim of independent security assessment. An external extension
+follows the same generic authoring rules and trusted operator boundary
+([the three ways to get a capability](#native-independent-integration-or-bundled-default)).
 
 For an AI assistant integrating an extension:
 
-1. Inspect the installed first-party capabilities and customization surfaces.
-   Reuse a suitable tested extension before introducing another dependency.
+1. Inspect the installed stack first: the extensions `host.mjs` composes, the
+   libraries the project already imports and their customization surfaces.
+   Keep what the owner chose; propose a first-party default only when nothing
+   installed covers the requirement.
 2. For an external extension, read its compatibility, configuration, lifecycle
    and testing instructions. Install the selected package at an exact reviewed
    version using the site's package manager and retain its lockfile. A private
@@ -1830,7 +1869,7 @@ cannot happen.
 
 ### Audit log
 
-The store keeps the one durable log of privileged actions. A collection that
+The bundled store keeps a durable log of its own privileged writes. A collection that
 declares `audit: true` records each write's event as a row of the store
 database, in the same transaction as the change, so an event exists exactly
 when its change committed. The newest `auditRetention` events are kept
@@ -1863,8 +1902,9 @@ first`).
 
 The core [`throttle` policy](policies/throttle.md) is YAML on any route,
 including an extension mount: a fixed per-client budget on a bounded in-memory
-table, the same on every target, reset on restart. Better Auth's own rate
-limiter guards sign-in.
+table, the same on every target, reset on restart. With the bundled auth
+extension, Better Auth's own rate limiter guards sign-in; another sign-in
+provider brings its own limiter or relies on a declared `throttle`.
 
 ### The extension definition
 
