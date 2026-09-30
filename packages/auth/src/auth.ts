@@ -364,8 +364,6 @@ export function createAuthExtension(settings: AuthSettings & { projectSha256: st
         // Only the bundled file is the adapter's to open, migrate and close; an owner database is Better Auth's as given.
         database = owner ? undefined : databaseOf(options);
         if (!owner) {
-          // The multi-process release's host lease table; nothing reads it any more.
-          database?.exec('DROP TABLE IF EXISTS auth_servers');
           // A hermetic run starts from an empty database, so it creates the tables an operator creates with migrate.
           if (settings.hermetic === true) await migrate(options);
           const pending = await pendingMigrations(options);

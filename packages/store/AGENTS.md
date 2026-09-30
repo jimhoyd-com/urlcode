@@ -31,8 +31,8 @@
   `Idempotency-Key` scoping, schema and query-validation paths need a
   regression test in the same PR (`test/store.test.ts`, `test/sqlite.test.ts`,
   `test/query.test.ts`, `test/scaffold.test.ts`). A schema change is a new
-  forward step appended to `MIGRATIONS` in `src/database.ts`, never an edit of a
-  shipped one.
+  forward step appended to `MIGRATIONS` in `src/database.ts` (on top of the
+  baseline schema), never an edit of a shipped step or the baseline.
 - Tests close every database handle before removing its directory: register
   resources with `test/cleanup.ts` (it unwinds in reverse order; node:test runs
   separate `after` hooks in registration order) and read rows through

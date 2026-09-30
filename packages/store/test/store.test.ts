@@ -237,7 +237,7 @@ test('persists across restart in one private database file and refuses data the 
   await assert.rejects(env.start(), (error: Error) => /no longer matches/.test(error.message) && !error.message.includes(env.data));
 });
 
-test('refuses a file that is not a store database, or a store schema newer than this release', async t => {
+test('refuses a file that is not a store database, or a store schema older than the baseline or newer than this release', async t => {
   const env = await boot(t);
   await env.stop();
   await rm(env.database);
@@ -250,6 +250,10 @@ test('refuses a file that is not a store database, or a store schema newer than 
   const newer = await privateDatabase();
   newer.exec(`CREATE TABLE later(x); PRAGMA application_id=${STORE_APPLICATION_ID}; PRAGMA user_version=99;`); newer.close();
   await assert.rejects(env.start(), new RegExp(`schema version 99; this release supports up to ${STORE_SCHEMA_VERSION}`));
+  // A store schema older than the baseline, written by an earlier release, is refused rather than misread.
+  const older = await privateDatabase();
+  older.exec(`CREATE TABLE store_audit_outbox(x); PRAGMA application_id=${STORE_APPLICATION_ID}; PRAGMA user_version=7;`); older.close();
+  await assert.rejects(env.start(), /schema version 7, older than this release's baseline \(8\), and cannot be upgraded; recreate the data directory/);
 });
 
 test('short-link destination must be required at config time, and legacy data missing it 404s without counting a click (#469)', async t => {

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Activation no longer drops `auth_servers` (#1078).** The multi-process release's host lease table was dropped on
+  every activation of the bundled database; nothing has created it since, so the cleanup is gone. A database that
+  still has the table keeps it, unread.
 - **`urlcode-auth create-user` no longer fails with "database is locked" beside a busy server.** SQLite's busy
   handler sleeps up to 100 ms between attempts and is not a queue: beside a serving process that holds the write lock
   for most of each commit (a slow flush, as on Windows runners) with only a request's gap between commits, its attempts
