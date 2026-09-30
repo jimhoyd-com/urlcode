@@ -204,7 +204,7 @@ The SDK provides `listRecipes()`, `searchRecipes(text)`, `showRecipe(name)`,
 Catalog names are a fixed list in code; metadata and file lists come from each
 schema-checked `recipe.yaml` and are returned as copies. Unknown names and
 arbitrary paths/URLs fail closed. The stdio MCP server adds `search_recipes` and
-`search_examples` beside `list_recipes` and `get_recipe` ([tooling](TOOLING.md)). Integration tests run every recipe through the real
+`search_examples` beside `list_recipes` and `get_recipe` ([tooling](TOOLING.md)). With the operator's `--allow-authoring`, `add_recipe` creates a new directory inside the project and `merge_recipe {name, dryRun?}` runs this merge against the served project, which it takes from the server and never from an argument; a clash is an error result naming every clash ([authoring mode](TOOLING.md#authoring-mode)). Integration tests run every recipe through the real
 runtime with its fixtures and audit it with its declared route count (after
 building the TypeScript recipe, with the generated policy for the contact form
 and the webhook receiver, and the webhook fixtures' test key in the process

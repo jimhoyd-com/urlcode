@@ -167,6 +167,16 @@ rather than each allowing 10. `betterAuth.rateLimit` can replace `storage`
 `customRules` replaces the default sign-in and sign-up rules rather than adding
 to them.
 
+A hermetic run (`urlcode test`, `audit`, `benchmark`, and `validate` or
+`routes` under `--local-review`) replays every fixture from one client address
+within seconds, on a throwaway database. There the limiter stays on, stored and
+keyed the same way, but every rule allows ten times its `max`: 100 sign-ins,
+50 sign-ups and 1,000 other requests a minute by default, so a site whose
+fixtures sign in more than ten times still passes (#1019), and a fixture can
+still reach the 429 past that bound. Only the operator host's hermetic flag
+raises it; nothing in `urlcode.yaml` or the environment can, and `serve` and
+`dev` always enforce the limits above.
+
 Several processes may open the database at once: a serving process,
 `urlcode-auth create-user` beside it, or more than one server behind a proxy on
 the same host and local disk. A statement that finds another process holding

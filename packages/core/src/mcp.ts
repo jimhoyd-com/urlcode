@@ -226,8 +226,27 @@ export async function serveMcp(options:McpOptions):Promise<void> {
  // client may send its requests and close input at once, so input reaches the transport through a pipe this server
  // ends only after every call already received has answered, and as Buffers (an in-process caller may yield strings,
  // which the transport cannot parse and retries forever).
- const bytes=new PassThrough();
- const pumped=(async()=>{for await(const chunk of input)if(!bytes.write(Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk as string)))await once(bytes,'drain');})();
+ // The transport decodes a line non-fatally, so invalid UTF-8 would reach a tool as U+FFFD. Each complete line is
+ // decoded fatally here first (a newline byte never occurs inside a UTF-8 sequence); one that fails never reaches the
+ // transport and answers a -32700 parse error with a null id, as JSON-RPC 2.0 requires when the id cannot be read and
+ // as core's HTTP body reader refuses invalid encoding (#1021).
+ const bytes=new PassThrough(),utf8=new TextDecoder('utf-8',{fatal:true});
+ const parseError=`${JSON.stringify({jsonrpc:'2.0',id:null,error:{code:-32700,message:'Parse error: the line is not valid UTF-8'}})}\n`;
+ const forward=async(chunk:Buffer):Promise<void>=>{if(!bytes.write(chunk))await once(bytes,'drain');};
+ const pumped=(async()=>{
+  let pending=Buffer.alloc(0);
+  for await(const chunk of input){
+   pending=Buffer.concat([pending,Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk as string)]);
+   for(let end=pending.indexOf(0x0a);end!==-1;end=pending.indexOf(0x0a)){
+    const line=pending.subarray(0,end+1);pending=pending.subarray(end+1);
+    try{utf8.decode(line);}catch{output.write(parseError);continue;}
+    await forward(line);
+   }
+   // A partial line past the transport's bound goes on unchecked: the transport ends the session on it.
+   if(pending.length>maxBytes){await forward(pending);pending=Buffer.alloc(0);}
+  }
+  if(pending.length)await forward(pending);
+ })();
  await server.connect(new StdioServerTransport(bytes,output,{maxBufferSize:maxBytes}));
  try{await pumped;}
  finally{

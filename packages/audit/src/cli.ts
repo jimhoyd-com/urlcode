@@ -6,6 +6,7 @@ import { isAbsolute } from 'node:path';
 import { createBackup, restoreBackup } from './backup.ts';
 import { openAuditReader } from './store.ts';
 import { validateAuditQuery } from './event.ts';
+import { holdsIllFormedString } from '@jimhoyd/urlcode/body-schema';
 
 const usage = 'urlcode-audit list     JSON {"database": "/abs/data/audit.sqlite", "query"?: {source, actor, subject, action, actionPrefix, from, to, after, limit, order}} on stdin\n'
   + 'urlcode-audit backup   JSON {"database", "destination", "projectRoot"} on stdin (back up after the producers\' data)\n'
@@ -21,8 +22,11 @@ async function input(): Promise<Record<string, unknown>> {
     if (size > 65536) throw new Error('Input exceeds 64 KiB');
     chunks.push(bytes);
   }
-  const value: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  // Fatal decoding and the surrogate check keep a path from changing under the file system's UTF-8 conversion: an
+  // invalid byte or an unpaired surrogate escape would otherwise name a file with U+FFFD in it (#1021).
+  const value: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks)));
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Input must be a JSON object');
+  if (holdsIllFormedString(value)) throw new Error('Input holds a string or key with an unpaired surrogate escape (\\uD800-\\uDFFF)');
   return value as Record<string, unknown>;
 }
 function path(value: unknown, name: string): string {

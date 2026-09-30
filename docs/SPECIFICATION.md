@@ -17,8 +17,14 @@ remote config or arbitrary infrastructure configuration.
 
 YAML 1.2 JSON-compatible values only: string mapping keys, finite numbers,
 booleans and null. No duplicate keys, aliases, anchors, tags, merge keys,
-multiple documents, reserved prototype keys or nesting of 40+ levels. Unknown
-schema fields fail. Files are limited to 32 MiB each, 256 includes and 100,000
+multiple documents, reserved prototype keys or nesting of 40+ levels. A string
+or key holding an unpaired UTF-16 surrogate, which only a lone `\uD800`-`\uDFFF`
+escape in a double-quoted scalar can write, fails with code `invalid-unicode`
+and its location (#1021): UTF-8 cannot carry one, so a `respond.text` body or a
+redirect URL would reach the client as U+FFFD and a `respond.json` string as the
+raw escape. A surrogate pair (`"\uD83D\uDE00"`) is one character and loads.
+Interchange import (`urlcode import`) parses JSON and YAML with the same rule.
+Unknown schema fields fail. Files are limited to 32 MiB each, 256 includes and 100,000
 routes total, with a 64 MiB aggregate YAML source cap. Loading runs in a worker
 with a 256 MiB old-generation heap, a 10-second wall deadline and at most two
 concurrent loads per Node isolate. These are not a total process RSS bound.

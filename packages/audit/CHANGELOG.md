@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+`urlcode-audit` input is decoded as strict UTF-8 and refuses a string or key holding an unpaired UTF-16 surrogate escape (`"\ud800"` alone), exiting 1 (#1021). Neither could be stored, but a `database`, `backup` or `destination` path holding one named a different file, with U+FFFD in its name.
+
 The host lease's write check (`verify()`, core's `joinHostLease`) reads the lease table under the write lock on every write and no longer skips that read while the process's own clock says its last heartbeat is under 10 s old (#1010). A suspended VM's monotonic clock stops with it, so a holder paused just after a heartbeat could resume after another host took over and keep writing until its next heartbeat. The read costs about 2 µs per write.
 
 The host lease (core's `joinHostLease`) never compares two hosts' clocks (#978): each renewal writes a larger `heartbeat_at`, and a process judges another host's row by whether it advances, timed on its own monotonic clock. A joiner watches another host's row for up to 20 s, refusing if it advances and deleting it if it stays silent, so a joiner whose clock runs ahead no longer evicts a live holder and a crashed host whose clock ran ahead blocks a restart for 20 s, not for the skew. Every heartbeat re-checks the table: a process that finds another host's row loses the lease, deletes its own row, logs it, does not re-insert it, and rejoins by itself once no other host holds one. A failed heartbeat is logged. Every ingest checks the lease inside its transaction, so a process that lost it stores nothing (`503 audit_unavailable`) and producers keep their events until it holds it again. A close that races a first activation's lease join releases the lease (#979).

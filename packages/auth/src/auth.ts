@@ -130,7 +130,8 @@ export interface AuthSettings {
   betterAuth?: Partial<BetterAuthOptions> | undefined;
   /**
    * A hermetic run's throwaway instance (`HostContext.hermetic`): activation creates Better Auth's tables instead of
-   * refusing, and the registration accepts a test seed (`authSeedSchema`). Never set for `serve`.
+   * refusing, the registration accepts a test seed (`authSeedSchema`), and every rate limit allows
+   * `hermeticRateLimitFactor` times as many requests (#1019). Never set for `serve`.
    */
   hermetic?: boolean | undefined;
 }
@@ -151,10 +152,34 @@ export function betterAuthOptions(settings: AuthSettings, origin: string, basePa
     // bucket; here it is always on and keyed by the address the mount supplies. Its counters live in the auth database
     // (the `rateLimit` table `urlcode-auth migrate` creates), so every process serving this database shares one limit;
     // Better Auth's default keeps them in memory, per process.
-    rateLimit: { window: 60, max: 100, customRules: { '/sign-in/email': { window: 60, max: 10 }, [signUpPath]: { window: 60, max: 5 } }, storage: 'database', ...extra.rateLimit, enabled: true },
+    rateLimit: rateLimitFor({ window: 60, max: 100, customRules: { '/sign-in/email': { window: 60, max: 10 }, [signUpPath]: { window: 60, max: 5 } }, storage: 'database', ...extra.rateLimit, enabled: true }, settings.hermetic === true),
     advanced: { ...extra.advanced, ipAddress: { ...extra.advanced?.ipAddress, ipAddressHeaders: [clientAddressHeader] } },
     telemetry: { enabled: false },
   };
+}
+
+/**
+ * How many times each rate limit a hermetic run allows (#1019). Its fixtures replay a whole site from one client
+ * address within seconds, so a site whose fixtures sign in more than ten times would otherwise fail `urlcode test` with
+ * 429. The limiter stays on, keyed and stored as for serving; only each rule's `max` is multiplied.
+ */
+export const hermeticRateLimitFactor = 10;
+type RateLimitOptions = NonNullable<BetterAuthOptions['rateLimit']>;
+type RateLimitRule = { window: number; max: number };
+const scaled = <Rule extends RateLimitRule>(rule: Rule): Rule => ({ ...rule, max: rule.max * hermeticRateLimitFactor });
+/**
+ * The limiter as served, or for a hermetic run's throwaway instance (`AuthSettings.hermetic`, which only the operator
+ * host sets, never YAML or the environment) with every rule's `max` multiplied by `hermeticRateLimitFactor`: the
+ * default `max`, every `customRules` entry, and what a rule function returns. A rule an operator disabled stays disabled.
+ */
+function rateLimitFor(rateLimit: RateLimitOptions, hermetic: boolean): RateLimitOptions {
+  if (!hermetic) return rateLimit;
+  const rules: NonNullable<RateLimitOptions['customRules']> = {};
+  for (const [path, rule] of Object.entries(rateLimit.customRules ?? {})) {
+    rules[path] = typeof rule === 'function' ? async (request, current) => { const chosen = await rule(request, current); return chosen === false ? false : scaled(chosen); }
+      : rule === false ? false : scaled(rule);
+  }
+  return { ...rateLimit, max: (rateLimit.max ?? 100) * hermeticRateLimitFactor, customRules: rules };
 }
 
 /** The tables Better Auth still needs, or an empty list when its schema is current. */

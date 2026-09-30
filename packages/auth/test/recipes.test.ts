@@ -67,3 +67,17 @@ test('the authenticated-json-api recipe signs in through the auth mount and its 
 test('the protected-download recipe serves the attachment only to a signed-in caller', async t => {
   await commands(await site(t, 'protected-download'));
 });
+
+test('a site whose fixtures sign in more than ten times passes urlcode test on every run (#1019)', async t => {
+  const api = await site(t, 'authenticated-json-api');
+  // Twelve copies of the recipe's fixtures sign in twelve times from one client address within seconds, past the
+  // ten a minute a served mount allows; a hermetic run allows ten times that on its throwaway database.
+  const fixtures = join(api.project, 'tests', 'requests.json'), once = JSON.parse(await readFile(fixtures, 'utf8')) as unknown[];
+  await writeFile(fixtures, JSON.stringify(Array.from({ length: 12 }, () => once).flat()));
+  for (const round of [1, 2]) {
+    const tested = api.run(['test', '--local-review']);
+    assert.equal(tested.status, 0, `round ${round}: ${tested.stdout}${tested.stderr}`);
+    assert.match(tested.stdout, /"failed":0/);
+    assert.doesNotMatch(tested.stdout, /"status":429/);
+  }
+});

@@ -168,11 +168,28 @@ test('MCP validates tool schema, method and root confinement',async t=>{
 // and a message over the 1 MiB bound ends the session instead of being buffered.
 test('MCP ignores malformed frames and ends the session on an oversized one',async t=>{
  const root=await project(t,{}),ping={jsonrpc:'2.0',id:9,method:'ping'};
- for(const raw of ['{oops}\n','[]\n','{}\n',Buffer.from([0xff,10])]){
+ for(const raw of ['{oops}\n','[]\n','{}\n']){
   let text='';await serveMcp({project:root,input:Readable.from([raw,JSON.stringify(ping)+'\n']),output:new Writable({write(chunk,_encoding,done){text+=String(chunk);done();}})});
   assert.deepEqual(text.trim().split('\n').map(line=>JSON.parse(line) as unknown),[{jsonrpc:'2.0',id:9,result:{}}],String(raw));
  }
  const large=await session(root,[],'x'.repeat(1048577)+'\n'+JSON.stringify(ping)+'\n');assert.deepEqual(large,[]);
+});
+// The transport would decode invalid UTF-8 as U+FFFD, even inside a line that is otherwise one valid message: such a
+// line answers -32700 with a null id and never reaches a tool; the session goes on (#1021).
+test('MCP answers a line of invalid UTF-8 with a -32700 parse error and never runs it',async t=>{
+ const root=await project(t,{'/a':redirect()}),ping={jsonrpc:'2.0',id:9,method:'ping'};
+ const call=Buffer.from(JSON.stringify({jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'explain',arguments:{target:'/a\u00ff'}}})+'\n');
+ call[call.indexOf(0xc3)]=0xff;
+ for(const raw of [Buffer.from([0xff,10]),Buffer.from([...Buffer.from('{"jsonrpc":"2.0","id":2,"method":"ping","params":{"x":"'),0xc3,0x28,...Buffer.from('"}}\n')]),call]){
+  let text='';await serveMcp({project:root,input:Readable.from([Buffer.from(JSON.stringify(initialize)+'\n'),raw,Buffer.from(JSON.stringify(ping)+'\n')]),output:new Writable({write(chunk,_encoding,done){text+=String(chunk);done();}})});
+  const replies=text.trim().split('\n').map(line=>JSON.parse(line) as {id:unknown;error?:{code:number;message:string}});
+  assert.deepEqual(replies.map(reply=>reply.id).sort(),[1,9,null].sort(),text);
+  assert.deepEqual(replies.find(reply=>reply.id===null),{jsonrpc:'2.0',id:null,error:{code:-32700,message:'Parse error: the line is not valid UTF-8'}});
+ }
+ // Split across chunks inside a character, a valid line still passes.
+ const bytes=Buffer.from(JSON.stringify({...ping,params:{x:'\u00e9'}})+'\n'),at=bytes.indexOf(0xc3)+1;let text='';
+ await serveMcp({project:root,input:Readable.from([bytes.subarray(0,at),bytes.subarray(at)]),output:new Writable({write(chunk,_encoding,done){text+=String(chunk);done();}})});
+ assert.deepEqual(JSON.parse(text),{jsonrpc:'2.0',id:9,result:{}});
 });
 test('MCP never activates guest code or emits credential/error source content',async t=>{
  const root=await project(t,{'/':{function:{source:'f.mjs'},secrets:{KEY:{secret:'AMBIENT_NAME'}}}},{'f.mjs':'while(true){}; export default ()=>new Response("no");','.env.local':'not-valid=secret-content'});

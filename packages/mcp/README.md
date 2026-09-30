@@ -91,12 +91,13 @@ bounds, a bounded `pattern` and the standard string formats such as `uuid`,
 [HTTP][http-body-schema-and-input-patterns]), compiled once at
 activation, and must declare `type: object` — an
 MCP tool call's `arguments`, and its structured result, are always objects. A
-call whose arguments fail `inputSchema` never reaches the handler. Under
-MCP revision `2025-11-25` it answers a tool result with `isError: true` whose
-text lists the failed checks; under earlier revisions it answers a JSON-RPC
-`-32602 Invalid params` error carrying the same checks as a structured
-`issues` list. Both use the wording `request.body.<METHOD>.schema` produces,
-rendered as `pointer`/`message` text — reused, not reimplemented. Either
+call whose arguments fail `inputSchema` never reaches the handler: under
+every negotiated revision it answers a tool result with `isError: true` whose
+text lists the failed checks, so the model can correct the call (MCP
+`2025-11-25` requires a tool execution error here, and earlier revisions
+already list invalid input among tool execution errors). The text uses the
+wording `request.body.<METHOD>.schema` produces, rendered as
+`pointer`/`message` text — reused, not reimplemented. Either
 schema may instead be the name of one of the project's named schemas, shared
 with the routes that name it ([below](#named-schemas)).
 
@@ -344,8 +345,9 @@ extension has no identity or authorization model of its own.
   negotiation for the revisions the pinned SDK supports (currently
   `2025-11-25` back to `2024-11-05`), the `MCP-Protocol-Version` header
   (an unsupported one answers `400`), notifications (`202`), `ping`, and the
-  standard error codes: `-32700` parse error and `-32600` invalid request
-  (HTTP `400`), `-32601` method not found, `-32602` invalid params (an unknown
+  standard error codes: `-32700` parse error (including a JSON body that is
+  not valid UTF-8, which the SDK would decode as U+FFFD; #1021) and `-32600`
+  invalid request (HTTP `400`), `-32601` method not found, `-32602` invalid params (an unknown
   tool, prompt or resource, prompt arguments that fail their declaration, or
   a tool or prompt argument holding an unpaired surrogate),
   `-32603` internal error. A body over 256 KiB answers `413`, a non-JSON

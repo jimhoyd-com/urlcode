@@ -4,6 +4,11 @@
 
 The definition declares its deployment targets (node, aws, vercel), which `npm run build:addons` writes into `urlcode.json` as `targets` (#859); core refuses a registration whose targets differ, and the capability preflight refuses a recipe or plan that uses this extension on any other target.
 
+- A request body that is not valid UTF-8 answers HTTP `400` with a `-32700` parse error and a null id (#1021); the
+  SDK decoded it non-fatally, so a handler received U+FFFD. The media type (`415`) and size (`413`) checks still come
+  first. The README and SECURITY.md no longer claim that an `inputSchema` failure is a `-32602` error under revisions
+  before `2025-11-25`: it has always been an `isError: true` tool result under every revision, which `2025-11-25`
+  requires and earlier revisions allow (they list invalid input among tool execution errors).
 - A `tools/call` or `prompts/get` argument holding an unpaired UTF-16 surrogate escape (`"\ud800"` alone) is refused
   before the schema check with `-32602` naming the argument and `data: {argument, code: "invalid_unicode"}` (#1016);
   the handler never runs. The SDK parses the body itself, so core's JSON body reader never saw it and the handler

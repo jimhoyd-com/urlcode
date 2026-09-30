@@ -311,7 +311,7 @@ asserts `expectBody`, `expectJson` or `expectHeaders`
 A failed command prints one JSON line, `{"event":"error","message":...}`, with
 structured fields where they apply: `code` (for example `unknown-key`,
 `multiple-handlers`, `no-handler`, `missing-key`, `invalid-value`,
-`invalid-yaml`, `express-parameter`, `undeclared-parameter`, `missing-file`,
+`invalid-yaml`, `invalid-unicode`, `express-parameter`, `undeclared-parameter`, `missing-file`,
 `invalid-file-reference`, `binding-denied`, `sandbox-import`, `invalid-fixture`, `no-test-cases`,
 `unknown-option`, `extension-activation`, `extension-registration`,
 `extension-host`, `host-load`), `file`,
@@ -537,6 +537,10 @@ site directory) merges its routes, include files, extension configuration
 (store collections), fixtures, seed and audit route count into `app/`, refusing
 the whole merge with every clash named and nothing written; do not copy a
 recipe's files over `app/` by hand ([adding a recipe to an existing project][docs/RECIPES.md#adding-a-recipe-to-an-existing-project]).
+Through MCP, when the operator started the server with `--allow-authoring`,
+`merge_recipe {name, dryRun?}` runs the same merge against the project the
+server serves (it takes no path) and returns a clash as an error result naming
+every clash; follow it with `run_validate`, `run_test` and `run_audit`.
 `recipes add NAME --out
 NEW_DIRECTORY` and `examples add NAME --out NEW_DIRECTORY` create a standalone
 project whose listed commands run from that directory. `bulk-import csv INPUT --out NEW_DIRECTORY`

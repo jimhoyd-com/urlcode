@@ -276,7 +276,9 @@ nothing in a project can grant itself an identity.
   the `--target`), so one fixture file works under any `--origin`. Write a
   literal foreign origin only to test the refusal.
 - **Rate limits.** Better Auth allows 10 sign-in attempts per client address a
-  minute, per process; sign in once per fixture, not once per step.
+  minute on a served site. `test` and `audit` run on throwaway data and allow
+  ten times that ([test data](#test-data-and-seeds)), but sign in once per
+  fixture, not once per step, all the same.
 - **No fixture can sign in** (an external identity provider, say): assert the
   anonymous `401` and waive the methods with `coveredElsewhere`; the waiver's
   basis is then `gate-refusal` ([above](#waive-a-method-covered-elsewhere)).
@@ -489,7 +491,11 @@ step). Each extension defines its entry and refuses anything else:
 
 - **auth** `users`: 1 to 100 accounts, each with the user `id` (the request
   principal id, so a membership can name it), `email`, a `password` of 8 to 128
-  characters and an optional `name`. A fixture signs in with them.
+  characters and an optional `name`. A fixture signs in with them. Every
+  fixture comes from one client address, so auth's rate limiter allows ten
+  times its served limits in these runs: 100 sign-ins a minute rather than 10
+  (#1019). It is still on, so a fixture can assert the 429 past that bound;
+  `serve` and `dev` keep the served limits.
 - **store** `members`: principal ids by
   [membership collection](STORE.md#membership-gates-and-cross-owner-reads),
   written as `urlcode-store members add` writes them (actor `operator`). Records

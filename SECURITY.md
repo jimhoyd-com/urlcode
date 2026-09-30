@@ -105,8 +105,17 @@ compare wrongly: core's JSON body reader and `format: json` routes (`400
 invalid_unicode`), the store, the auth mount before Better Auth parses a body
 (`400 invalid_unicode`) and its `create-user` input, MCP tool and prompt
 arguments in both the extension and `urlcode mcp` (`-32602` naming the
-argument), `tests/seed.json` and `tests/requests.json`. This is data
-consistency, not an authorization boundary.
+argument), `tests/seed.json` and `tests/requests.json`. Project configuration
+refuses one too (#1021): `urlcode.yaml`, its includes and interchange import
+fail with `invalid-unicode` naming the location, since a `respond.text` body
+or redirect URL would otherwise reach the client as U+FFFD and a
+`respond.json` string as the raw escape. The operator policy file
+(`policy-invalid`) and `urlcode-audit` input refuse it as well; neither stores
+a string, but an audit path would otherwise name a different file. Invalid
+UTF-8 is refused where a library would decode it leniently: a `urlcode mcp`
+stdio line and an MCP extension request body answer a `-32700` parse error
+with a null id, and `urlcode-audit` input fails. This is data consistency, not
+an authorization boundary.
 
 Add-on packages are trusted by pin, not by review. A released add-on is pinned
 by the sha512 in core's own `addons.json`; an independent package the operator

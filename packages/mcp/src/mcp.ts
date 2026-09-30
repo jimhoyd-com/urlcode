@@ -8,6 +8,7 @@ const NAME = /^[a-z][a-z0-9_-]{0,63}$/;
 const ARG_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 /** The largest request body the SDK handler reads. */
 const MAX_BODY = 256 * 1024;
+const utf8 = new TextDecoder('utf-8', { fatal: true });
 
 /**
  * Upper bound, in characters, on the caller-facing text of an `McpToolError`
@@ -529,6 +530,14 @@ export function createMcpExtension(options: McpExtensionOptions): RuntimeExtensi
           const url = new URL(request.path, context.origin);
           url.search = request.query.toString();
           const init: RequestInit = { method: request.method, headers: request.headers, ...(request.signal ? { signal: request.signal } : {}) };
+          // The SDK decodes the body non-fatally, so invalid UTF-8 would reach a handler as U+FFFD. A body the SDK would
+          // parse (a POST of application/json within the size bound; it answers 415 and 413 itself, first) is decoded
+          // fatally here and refused with the SDK's own -32700 parse-error shape, as core's body reader refuses invalid
+          // encoding (#1021).
+          if (request.method === 'POST' && request.body.byteLength <= MAX_BODY && (request.headers.get('content-type') ?? '').split(';')[0]!.trim().toLowerCase() === 'application/json') {
+            try { utf8.decode(request.body); }
+            catch { return { status: 400, headers: [['content-type', 'application/json']], body: JSON.stringify({ jsonrpc: '2.0', error: { code: -32700, message: 'Parse error: the request body is not valid UTF-8' }, id: null }) }; }
+          }
           if (request.method !== 'GET' && request.method !== 'DELETE') init.body = Buffer.from(request.body);
           const handler = createMcpHandler(() => serverFor(server, options, request, streaming), { maxRequestBodySize: MAX_BODY });
           const response = await handler.fetch(new Request(url, init));

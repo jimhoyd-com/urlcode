@@ -1106,9 +1106,12 @@ release supports (2025-11-25 back to 2024-11-05 at the time of writing).
 URLCode owns the tool list, argument validation, the calls and the bounds
 below. Tool calls run one at a time in arrival order, so a client can send
 `create_route` then `run_validate` and the second sees the first's edit.
-Requests are UTF-8 newline-delimited JSON-RPC 2.0. A line that is not one
-JSON-RPC message (malformed JSON, a batch, invalid UTF-8) is ignored and the
-session continues; an input message over 1 MiB ends the session. A tool
+Requests are UTF-8 newline-delimited JSON-RPC 2.0. A line that is not valid
+UTF-8 answers a `-32700` parse error with a null id and never reaches a tool,
+even when it is otherwise one valid message (the SDK would decode the bytes as
+U+FFFD; #1021); the session continues. Any other line that is not one JSON-RPC
+message (malformed JSON, a batch) is ignored and the session continues; an
+input message over 1 MiB ends the session. A tool
 result over 1 MiB is returned as an `isError` result naming the limit. Import
 text is additionally capped at 512 KiB. Tool schemas reject
 unknown arguments. A `-32602` error names the problem: an unknown tool (and the
@@ -1355,7 +1358,7 @@ shared reference and skill catalog is useful.
 
 ## Authoring mode
 
-`urlcode mcp --allow-authoring --project DIR` adds seven tools to the thirty-two read
+`urlcode mcp --allow-authoring --project DIR` adds eight tools to the thirty-two read
 tools above (thirty-three with `--host-file`). The flag is honored from the operator's command line only: no
 tool argument, environment variable or client capability enables it, and
 without it the server is exactly the read-only server described above.
@@ -1376,6 +1379,20 @@ What it can do, all inside the selected project root (resolved with realpath):
 - `add_recipe {name, destination, dryRun?}` runs `recipes add` into a new
   directory under the project. The parent must exist; an existing destination
   is refused, never merged. `dryRun` reports the destination and writes nothing.
+- `merge_recipe {name, dryRun?}` runs `recipes add NAME --project` against the
+  served project: the same merge
+  ([adding a recipe to an existing project][docs/RECIPES.md#adding-a-recipe-to-an-existing-project])
+  of routes, include files, other files, extension configuration, fixtures, seed
+  and the committed audit route count. It takes no path, so the target is always
+  the project the operator started the server for, and it writes under the same
+  authoring lock as `create_route`. A clash, or an extension the project has not
+  declared, refuses the whole merge as an error result whose text names every
+  clash, and nothing is written; an identical entry is not a clash. The result is
+  the CLI's `--json` report with `project` as `.` and `next` naming
+  `run_validate`, `run_test` and `run_audit`. `dryRun` reports what would be
+  added and written and writes nothing. It is a separate tool rather than an
+  `add_recipe` target so that neither tool's arguments can name a directory to
+  merge into.
   To merge a recipe into the project itself, run
   `urlcode recipes add NAME --project DIR` from the CLI.
 - `scaffold_feature {dryRun?}` runs `urlcode scaffold`: placeholder modules,
@@ -1429,7 +1446,7 @@ What it can do, all inside the selected project root (resolved with realpath):
   `--allow-authoring`. Its bindings come from the operator's `--policy`, as
   for the runners; without one, bindings that need a grant fail as usual.
 
-`create_route`, `add_recipe` and `scaffold_feature` return `validation`, the
+`create_route`, `add_recipe`, `merge_recipe` and `scaffold_feature` return `validation`, the
 `validateProject` verdict of the project after the operation, computed with the
 registrations of the operator's `--host-file` when the server has one, as MCP
 `validate` does. A project that does not validate yields `valid: false` with a

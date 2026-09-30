@@ -145,7 +145,9 @@ returns to the host default (100000 unless `createAudit` was given another).
 
 ## Command line
 
-`urlcode-audit` reads bounded JSON (at most 64 KiB) on stdin, never argv:
+`urlcode-audit` reads bounded JSON (at most 64 KiB) on stdin, never argv. The
+input must be valid UTF-8 and hold no string or key with an unpaired UTF-16
+surrogate escape (`"\ud800"` alone), which would name a different file:
 
 ```sh
 echo '{"database":"'"$PWD"'/data/audit.sqlite","query":{"order":"desc","limit":20}}' | npx urlcode-audit list
