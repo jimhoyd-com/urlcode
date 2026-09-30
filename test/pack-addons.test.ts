@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -58,7 +58,9 @@ test('a packed core carries the pinned add-on manifest, never the development on
   await mkdir(join(directory, 'dist'), { recursive: true });
   await mkdir(out);
   const development = JSON.stringify({ format: 1, version: '1.0.0', addons: { demo: { kind: 'extension', package: '@jimhoyd/urlcode-demo', description: 'demo', requires: [], url: `file:${join(root, 'packages', 'demo')}`, integrity: null } } }, null, 2) + '\n';
-  const packageJson = JSON.stringify({ name: '@jimhoyd/urlcode-core-demo', version: '1.0.0', type: 'module', files: ['dist'], scripts: { prepare: 'node scripts/build.ts' } }, null, 2) + '\n';
+  // Each hook would fail (prepare names a build that is not there) or leave a file in the checkout, if npm ran it (#1077).
+  const hooks = Object.fromEntries(['prepack', 'postpack'].map(name => [name, `node -e "require('node:fs').writeFileSync('ran-${name}', '')"`]));
+  const packageJson = JSON.stringify({ name: '@jimhoyd/urlcode-core-demo', version: '1.0.0', type: 'module', files: ['dist'], scripts: { prepare: 'node scripts/build.ts', ...hooks } }, null, 2) + '\n';
   await writeFile(join(directory, 'package.json'), packageJson);
   await writeFile(join(directory, 'dist', 'addons.json'), development);
   await writeFile(join(directory, 'dist', 'index.js'), 'export {};\n');
@@ -73,5 +75,7 @@ test('a packed core carries the pinned add-on manifest, never the development on
   assert.equal(await readFile(join(directory, 'dist', 'addons.json'), 'utf8'), development, "the checkout's development manifest is not touched");
   assert.equal(await readFile(join(directory, 'package.json'), 'utf8'), packageJson);
   const published = JSON.parse(execFileSync('tar', ['-xOzf', tarball, 'package/package.json'], { encoding: 'utf8' })) as { scripts?: Record<string, string> };
-  assert.equal(published.scripts?.prepare, undefined, 'the published manifest drops prepare');
+  for (const name of ['prepare', 'prepack', 'postpack']) assert.equal(published.scripts?.[name], undefined, `the published manifest drops ${name}`);
+  assert.deepEqual((await readdir(directory)).sort(), ['dist', 'package.json'], 'no lifecycle hook ran in the checkout');
+  assert.deepEqual((await readdir(join(directory, 'dist'))).sort(), ['addons.json', 'index.js']);
 });

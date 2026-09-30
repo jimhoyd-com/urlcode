@@ -1,11 +1,12 @@
-// The catalog recipes store-booking, store-credits (#932) and store-approval (#957) are core artifacts that need this
-// package to activate, so their fixtures run here: through the CLI's own validate, test and audit with --local-review,
-// exactly as the recipes' commands list them, against the real store and the real auth extension (Better Auth) that
-// `urlcode extensions add auth store` installs (#1001), with no revision pin and no origin given, the accounts and
-// members each recipe's tests/seed.json names, and the databases outside the project.
-import test from 'node:test';
+// The sites the recipe-*.test.ts files run the catalog recipes store-booking, store-credits (#932) and store-approval
+// (#957) in. Those recipes are core artifacts that need this package to activate, so their fixtures run here: through
+// the CLI's own validate, test and audit with --local-review, exactly as the recipes' commands list them, against the
+// real store and the real auth extension (Better Auth) that `urlcode extensions add auth store` installs (#1001), with
+// no revision pin and no origin given, the accounts and members each recipe's tests/seed.json names, and the databases
+// outside the project. Every case costs several CLI runs, so the cases are spread over files of at most two, each
+// bounded by its own file deadline (#1077).
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -28,7 +29,7 @@ export default await composeHost(import.meta.url, [auth(), store({ database: ${J
 `;
 }
 
-async function site(t: Parameters<typeof cleanup>[0], name: 'store-booking' | 'store-credits' | 'store-approval') {
+export async function site(t: Parameters<typeof cleanup>[0], name: 'store-booking' | 'store-credits' | 'store-approval') {
   const root = await mkdtemp(join(tmpdir(), 'store-recipe-'));
   cleanup(t, () => rm(root, { recursive: true, force: true }));
   const project = join(root, 'app'), database = join(root, 'data', 'store.sqlite');
@@ -41,7 +42,7 @@ async function site(t: Parameters<typeof cleanup>[0], name: 'store-booking' | 's
 }
 /** Each recipe command, as recipe.yaml lists it; every run starts from a fresh seeded database, so they run twice. */
 type Site = Awaited<ReturnType<typeof site>>;
-function commands({ run, routes, project }: Site) {
+export function commands({ run, routes, project }: Site) {
   // Every member a recipe seeds is an account its fixtures sign in as, and no fixture names its caller any other way.
   const seed = JSON.parse(readFileSync(join(project, 'tests', 'seed.json'), 'utf8')) as { auth: { users: { id: string }[] }; store: { members: Record<string, string[]> } };
   const accounts = new Set(seed.auth.users.map(user => user.id));
@@ -59,31 +60,6 @@ function commands({ run, routes, project }: Site) {
   assert.match(audited.stdout, /"ready":true/, audited.stdout);
   assert.equal(existsSync(join(project, '..', 'data', 'auth.sqlite')), false, 'test and audit never open the site\'s own accounts');
 }
-
-test('the store-booking recipe books one-hour slots for staff only, refuses overlaps and frees a cancelled slot, with no pin given', async t => {
-  const booking = await site(t, 'store-booking');
-  const { database } = booking;
-  commands(booking);
-  assert.equal(existsSync(database), false, 'validate, test and audit under --local-review never open the configured database (#954)');
-});
-
-test('the store-credits recipe funds wallets from a members-only issuer, pays by a unique handle and keeps the total, with no pin given', async t => {
-  const credits = await site(t, 'store-credits');
-  const { database } = credits;
-  // Who may issue is data: tests/seed.json seeds the issuer the fixtures sign in as into each run's throwaway database.
-  commands(credits);
-  assert.equal(existsSync(database), false, 'validate, test and audit under --local-review never open the configured database (#954)');
-});
-
-test('the store-approval recipe locks an approved request and serves reviewers a queue, with no handler code and no pin given', async t => {
-  const approval = await site(t, 'store-approval');
-  commands(approval);
-  assert.equal(existsSync(approval.database), false, 'validate, test and audit under --local-review never open the configured database (#954)');
-  // YAML only: the recipe copies no module a route could run.
-  const { files } = await showRecipe('store-approval');
-  assert.deepEqual(files.filter(file => !/\.(ya?ml|json|md)$/.test(file)), []);
-  assert.doesNotMatch(await readFile(join(approval.project, 'urlcode.yaml'), 'utf8'), /\b(function|middleware|module):/);
-});
 
 // #1014: `urlcode recipes add <name> --project app` merges a recipe into a site created by `urlcode init` and
 // `urlcode extensions add auth store`, instead of the files being copied by hand. These are the files those two
@@ -113,7 +89,7 @@ routes:
       - POST
     description: "Better Auth: sign-in, sign-out and sessions."
 `;
-async function mergedSite(t: Parameters<typeof cleanup>[0], names: string[]) {
+export async function mergedSite(t: Parameters<typeof cleanup>[0], names: string[]) {
   const root = await mkdtemp(join(tmpdir(), 'store-merge-'));
   cleanup(t, () => rm(root, { recursive: true, force: true }));
   const project = join(root, 'app'), database = join(root, 'data', 'store.sqlite');
@@ -140,44 +116,24 @@ async function mergedSite(t: Parameters<typeof cleanup>[0], names: string[]) {
   return { project, database, run, add, routes };
 }
 
-for (const name of ['store-booking', 'store-credits', 'store-approval'] as const) {
-  test(`recipes add ${name} --project merges it into an init + extensions add auth store site that validates, tests and audits ready`, async t => {
-    const merged = await mergedSite(t, [name]);
-    assert.equal(merged.routes, (await showRecipe(name)).routes);
-    // The audit's committed route count moved with the routes the merge added, so audit needs no --expect-routes.
-    assert.deepEqual(JSON.parse(await readFile(join(merged.project, 'tests', 'audit.json'), 'utf8')), { expectRoutes: merged.routes });
-    commands(merged);
-    const audited = merged.run('audit');
-    assert.equal(audited.status, 0, audited.stdout + audited.stderr);
-    assert.match(audited.stdout, /"countMatches":true/);
-    assert.equal(existsSync(merged.database), false);
-  });
+/** `recipes add <name> --project` merges it into an init + extensions add auth store site that validates, tests and audits ready. */
+export async function mergesReady(t: Parameters<typeof cleanup>[0], name: 'store-booking' | 'store-credits' | 'store-approval'): Promise<void> {
+  const merged = await mergedSite(t, [name]);
+  assert.equal(merged.routes, (await showRecipe(name)).routes);
+  // The audit's committed route count moved with the routes the merge added, so audit needs no --expect-routes.
+  assert.deepEqual(JSON.parse(readFileSync(join(merged.project, 'tests', 'audit.json'), 'utf8')), { expectRoutes: merged.routes });
+  commands(merged);
+  const audited = merged.run('audit');
+  assert.equal(audited.status, 0, audited.stdout + audited.stderr);
+  assert.match(audited.stdout, /"countMatches":true/);
+  assert.equal(existsSync(merged.database), false);
 }
 
 // #1019: every fixture signs in from one client address, and together these recipes sign in more than the ten times
 // a minute a served auth mount allows. A hermetic run allows ten times that, so the merged site tests and audits ready.
-for (const names of [['store-booking', 'store-credits'], ['store-credits', 'store-approval']]) {
-  test(`${names.join(' and ')} merged sign in more than ten times and still test (twice) and audit ready`, async t => {
-    const merged = await mergedSite(t, names);
-    const signIns = (await readFile(join(merged.project, 'tests', 'requests.json'), 'utf8')).match(/"\/api\/auth\/sign-in\/email"/g)?.length ?? 0;
-    assert.ok(signIns > 10, `${signIns} sign-ins`);
-    commands(merged);
-  });
-}
-
-test('two recipes merge into one site when they do not clash, sharing its auth mount, and a clash refuses with nothing written', async t => {
-  const merged = await mergedSite(t, ['store-booking', 'protected-download']);
+export async function mergedSignInsReady(t: Parameters<typeof cleanup>[0], names: string[]): Promise<void> {
+  const merged = await mergedSite(t, names);
+  const signIns = readFileSync(join(merged.project, 'tests', 'requests.json'), 'utf8').match(/"\/api\/auth\/sign-in\/email"/g)?.length ?? 0;
+  assert.ok(signIns > 10, `${signIns} sign-ins`);
   commands(merged);
-  const seed = JSON.parse(await readFile(join(merged.project, 'tests', 'seed.json'), 'utf8')) as { auth: { users: { id: string }[] } };
-  assert.deepEqual(seed.auth.users.map(user => user.id), ['alice', 'bob', 'carol', 'ada']);
-
-  // A site whose bookings collection was changed after the merge: adding the recipe again names that clash.
-  const file = join(merged.project, 'urlcode.yaml'), text = (await readFile(file, 'utf8')).replace('enum: [atlas, borealis]', 'enum: [atlas, borealis, cosmos]');
-  await writeFile(file, text);
-  const before = await readFile(join(merged.project, 'tests', 'requests.json'), 'utf8');
-  const refused = merged.add('store-booking');
-  assert.notEqual(refused.status, 0);
-  assert.match(refused.stderr, /extensions\.store\.config\.collections\.bookings in urlcode\.yaml differs/);
-  assert.equal(await readFile(file, 'utf8'), text);
-  assert.equal(await readFile(join(merged.project, 'tests', 'requests.json'), 'utf8'), before);
-});
+}

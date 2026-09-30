@@ -1,5 +1,5 @@
 // `urlcode recipes add <name> --project <dir>` merges a recipe into an existing project (#1014). The store recipes,
-// which need the auth and store extensions, are merged into a site and run in packages/store/test/recipes.test.ts
+// which need the auth and store extensions, are merged into a site and run in packages/store/test/recipe-*.test.ts
 // and, through a real `init` and `extensions add`, in test/addons.integration.ts.
 import test from 'node:test';
 import assert from 'node:assert/strict';

@@ -11,12 +11,13 @@
 //
 // The core tarball always carries the addons.json written beside it, never the build's development manifest with its
 // `file:` links into this checkout (#1002). Every package is packed from a staged copy with its published package.json
-// (no `development` export conditions, #1056), so the checkout is not touched.
+// (no `development` export conditions, #1056, and no pack lifecycle scripts), and npm runs only in that stage, so the
+// checkout is never built or touched (#1077).
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { access, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, copyFile, cp, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { addons, repositoryRoot } from './workspaces.ts';
 import { npmCommand } from './npm-command.ts';
@@ -64,17 +65,47 @@ export function shippedManifestProblems(text: string): string[] {
     ? [] : [`${name} is not pinned: ${String(pin.url)} with integrity ${String(pin.integrity)} is a development link`]);
 }
 
+const unstaged = new Set(['node_modules', '.git']);
+
 /**
- * Packs the package in `directory` into `out` from a staged copy of exactly the files npm would pack, with its
- * published package.json (scripts/published-manifest.mjs) and each of `replace` (a packed path to its contents), so
- * `directory` is never written. Returns the tarball path.
+ * Copies into `stage` everything npm could pack from `directory`: its top-level files, the files of each directory on
+ * the way to a `files` entry, and each literal path its `files` list names, without node_modules or .git. The copy is a superset of the pack, and npm's own include rules
+ * (negations, .npmignore, always-included files) then run in the stage, so the tarball is what `directory` would pack.
+ * No npm command runs in `directory`: npm 10 ran a checkout's `prepare` hook even for
+ * `npm pack --dry-run --ignore-scripts` (#1077).
+ */
+async function stagePackable(directory: string, stage: string, files: unknown): Promise<void> {
+  const manifest = join(directory, 'package.json');
+  if (!Array.isArray(files) || !files.every(entry => typeof entry === 'string')) throw new Error(`${manifest} has no \`files\` list; refusing to pack a package whose contents are not declared`);
+  // npm also packs the README and LICENSE files of every directory it walks, so each one on the way to an entry is staged.
+  const filesOf = async (path: string): Promise<void> => {
+    await mkdir(join(stage, path), { recursive: true });
+    for (const entry of await readdir(join(directory, path), { withFileTypes: true }).catch(() => [])) if (entry.isFile()) await copyFile(join(directory, path, entry.name), join(stage, path, entry.name));
+  };
+  await filesOf('.');
+  for (const pattern of files as string[]) {
+    if (pattern.startsWith('!')) continue;
+    if (/[*?[\]{}]/.test(pattern)) throw new Error(`${manifest} lists the glob ${pattern} in \`files\`; the packer stages literal paths only`);
+    const parents = pattern.split('/').slice(0, -1);
+    for (let depth = 1; depth <= parents.length; depth++) await filesOf(parents.slice(0, depth).join('/'));
+    const source = join(directory, pattern);
+    if (!await stat(source).then(() => true, () => false)) continue;
+    await cp(source, join(stage, pattern), { recursive: true, verbatimSymlinks: true, filter: path => !unstaged.has(basename(path)) });
+  }
+}
+
+/**
+ * Packs the package in `directory` into `out` from a staged copy with its published package.json
+ * (scripts/published-manifest.mjs, which also drops every pack lifecycle script) and each of `replace` (a packed path
+ * to its contents). npm runs once, in the stage, after its manifest is sanitized, so `directory` is never built or
+ * written. Returns the tarball path.
  */
 export async function packPublished(directory: string, out: string, replace: Record<string, string> = {}): Promise<string> {
-  const [listed] = parsePackJson<{ files: { path: string }[] }>(npm(['pack', '--dry-run', '--ignore-scripts', '--json'], directory));
+  const source = await readFile(join(directory, 'package.json'), 'utf8');
   const stage = await mkdtemp(join(tmpdir(), 'urlcode-pack-stage-'));
   try {
-    for (const { path } of listed!.files) { await mkdir(dirname(join(stage, path)), { recursive: true }); await copyFile(join(directory, path), join(stage, path)); }
-    await writeFile(join(stage, 'package.json'), publishedManifest(await readFile(join(directory, 'package.json'), 'utf8')));
+    await stagePackable(directory, stage, (JSON.parse(source) as { files?: unknown }).files);
+    await writeFile(join(stage, 'package.json'), publishedManifest(source));
     for (const [path, text] of Object.entries(replace)) { await mkdir(dirname(join(stage, path)), { recursive: true }); await writeFile(join(stage, path), text); }
     const [packed] = parsePackJson<{ filename: string }>(npm(['pack', '--ignore-scripts', '--json', '--pack-destination', out], stage));
     return join(out, packed!.filename);

@@ -1,7 +1,7 @@
 // #902 item 6: the plumbing the declared `intervals` and `transfers` remove. test/plumbing/ holds the host-transaction
 // counterexamples of the store-booking and store-credits recipes: the same API served by trusted operator extensions
 // through StoreExports.transaction. This proves they are equivalent where the fixtures can tell (each runs the recipe's
-// own tests/requests.json and seed through the CLI, twice, exactly as recipes.test.ts runs the recipe), so the line counts
+// own tests/requests.json and seed through the CLI, twice, exactly as recipe-site.ts runs the recipe), so the line counts
 // scripts/measure-plumbing.ts takes of both compare like with like. Not recipes: the declarations are what to use.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -23,7 +23,7 @@ const recipes = { booking: 'store-booking', credits: 'store-credits' } as const;
 const extensions = { booking: 'bookings.mjs', credits: 'wallets.mjs' } as const;
 type Kind = keyof typeof recipes;
 
-/** recipes.test.ts's host (the real auth extension and the store), plus the counterexample's extension. */
+/** recipe-site.ts's host (the real auth extension and the store), plus the counterexample's extension. */
 function hostFile(database: string, extension?: string): string {
   return `import { composeHost } from ${JSON.stringify(hostModule)};
 import auth from ${JSON.stringify(authModule)};

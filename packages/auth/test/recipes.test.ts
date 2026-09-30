@@ -2,7 +2,7 @@
 // activate, so their fixtures run here (#1001): through the CLI's own validate, test and audit with --local-review,
 // exactly as the recipes' commands list them, against the real auth extension a site's `urlcode extensions add auth`
 // registers, with the account each recipe's tests/seed.json declares and no revision pin or origin given. The store
-// recipes run the same way in packages/store/test/recipes.test.ts.
+// recipes run the same way in packages/store/test/recipe-*.test.ts.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';

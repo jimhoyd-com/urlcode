@@ -77,7 +77,12 @@ The core tarball it packs carries the `addons.json` it writes beside it (each
 add-on tarball pinned by sha512), never the build's development manifest with
 its `file:` links into the checkout; it packs core from a staged copy, so the
 checkout's `dist/addons.json` is left as it is, and it refuses to pack core
-with an unpinned manifest (#1002). A site created from such a core, where
+with an unpinned manifest (#1002). Every package is staged, and its manifest
+stripped of `prepare`, `prepack` and `postpack`, before npm first runs, and npm
+runs only in the stage: npm 10 ran a checkout's `prepare` hook even for
+`npm pack --dry-run --ignore-scripts` (#1077). Staging copies literal `files`
+entries, so a package whose `files` list has a glob other than a negation is
+refused. A site created from such a core, where
 `package.json` names core by its bare version, installs the core tarball
 packed beside the add-ons instead of the registry release of the same version.
 

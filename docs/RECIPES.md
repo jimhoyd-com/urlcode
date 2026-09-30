@@ -215,7 +215,7 @@ and the webhook receiver, and the webhook fixtures' test key in the process
 environment). The recipes behind `auth: true` run through the CLI's own
 `validate`, `test` (twice) and `audit`, as their commands list them, against
 the real auth extension (`packages/auth/test/recipes.test.ts`) and, for the
-store recipes, the real store (`packages/store/test/recipes.test.ts`), both as
+store recipes, the real store (`packages/store/test/recipe-*.test.ts`), both as
 a standalone project and merged with `--project` into a site's `app/`
 (`test/addons.integration.ts` merges them into a site made by the real `init`
 and `extensions add auth store`). `store-crud` runs against the

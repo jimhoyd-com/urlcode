@@ -192,7 +192,7 @@ test('every recipe validates, passes its fixtures and audits with its declared r
   t.after(()=>{if(previousSecret===undefined)delete process.env.WEBHOOK_SIGNING_SECRET;else process.env.WEBHOOK_SIGNING_SECRET=previousSecret;});
   for(const recipe of await listRecipes()){
     // The auth and store recipes need the operator-installed @jimhoyd/urlcode-auth and -store; core cannot import them,
-    // so packages/auth/test/recipes.test.ts and packages/store/test/recipes.test.ts run their fixtures, signed in
+    // so packages/auth/test/recipes.test.ts and packages/store/test/recipe-*.test.ts run their fixtures, signed in
     // through the real auth extension (#1001).
     if(recipe.services?.some(service=>service.name==='store extension'||service.name==='auth extension'))continue;
     let out=join(root,recipe.id);await addRecipe(recipe.id,out);

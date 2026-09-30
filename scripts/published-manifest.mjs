@@ -3,6 +3,8 @@
 // - The `prepare` script. Core keeps it so a git-dependency install builds dist/ from source. A packed tarball
 //   already ships dist/ and does not contain scripts/build.ts, so the lifecycle script would name a missing file and
 //   make npm flag an install script on every install (#592).
+// - The `prepack` and `postpack` scripts. A pack must never build or write the checkout, and npm 10 has run a pack
+//   lifecycle hook despite --ignore-scripts (#1077), so the manifest npm packs declares none of them.
 // - Every `development` export condition. In this checkout it points each entry at its TypeScript source, so the
 //   workspace resolves and type-checks by package name with no build (#1056). A tarball ships no `src/`, and a
 //   consumer's bundler may enable `development` on its own (Vite does in dev), so a published entry must never name it.
@@ -12,7 +14,7 @@
 import {readFile,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 
-export const unpublishedScripts=Object.freeze(['prepare']);
+export const unpublishedScripts=Object.freeze(['prepare','prepack','postpack']);
 export const unpublishedConditions=Object.freeze(['development']);
 
 const withoutConditions=value=>{
