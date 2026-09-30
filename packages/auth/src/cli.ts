@@ -24,8 +24,9 @@ async function main(argv: string[]): Promise<number> {
   }
   if (command === 'find-user') return findUser(site, option(rest, '--email'));
   await refuseRemoteAuthDatabase(join(site, DATABASE));
-  // The origin only matters to browsers; the server API used here never builds a URL from it.
-  const options = betterAuthOptions({ database: join(site, DATABASE), secret: await readSecret(site) }, 'http://localhost', defaultBasePath, command === 'create-user');
+  // The origin only matters to browsers; the server API used here never builds a URL from it. As an operator
+  // connection it waits longer for a serving process's commits and polls for the write lock between them.
+  const options = betterAuthOptions({ database: join(site, DATABASE), secret: await readSecret(site) }, 'http://localhost', defaultBasePath, command === 'create-user', true);
   await migrate(options);
   if (command === 'migrate') { process.stdout.write(JSON.stringify({ event: 'migrated', database: join(site, DATABASE) }) + '\n'); return 0; }
   const input = JSON.parse(readFileSync(0, 'utf8')) as { email?: unknown; password?: unknown; name?: unknown };
@@ -47,7 +48,7 @@ async function findUser(site: string, email: string | undefined): Promise<number
   const database = join(site, DATABASE);
   if (!existsSync(database)) { process.stderr.write(`No auth database at ${database}; run urlcode-auth migrate in the site first\n`); return 1; }
   await refuseRemoteAuthDatabase(database);
-  const options = betterAuthOptions({ database, secret: await readSecret(site) }, 'http://localhost', defaultBasePath, false);
+  const options = betterAuthOptions({ database, secret: await readSecret(site) }, 'http://localhost', defaultBasePath, false, true);
   const context = await betterAuth(options).$context;
   const found = await context.internalAdapter.findUserByEmail(email);
   if (!found) { process.stdout.write(JSON.stringify({ event: 'user-not-found', email }) + '\n'); return 1; }

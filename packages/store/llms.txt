@@ -25,7 +25,9 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   events (default 100000). Activation refuses it on a mount no principal-providing policy guards (for example
   `auth: true`). Short-link clicks are never audited. `urlcode-store audit --database <file> [filters]` reads the
   log read-only; `StoreExports.audit` is its query and its tap (`peek`, then `ack`), which a sink extension (it may
-  be named `audit`) pulls to forward events, using core's types from `@jimhoyd/urlcode/extensions`.
+  be named `audit`) pulls to forward events, using core's types from `@jimhoyd/urlcode/extensions`. Pruning
+  never waits for a sink; events pruned before it acknowledged them are counted (`status()` `{lost}`, the
+  `audit_pruned_unacked_total` metric, one `extension_warning` when first nonzero).
 - `ownership: owner` on a collection scopes every request to the principal a policy such as
   `auth: true` on its mount sets; without it (the default) a collection is shared. An owned
   collection may add `maxRecordsPerOwner: N` (at most `maxRecords`): a principal holding N records

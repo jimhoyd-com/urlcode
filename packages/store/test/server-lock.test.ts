@@ -199,7 +199,7 @@ test('upgrading a version 4 or 5 database drops the multi-process lease tables, 
   };
   await initialize(database);
   // Back to the version 4 shape, as that release left it.
-  const outbox = `DROP TABLE store_audit_events;
+  const outbox = `DROP TABLE store_audit_events; DROP TABLE store_audit_tap;
     CREATE TABLE store_audit_outbox(seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, collection TEXT NOT NULL, at INTEGER NOT NULL, event TEXT NOT NULL CHECK (json_valid(event)));`;
   execute(database, `DROP TABLE store_declarations; ${outbox}
     CREATE TABLE store_audit_drain(id INTEGER PRIMARY KEY CHECK (id = 1), drained_at INTEGER NOT NULL);

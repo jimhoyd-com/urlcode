@@ -1857,7 +1857,9 @@ when the list would exceed the event contract's metadata bound.
 - **Retention.** `extensions.store.config.auditRetention` (an integer from
   1,000 to 10,000,000, default 100,000) is how many of the newest events the
   database keeps. Each audited write prunes older events in its own
-  transaction, whether or not a sink has forwarded them. The count is shared
+  transaction, whether or not a sink has forwarded them: a slow sink never
+  makes a write wait or fail. What a sink misses that way is counted and
+  reported ([the tap's gap](#when-a-sink-falls-behind)). The count is shared
   by every audited collection and read on every activation.
 - **Backed up with the records.** [`urlcode-store backup`](#storage-and-concurrency-what-it-does-and-does-not-guarantee)
   copies the log with everything else, and a restored database carries it.
@@ -1903,17 +1905,19 @@ extension that `requires: [store]` and reads the tap from
   record order.
 - `ack(ids)` (at most 100 event ids) marks them forwarded and resolves with how
   many it marked; unknown and already-forwarded ids are ignored.
+- `status()` resolves with `{lost}`: how many events were pruned before they
+  were acknowledged ([below](#when-a-sink-falls-behind)). It only reads.
 - `query(filter)` pages the log as `urlcode-store audit` does.
 
 Delivery is at least once: a sink that stops between writing a batch and
 acknowledging it sees the same events again, so it deduplicates on `id`. A
 sink must keep up within `auditRetention`; an event pruned before it was
-forwarded is gone. Every call rejects with a `503` `AuditError`, code
+forwarded is gone, and counted. Every call rejects with a `503` `AuditError`, code
 `audit_inactive`, while the store is not active (`audit_unavailable` when the
 database fails); bad input is `400 invalid_audit_query`. The event types,
 `validateAuditEvent`, `validateAuditQuery`, `AuditError`, `auditLimits` and
-the `AuditTap`, `AuditLog`, `AuditEvent`, `AuditStoredEvent`, `AuditQuery` and
-`AuditPage` types come from `@jimhoyd/urlcode/extensions`, so a sink depends
+the `AuditTap`, `AuditTapStatus`, `AuditLog`, `AuditEvent`, `AuditStoredEvent`,
+`AuditQuery` and `AuditPage` types come from `@jimhoyd/urlcode/extensions`, so a sink depends
 on core only.
 
 <!-- guidance-claims: ignore -->
@@ -1939,6 +1943,43 @@ A sink named `audit` is installed with `urlcode extensions add <spec>`
 ([a name is a role](EXTENSIONS.md#audit-log)). The store's tests run such a
 sink against a served site as a conformance check
 ([`packages/store/test/audit.test.ts`](../packages/store/test/audit.test.ts)).
+
+#### When a sink falls behind
+
+Pruning keeps going and writes are never refused for a slow or stopped sink
+([#1067](https://github.com/jimhoyd-com/urlcode/issues/1067)). Instead the
+store counts what the sink missed and says so loudly:
+
+- **What counts.** An event is *unacknowledged* while its `forwarded` flag,
+  which `ack` sets per event id, is unset. The count starts when the tap first
+  has a consumer: its first `peek` or `ack` against this database, recorded in
+  the one-row `store_audit_tap` table. From then on every prune adds the events
+  it removed unacknowledged to `lost`, in the write's own transaction. An
+  acknowledged event is never counted, whatever order the acks came in. A site
+  with no sink counts nothing, because there pruning is only retention.
+- **Cheap.** The write already deletes the pruned range. With a consumer, it
+  deletes the unacknowledged part first, through the index on unforwarded
+  events, and that row count is the loss; then the rest. Each row is still
+  deleted once, and the tap row is one primary-key read and, only when events
+  were lost, one update.
+- **Reported by the tap.** `status()` resolves with `{lost}`, a counter that
+  only grows and survives restarts (it is a row of the database, so a backup
+  carries it). A sink compares it with the value it saw last: any increase is
+  events it will never receive.
+- **A metric.** The store reports it as `audit_pruned_unacked_total` in the
+  [metrics snapshot](OBSERVABILITY.md#metrics-snapshot)
+  (`extensions.store.audit_pruned_unacked_total`) and in Prometheus as
+  `urlcode_extension_store_audit_pruned_unacked_total`.
+- **One warning, not one per write.** The serving process logs one
+  `extension_warning` the first time it sees the count become nonzero, naming
+  the count and `auditRetention`, and another only each time the count reaches a
+  further multiple of `auditRetention` (a whole retention window missed). A
+  process that starts with a nonzero count says so once at activation. Operator
+  commands that prune (`members`, `reassign`) add to the same count; the serving
+  process warns about it at its next loss.
+
+Keeping up is the sink's job: forward in batches of 100 on a timer, or raise
+`auditRetention` for a sink that is offline for long periods.
 
 ### Operator changes in the audit log
 
@@ -2005,7 +2046,9 @@ takes `--actor` as a filter, not an attribution.
   `store_audit_events` (the [audit log](#audited-writes): one row per event,
   with its record order, a forwarded flag for [the tap](#forwarding-events-to-a-sink),
   and indexes on actor, subject, action, time and the unforwarded events;
-  schema version 7). Schema version 6 dropped an earlier release's
+  schema version 7) with `store_audit_tap` (one row: whether the tap has a
+  consumer, and how many events were [pruned before it acknowledged
+  them](#when-a-sink-falls-behind); schema version 8). Schema version 6 dropped an earlier release's
   `store_servers` lease table and drain lease columns. Version 7 moved any
   events still waiting in the old `store_audit_outbox` into
   `store_audit_events`, in order, and dropped `store_audit_outbox` and
@@ -2139,9 +2182,24 @@ lock on its bundled `auth.sqlite` ([below](#every-sqlite-extension-takes-the-loc
 The `urlcode-store` operator commands (`members`, `reassign`, `audit`,
 `backup`, `restore`) never take the lock: they run beside the server through
 SQLite's own locking (`audit` opens the database read-only). Reads are never
-blocked by a writer, and a write that finds the other connection holding the
-write lock waits up to 2 seconds (`busy_timeout`, blocking the server's event
+blocked by a writer, and a serving write that finds the other connection holding
+the write lock waits up to 2 seconds (`busy_timeout`, blocking the server's event
 loop meanwhile) and then answers `503 storage_unavailable` with nothing written.
+
+An operator write (`members add` and `remove`, `reassign`, and `addMember`,
+`removeMember` and `reassignOwner`, which open the same operator connection)
+waits up to 10 seconds instead and tries for the write lock every millisecond,
+blocking its own process meanwhile. SQLite's busy handler sleeps up to 100 ms
+between attempts and is not a queue, so beside a busy server whose commits each
+hold the lock for most of their time (a slow disk flush) its roughly 30 attempts
+in 2 seconds could all find the lock held, and the command failed (#1072).
+Polling sees any idle gap of a millisecond or so between two commits. The
+limit: a lock held for the whole 10 seconds (a stuck process), or a writer that
+commits back to back with no idle gap at all, still fails the command with
+nothing written (`The store could not save this change` for `members`,
+`database is locked` for `reassign`); run it again, or when the server is
+quieter. No operator command ever makes the server wait longer than its own
+2 seconds.
 
 **The declaration fence.** Each activation records, per collection, a
 fingerprint of its normalized declaration (the record schema with a named
