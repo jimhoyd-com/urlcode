@@ -4,6 +4,14 @@
   cookie attributes, its origin checks on its own endpoints, and its SQLite
   tables are Better Auth's. Review its releases before changing the pinned
   version in `package.json`.
+- **Better Auth's origin and CSRF checks cannot be switched off by the
+  environment.** Better Auth skips them, including `callbackURL`, `redirectTo`
+  and `Origin` validation against `trustedOrigins`, when `NODE_ENV=test` or
+  `TEST` is truthy and `advanced.disableOriginCheck` is unset. The adapter pins
+  `advanced.disableOriginCheck` and `advanced.disableCSRFCheck` to `false` for
+  the bundled database and an owner database alike, and the operator's
+  `betterAuth` option cannot override them; `betterAuth.trustedOrigins` admits
+  another origin.
 - **The mount serves an allowlist.** Only the Better Auth paths listed in the
   README (plus operator `paths`) reach Better Auth; the request URL is rebuilt
   from the checked path. Better Auth's own `disabledPaths` matches literal

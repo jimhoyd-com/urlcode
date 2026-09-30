@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Better Auth's origin and CSRF checks stay on under `NODE_ENV=test` or `TEST`.** Better Auth skips its origin
+  check, and with it its CSRF check and `callbackURL`/`redirectTo` validation, whenever `NODE_ENV=test` or `TEST` is
+  truthy and `advanced.disableOriginCheck` is unset, so a server started in such an environment accepted a cross-origin
+  sign-in and an untrusted `callbackURL` (reproduced against better-auth 1.7.6: `200`; now `403 INVALID_ORIGIN` and
+  `403 INVALID_CALLBACK_URL`). The adapter pins `advanced.disableOriginCheck` and `advanced.disableCSRFCheck` to
+  `false` beside telemetry and the rate limiter, for the bundled database and an owner database alike; the
+  `betterAuth` option cannot turn them back off. `betterAuth.trustedOrigins` admits another origin.
 - **Activation no longer drops `auth_servers` (#1078).** The multi-process release's host lease table was dropped on
   every activation of the bundled database; nothing has created it since, so the cleanup is gone. A database that
   still has the table keeps it, unread.

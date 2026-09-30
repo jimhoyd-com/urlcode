@@ -12,6 +12,7 @@ import { inspectExtensionRevision } from '@jimhoyd/urlcode/extensions';
 import { serverLockHeld } from '@jimhoyd/urlcode/sqlite';
 import { betterAuth } from 'better-auth';
 import { createAuthEndpoint } from 'better-auth/api';
+import { memoryAdapter } from 'better-auth/adapters/memory';
 import { authOpenApiSecurity, betterAuthOptions, createAuthExtension, migrate } from '../src/index.ts';
 import extension from '../src/extension.ts';
 
@@ -60,8 +61,8 @@ async function serve(at: Awaited<ReturnType<typeof project>>, settings: Partial<
   return { call, jar, base };
 }
 /** The server in its own process on the project's database, as `urlcode serve` runs it; its base URL. */
-async function serveProcess(at: Awaited<ReturnType<typeof project>>, settings: object = {}): Promise<string> {
-  const child = spawn(process.execPath, ['--conditions=development', serveChild, at.app, at.database, at.projectSha256, JSON.stringify(settings)], { stdio: ['pipe', 'pipe', 'inherit'] });
+async function serveProcess(at: Awaited<ReturnType<typeof project>>, settings: object = {}, env: Record<string, string> = {}): Promise<string> {
+  const child = spawn(process.execPath, ['--conditions=development', serveChild, at.app, at.database, at.projectSha256, JSON.stringify(settings)], { stdio: ['pipe', 'pipe', 'inherit'], env: { ...process.env, ...env } });
   const exited = new Promise(resolve => child.once('exit', resolve));
   at.defer(async () => {
     // Closing stdin closes the server and its SQLite handle (on Windows too) before the directory is removed.
@@ -378,6 +379,27 @@ test('a storage failure during sign-in answers 503 auth_unavailable and sets no 
   assert.equal(jar.size, 0);
   lock.exec('ROLLBACK'); lock.close();
   assert.equal((await call('/api/auth/sign-in/email', { method: 'POST', body: { email: 'ann@example.test', password: 'ann-local-password' } })).status, 200);
+});
+
+test('Better Auth\'s origin and callbackURL checks stay on under NODE_ENV=test and TEST=1, whatever betterAuth.advanced asks', async t => {
+  // Better Auth skips both checks when NODE_ENV=test or TEST is truthy unless advanced.disableOriginCheck is set; the
+  // adapter pins it, and advanced.disableCSRFCheck, to false. Better Auth reads NODE_ENV when it loads, so the server
+  // runs in its own process with both set, for an operator whose betterAuth option asks to turn the checks off.
+  const at = await project(t); await withUser(at);
+  const base = await serveProcess(at, { betterAuth: { advanced: { disableOriginCheck: true, disableCSRFCheck: true } } }, { NODE_ENV: 'test', TEST: '1' });
+  const post = (body: object, source: string) => fetch(`${base}/api/auth/sign-in/email`, { method: 'POST', headers: { 'content-type': 'application/json', origin: source }, body: JSON.stringify({ email: 'ann@example.test', password: 'ann-local-password', ...body }) });
+  const refused = async (response: Response, code: string) => { assert.equal(response.status, 403); assert.equal(((await response.json()) as { code?: string }).code, code); };
+  await refused(await post({}, 'https://attacker.example'), 'INVALID_ORIGIN');
+  await refused(await post({ callbackURL: 'https://attacker.example/landing' }, origin), 'INVALID_CALLBACK_URL');
+  assert.equal((await post({ callbackURL: '/landing' }, origin)).status, 200);
+});
+
+test('the origin and CSRF pins hold for an owner database and against the betterAuth option', () => {
+  const owner = memoryAdapter({ user: [], session: [], account: [], verification: [], rateLimit: [] });
+  const options = betterAuthOptions({ database: owner, secret, betterAuth: { advanced: { disableOriginCheck: true, disableCSRFCheck: true, cookiePrefix: 'site' } } }, origin, '/api/auth');
+  assert.equal(options.advanced?.disableOriginCheck, false);
+  assert.equal(options.advanced?.disableCSRFCheck, false);
+  assert.equal(options.advanced?.cookiePrefix, 'site', 'the owner\'s other advanced options are kept');
 });
 
 test('the sign-in limit is kept in the database, so a restart does not reset it', async t => {
