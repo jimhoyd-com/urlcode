@@ -355,3 +355,38 @@ test('readers.showOwner shows each record\'s owner id on the readers mount only'
   // A non-member learns nothing, owners included.
   assert.equal((await store.call('GET', '/api/review', { who: 'ann' })).status, 403);
 });
+
+test('reassign is a write: every reader that shows the owner, and every If-Match, sees a new ETag (#1088)', async t => {
+  const shown = { ...requests, readers: {
+    review: { ...requests.readers.review, showOwner: true },
+    board: { mount: '/api/board', members: 'reviewers', properties: ['title'], showOwner: true },
+    titles: { mount: '/api/titles', properties: ['title'] },
+  } };
+  const collections = { reviewers, requests: shown } as unknown as Record<string, CollectionSpec>;
+  const store = await direct(t, { collections }, { mounts: [...mounts, '/api/board', '/api/titles'] });
+  await addMember(store.database, { collections, collection: 'reviewers', principal: 'rita' });
+  const id = (await store.call('POST', '/api/requests', { who: 'ann', body: { title: 'laptop' } })).body!.id as string;
+  const read = async () => {
+    const review = await store.call('GET', `/api/review/${id}`, { who: 'rita' });
+    const list = await store.call('GET', '/api/review', { who: 'rita' });
+    const board = await store.call('GET', `/api/board/${id}`, { who: 'rita' });
+    const titles = await store.call('GET', `/api/titles/${id}`, { who: 'rita' });
+    return { owner: review.body!._owner, updatedAt: review.body!.updatedAt, review: review.header('etag')!, listed: (list.body!.etags as Record<string, string>)[id], board: board.header('etag'), boardOwner: board.body!._owner, titles: titles.header('etag') };
+  };
+  const before = await read();
+  assert.equal(before.owner, 'ann'); assert.equal(before.listed, before.review);
+  await reassignOwner(store.database, { from: 'ann', to: 'bob', collections });
+  const after = await read();
+  assert.deepEqual([after.owner, after.boardOwner], ['bob', 'bob']);
+  assert.notEqual(after.updatedAt, before.updatedAt, 'the move stamps a new updatedAt');
+  assert.notEqual(after.review, before.review, 'the unprojected showOwner reader answers a new ETag');
+  assert.equal(after.listed, after.review, 'and the list\'s per-record ETag with it');
+  assert.notEqual(after.board, before.board, 'a projected reader that shows the owner answers a new ETag');
+  assert.equal(after.titles, before.titles, 'a projected reader that shows nothing the move changed keeps its ETag');
+  // A conditional GET with the old tag is a full answer, and a write carrying it is refused.
+  assert.equal((await store.call('GET', `/api/review/${id}`, { who: 'rita', headers: { 'if-none-match': before.review } })).status, 200);
+  const approve = await store.call('POST', `/api/approvals/${id}`, { who: 'rita', headers: { 'if-match': before.review } });
+  assert.equal(approve.status, 412); assert.equal(code(approve), 'precondition_failed');
+  assert.equal((await store.call('PATCH', `/api/requests/${id}`, { who: 'bob', headers: { 'if-match': before.review }, body: { title: 'desk' } })).status, 412);
+  assert.equal((await store.call('POST', `/api/approvals/${id}`, { who: 'rita', headers: { 'if-match': after.review } })).status, 200);
+});

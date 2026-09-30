@@ -44,7 +44,9 @@ test('reassign reports first on --dry-run, then moves only the --from records in
   assert.equal(rest.moved, 2);
   const notesAfter = await read('notes');
   assert.deepEqual(notesAfter.map(record => record._owner), ['alice', 'alice', 'alice', undefined], 'ownerless records stay ownerless');
-  assert.deepEqual(notesAfter.map(({ _owner, ...fields }) => fields), before.notes.map(({ _owner, ...fields }) => fields), 'only the owner changes');
+  assert.deepEqual(notesAfter.map(({ _owner, updatedAt: _updatedAt, ...fields }) => fields), before.notes.map(({ _owner, updatedAt: _updatedAt, ...fields }) => fields), 'only the owner and updatedAt change');
+  // A move is a write (#1088): each moved record gets a new updatedAt, and so a new ETag; an unmoved one keeps its.
+  assert.deepEqual(notesAfter.map((record, index) => record.updatedAt !== before.notes[index]!.updatedAt), [true, true, false, false]);
   assert.deepEqual(await read('board'), before.board, 'shared collections are never touched');
   // Running it again moves nothing.
   assert.equal((await reassignOwner(data, { from: 'apikey:old', to: 'alice', collections })).moved, 0);
