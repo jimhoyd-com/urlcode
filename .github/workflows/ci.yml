@@ -53,9 +53,9 @@ jobs:
       testOs: ${{ (inputs.release == true || (github.event_name != 'pull_request' && github.event_name != 'push')) && '["ubuntu-latest","macos-latest","windows-latest"]' || github.event_name == 'pull_request' && !(steps.changes.outcome == 'success' && steps.changes.outputs.any == 'true' && steps.changes.outputs.highImpact == 'false') && '["ubuntu-latest","windows-latest"]' || '["ubuntu-latest"]' }}
       # A pull request that changes extension code runs its extension suites on Windows Node 24 too (#824).
       packageOs: ${{ (inputs.release == true || (github.event_name != 'pull_request' && github.event_name != 'push')) && '["ubuntu-latest","macos-latest","windows-latest"]' || github.event_name == 'pull_request' && !(steps.changes.outcome == 'success' && steps.changes.outputs.any == 'true' && steps.changes.outputs.extensionCode == 'false') && '["ubuntu-latest","windows-latest"]' || '["ubuntu-latest"]' }}
-      # The packed add-on integration: every OS before a release or on dispatch, Linux on a high-impact pull request.
-      integration: ${{ inputs.release == true || github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' && !(steps.changes.outcome == 'success' && steps.changes.outputs.any == 'true' && steps.changes.outputs.highImpact == 'false') }}
-      integrationOs: ${{ (inputs.release == true || github.event_name == 'workflow_dispatch') && '["ubuntu-latest","macos-latest","windows-latest"]' || '["ubuntu-latest"]' }}
+      # The packed add-on integration: every OS on every exact-commit run (release, dispatch, merge queue, sweep; #1089), Linux on a high-impact pull request.
+      integration: ${{ inputs.release == true || (github.event_name != 'pull_request' && github.event_name != 'push') || github.event_name == 'pull_request' && !(steps.changes.outcome == 'success' && steps.changes.outputs.any == 'true' && steps.changes.outputs.highImpact == 'false') }}
+      integrationOs: ${{ (inputs.release == true || (github.event_name != 'pull_request' && github.event_name != 'push')) && '["ubuntu-latest","macos-latest","windows-latest"]' || '["ubuntu-latest"]' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: inputs.release != true && (github.event_name == 'pull_request' || github.event_name == 'push')
