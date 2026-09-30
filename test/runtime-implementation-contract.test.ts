@@ -32,3 +32,20 @@ test('runtime implementation guide remains contributor-only', async () => {
   assert.doesNotMatch(dockerfile, /COPY docs\b/);
   assert.doesNotMatch(llms, /Implementing the URLCode contract/);
 });
+
+test('runtime implementation command lists match the CLI-owned command metadata', async () => {
+  // Narrow on purpose: only the live card's own lists are compared, so historical
+  // explanations of a removed command elsewhere stay allowed (#1091).
+  const guide = await readFile(join(root, 'docs', 'RUNTIME-IMPLEMENTATION.md'), 'utf8');
+  const { hermeticHostCommands, localReviewCommands } = await import('../packages/core/src/cli-command-metadata.ts');
+  const card = guide.match(/^\| `RIM-EXT-HERMETIC-001` \|.*$/m)?.[0];
+  assert.ok(card, 'RIM-EXT-HERMETIC-001 must exist');
+  const commands = (text: string) => [...text.matchAll(/`([a-z-]+)`/g)].map(([, name]) => name!);
+  const replay = card.match(/A run that replays requests \(([^)]*), MCP `run_tests`\)/)?.[1];
+  assert.ok(replay !== undefined, 'RIM-EXT-HERMETIC-001 must list the commands that replay requests');
+  assert.deepEqual(commands(replay), [...hermeticHostCommands]);
+  const review = card.match(/A local review \(([^)]*?) with `--local-review`/)?.[1];
+  assert.ok(review !== undefined, 'RIM-EXT-HERMETIC-001 must list the local-review commands');
+  const hermetic: readonly string[] = hermeticHostCommands;
+  assert.deepEqual(commands(review), localReviewCommands.filter((name) => !hermetic.includes(name)));
+});

@@ -68,9 +68,6 @@ A push to `main` that does not change the version runs `plan` and `ci` only.
 - **In `verify`**: the release is public and stays public. The job opens a
   `release` issue. Fix forward with the next version and deprecate the bad one:
   `npm deprecate @jimhoyd/urlcode@X.Y.Z "Use X.Y.Z+1: <reason>"`.
-- **In `template`**: re-run the job, or run
-  `npm run release:template -- --version X.Y.Z --execute` locally. It opens,
-  and never merges, the template pull request.
 
 Never delete, move or recreate a `v*` tag or a release asset; the tag rulesets
 and immutable releases refuse it, and a published version is fixed only by a

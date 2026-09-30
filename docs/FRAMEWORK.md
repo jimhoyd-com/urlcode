@@ -31,9 +31,10 @@ External/private extensions are also supported through the same public host cont
 for installation, AI discovery and validation outside the release catalog.
 
 A release channel is not an
-independent assessment: review, deployment
-evidence and an accessibility assessment are still pending
-([issue 58](https://github.com/jimhoyd-com/urlcode/issues/58)). Auth's
+independent assessment: no independent security review has been performed, and
+deployment evidence and an accessibility assessment are still pending; the
+[readiness register](RELEASE-OPERATIONS.md#production-readiness) lists the open
+gates. Auth's
 [README](../packages/auth/README.md#not-included) lists what it
 does not include.
 The current version of each package is its own manifest, and the peer ranges it
@@ -118,7 +119,9 @@ library called from a function route is the alternative
 ([three ways](EXTENSIONS.md#native-independent-integration-or-bundled-default)).
 Auth additionally needs the Node runtime its package documents (SQLite only
 for its bundled database file); mcp declares Node, AWS and Vercel targets (its opt-in streaming transport is
-self-hosted only), while store (its database is `node:sqlite`) is Node-only. See each package's README ([auth](../packages/auth/README.md),
+admitted on node and vercel and refused on aws; on Vercel delivery is delegated
+to the provider, and local adapter support is not a provider deployment proof, see
+[streamed responses](EXTENSIONS.md#streamed-responses)), while store (its database is `node:sqlite`) is Node-only. See each package's README ([auth](../packages/auth/README.md),
 [store](../packages/store/README.md),
 [mcp](../packages/mcp/README.md)) for the exact requirement.
 
