@@ -15,4 +15,8 @@
 ## Do not guess
 - There are no roles, account pages, OIDC, API keys or recovery; keep permissions in the application.
 - A `sandbox: true` route cannot use `auth` (the identity capability cannot enter the sandbox).
-- Better Auth's tables must exist (`npx urlcode-auth migrate`) or activation refuses.
+- With the bundled SQLite file, Better Auth's tables must exist (`npx urlcode-auth migrate`) or activation refuses.
+- The owner may give Better Auth its own database in host.mjs (`auth({database: <adapter or pool>})`): then its
+  schema, migrations, backups and multi-server rules are the owner's, the `urlcode-auth` commands refuse, and
+  `test`, `audit` and a local review need `auth({testDatabase: () => <fresh database>})` or are refused.
+- Email and password sign-in is a default, not forced: `betterAuth: {emailAndPassword: {enabled: false}}` turns it off.

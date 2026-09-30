@@ -92,7 +92,9 @@ same-origin check. There is no test principal that skips the gate. See
 `data/auth.sqlite`: each run uses a fresh database in a temporary directory,
 creates Better Auth's tables itself, signs sessions with a secret that lives
 only for the run (the `database` and `secretFile` options and
-`BETTER_AUTH_SECRET` are ignored). `test` and `audit` then create the accounts
+`BETTER_AUTH_SECRET` are ignored). With the owner's own database, the run
+serves the owner's `testDatabase` instead, or is refused
+([your own database](#your-own-database)). `test` and `audit` then create the accounts
 `app/tests/seed.json` declares, with the ids a store membership names:
 
 ```json
@@ -165,6 +167,54 @@ auth({
   secretFile: 'data/auth.secret',
 })
 ```
+
+Email and password sign-in is on by default, not forced:
+`betterAuth: {emailAndPassword: {enabled: false}}` turns it off, and the mount
+then answers `404` for `/sign-in/email` and `/change-password` (and refuses
+`signUp: true` and a `tests/seed.json` `auth` entry, both email and password
+accounts). Sign in with another Better Auth method instead by adding its plugin
+through `betterAuth` and its paths through `paths`.
+
+### Your own database
+
+`database` also takes the owner's own Better Auth database: any value Better
+Auth's `database` option accepts, such as an adapter (`prismaAdapter`,
+`drizzleAdapter`, `memoryAdapter`), a Kysely dialect or a Postgres or MySQL
+pool. It goes to Better Auth unchanged (`betterAuth.database` is refused;
+pass it as `database`):
+
+```js
+import { memoryAdapter } from 'better-auth/adapters/memory';
+import { Pool } from 'pg';
+
+auth({
+  database: new Pool({ connectionString: process.env.AUTH_DATABASE_URL }),
+  // What test, audit and a --local-review validate or routes serve instead:
+  // a fresh database, once per run, holding Better Auth's schema and no live data.
+  testDatabase: () => memoryAdapter({ user: [], session: [], account: [], verification: [], rateLimit: [] }),
+})
+```
+
+The bundled file's machinery does not apply to it. There is no one-server lock,
+no WAL, permission or network-filesystem check, no table check before
+serving (Better Auth's own schema check still runs when its adapter has one), and
+the adapter never migrates it. Activation logs one `extension_warning` saying
+so: its schema and migration state, backups, single-writer or multi-server
+rules and access control are the owner's. `urlcode-auth migrate`,
+`create-user` and `find-user` refuse (exit `2`): while host.mjs names an owner
+database, loading it leaves `data/auth.owner-database` for them to find, and
+removes it when host.mjs goes back to the bundled file. Use the database's
+own tooling (Better Auth's CLI, or its server API) instead. The limiter's
+`storage: 'database'` default counts in its `rateLimit` table.
+
+A hermetic run never falls back to the live database. With an owner database
+and no `testDatabase`, it is refused, naming the option; a `testDatabase` that
+returns the live database itself is refused too. The factory is trusted operator code, so
+one that returns another handle on live data cannot be detected: keep it
+isolated. Test seed accounts are created through Better Auth's own API, so they
+work on any adapter. The mount's contract holds unchanged: `503
+auth_unavailable` when the database fails (on the gate, the mount, and an
+unconfirmed sign-out), the path allowlist, and the body and header bounds.
 
 `BETTER_AUTH_SECRET` overrides the secret file. The extension always keeps
 Better Auth's rate limiter on, keyed by the client address URLCode admitted,
