@@ -366,7 +366,7 @@
     }
   },
   "authoring": {
-    "description": "Declare a bounded MCP (Model Context Protocol) tool/resource/prompt server: named tools with a description, a request.body.<METHOD>.schema-shaped input (and optional output) schema, an optional title and optional behavior annotations (readOnlyHint, destructiveHint, idempotentHint, openWorldHint), named URI-addressed resources, and named prompt templates (resources and prompts also take an optional title), each backed by a trusted project handler. The extension owns JSON-RPC 2.0 framing, protocol version negotiation, request-id handling, cursor pagination and initialize/ping/tools-*/resources-*/prompts-* dispatch; project YAML never carries JSON-RPC mechanics, a transport choice or provider settings.",
+    "description": "Declare a bounded MCP (Model Context Protocol) tool/resource/prompt server: named tools with a description, a request.body.<METHOD>.schema-shaped input (and optional output) schema, an optional title and optional behavior annotations (readOnlyHint, destructiveHint, idempotentHint, openWorldHint), named URI-addressed resources, and named prompt templates (resources and prompts also take an optional title), each backed by a trusted project handler. The official MCP SDK (@modelcontextprotocol/server) serves the protocol: JSON-RPC 2.0 framing, protocol version negotiation, request ids, notifications and error codes; the extension maps the declared tools, resources and prompts onto it (lists return every declared entry, without pagination) and owns argument and output checks, the trusted handler calls and the caller-facing failures. Project YAML never carries JSON-RPC mechanics, a transport choice or provider settings.",
     "surfaces": [
       {
         "kind": "configuration",

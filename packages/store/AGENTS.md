@@ -13,9 +13,24 @@
   committed. The peer is a workspace sibling: core resolves through the
   `file:../..` link that `scripts/check-workspace-links.ts` enforces, never
   from a registry.
-- The store is trusted operator code: unsandboxed, not a multi-tenant
-  boundary, and every caller who can reach a mount can read and (unless
-  `readOnly`) change every record in that collection. It owns one SQLite
+- The store is trusted operator code: unsandboxed and not a multi-tenant
+  boundary. Who sees and changes which record is the declared contract, not a
+  blanket rule ([docs/STORE.md](../../docs/STORE.md#per-record-ownership)):
+  on a shared collection (the default) every caller its mount's route admits
+  lists, reads and (unless `readOnly`) changes every record; an
+  `ownership: owner` collection scopes every request to the principal a
+  policy such as `auth: true` sets, another owner's record answering the
+  same `404` as a missing one; a `readers` mount lets the members of a
+  `membership: true` collection, or with `properties` every admitted
+  principal, read other owners' records read-only; and declared
+  `transitions` (`by`, `members`), `transfers` (on an owned collection the
+  caller debits only its own record; `members`) and `create.members` narrow
+  who may run each write. The request checks live in
+  `src/collection.ts`; the operator paths that change owners and members are
+  `src/ownership.ts` (`reassign`) and `src/membership.ts` (`members`).
+  Change any of these only with its regression test (`test/ownership.test.ts`,
+  `test/membership.test.ts`, `test/readers-grid.test.ts`,
+  `test/transitions.test.ts`, `test/transfers.test.ts`). It owns one SQLite
   database per site (`src/database.ts`: forward-only schema, one transaction
   helper; `src/collection.ts`: every write one `BEGIN IMMEDIATE` transaction
   over the record, its key, its idempotency claim and its audit event;
@@ -45,8 +60,8 @@
 ## File what you find
 
 Do not drop a defect, a gap or an idea you could not act on. Runtime, CLI and
-schema, accounts and protected routes, users and audit, extension page styling
-and copy, and this extension's own data contract all live in this one
+schema, accounts and protected routes, and this extension's own data
+contract, its audit log included, all live in this one
 repository now, so file everything against
 [urlcode](https://github.com/jimhoyd-com/urlcode/issues), using its issue
 templates.
