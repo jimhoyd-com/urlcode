@@ -95,9 +95,17 @@ const signalsRecordedInTests = /signalRecorder: signals/.test(await read('packag
   && /command==='audit'\?new SignalRecorder\(\)/.test(await read('packages/core/src/cli.ts'));
 if (!signalsRecordedInTests) sourceProblems.push('packages/core/src/project-tests.ts / cli.ts: test and audit signal recorder not found; update this check with the new rule');
 
-// Workspace packages (#1121): the directories under packages/. A removed package (ui, admin, forms, ...) has none,
-// so contributor guidance naming `packages/<name>` for it, or routing work to its role, is stale.
-const workspacePackages = (await readdir(new URL('packages/', root), { withFileTypes: true })).filter(entry => entry.isDirectory()).map(entry => entry.name).sort();
+// Workspace packages (#1121): the directories under packages/ that hold source (a package.json, or core's src/). A
+// removed package (ui, admin, forms, ...) has none, so contributor guidance naming `packages/<name>` for it, or
+// routing work to its role, is stale. An older checkout can keep a removed package's untracked dist/ or
+// node_modules/ behind; such a directory is not a package.
+const holdsSource = async (name: string): Promise<boolean> => {
+  const entries = new Set(await readdir(new URL(`packages/${name}/`, root)).catch(() => [] as string[]));
+  return entries.has('package.json') || entries.has('src');
+};
+const workspacePackages = (await Promise.all((await readdir(new URL('packages/', root), { withFileTypes: true }))
+  .filter(entry => entry.isDirectory()).map(async entry => (await holdsSource(entry.name)) ? entry.name : undefined)))
+  .filter((name): name is string => name !== undefined).sort();
 if (!workspacePackages.includes('core')) sourceProblems.push('packages/: core not found; update this check with the new layout');
 
 // Streamed responses (#1091, #1121): core's `streamingTargets` is where a `streams: true` registration is served.

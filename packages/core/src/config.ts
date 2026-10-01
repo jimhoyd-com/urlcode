@@ -10,6 +10,8 @@ import type { ErrorDetails } from './errors.ts';
 import { reservedResponseHeaders } from './reserved-headers.ts';
 import { declaredPrincipalProviders } from './addon-manifest.ts';
 import { loadProjectSchemas } from './project-schemas.ts';
+import { LEGACY_REQUEST_BODY, knownMethods, legacyBodyKeys, legacyRequestBodyHint } from './legacy-request-body.ts';
+import type { LegacyBodySite } from './legacy-request-body.ts';
 import type { ProjectSchemas } from './project-schemas.ts';
 import type { AuthoredRouteConfig, FunctionConfig, LoadedDocument, MiddlewareConfig, ProjectDocument, RouteAuthShortForm, RouteConfig, SharedBlock, SourceLocation } from './types.ts';
 
@@ -264,8 +266,42 @@ function checkRouteShapes(data: unknown): void {
     if (!handlers.length) throw new ConfigError(`${where}: declares no handler; add exactly one of: ${routeHandlerKeys.join(', ')}`, { code: 'no-handler', route: pattern, pointer });
   }
 }
-export function validateDocument(data: unknown, inherited?: Record<string, SharedBlock>): ProjectDocument {
+const isMapping = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+/**
+ * The route-wide `request.body` shape that #870 keyed by method (#1132): policy keys straight under `request.body`
+ * in a route or a shared block. Checked before the schema so every such place gets the migration hint, in one error
+ * located at the first, instead of a generic unknown-key error for the first alone. Keys are named, values never.
+ */
+function checkLegacyRequestBody(data: unknown, locate?: YamlLocator): void {
+  if (!isMapping(data)) return;
+  const sites: (LegacyBodySite & { pointer: string; key: string })[] = [];
+  const visit = (pointer: string, label: string, holder: unknown, methods: string[] | undefined, shared = false): void => {
+    const body = isMapping(holder) && isMapping(holder.request) ? holder.request.body : undefined;
+    if (!isMapping(body)) return;
+    const keys = legacyBodyKeys.filter(key => Object.hasOwn(body, key));
+    if (!keys.length) return;
+    const at = `${pointer}/request/body`, position = sites.length && locate ? locate(at, keys[0]) : undefined;
+    sites.push({ label, keys, methods, shared, pointer: at, key: keys[0]!, ...(position ? { position } : {}) });
+  };
+  const routes = isMapping(data.routes) ? data.routes : {}, shared = isMapping(data.shared) ? data.shared : {};
+  for (const section of Object.keys(data)) {
+    if (section === 'shared') for (const [name, block] of Object.entries(shared)) {
+      // A shared block is copied whole into each route that uses it, so its method keys must suit all of them: offer
+      // the methods every using route answers (the GET/HEAD default for one that declares none).
+      const users = Object.values(routes).filter(route => isMapping(route) && route.use === name).map(route => knownMethods((route as { methods?: unknown }).methods) ?? ['GET', 'HEAD']);
+      const common = users.length ? users.reduce((all, methods) => all.filter(method => methods.includes(method))) : [];
+      visit(`/shared/${escapePointer(name)}`, `shared block ${quoteKey(name)}`, block, common.length ? common : undefined, true);
+    }
+    if (section === 'routes') for (const [pattern, route] of Object.entries(routes))
+      visit(`/routes/${escapePointer(pattern)}`, `route ${routeLabel(pattern)}`, route, isMapping(route) ? knownMethods(route.methods) : undefined);
+  }
+  const [first] = sites;
+  if (!first) return;
+  throw new ConfigError(`Invalid configuration at ${describeLocation(first.pointer)} (${LEGACY_REQUEST_BODY}): ${legacyRequestBodyHint(sites)}`, { code: LEGACY_REQUEST_BODY, pointer: first.pointer, key: first.key, route: routeOf(first.pointer) });
+}
+export function validateDocument(data: unknown, inherited?: Record<string, SharedBlock>, locate?: YamlLocator): ProjectDocument {
   checkRouteShapes(data);
+  checkLegacyRequestBody(data, locate);
   if (!validate(data)) throw describeSchemaError(selectSchemaError(validate.errors!)!);
   const document = data as ProjectDocument; // trust boundary: the schema just admitted it
   for (const [name, block] of Object.entries(document.shared ?? {}))
@@ -275,8 +311,10 @@ export function validateDocument(data: unknown, inherited?: Record<string, Share
 }
 /**
  * Resolves `use: <name>` at load time. The route's own `request` or `response` key wins as a whole block
- * (no deep merge); otherwise the shared block's key is copied in. `use` is removed, so the route hash,
- * audit and routes output show what actually applies. An unknown name fails validation.
+ * (no deep merge); otherwise the shared block's key is copied in. `env` and `secrets` merge name by name,
+ * the route's own entry winning (#1133). `use` is removed, so the route hash, project revision, requested
+ * grants, operator pins, audit and routes output all see each route's effective bindings. An unknown name
+ * fails validation.
  */
 function expandShared(pattern: string, route: RouteConfig, shared: Record<string, SharedBlock> | undefined): RouteConfig {
   if (route.use === undefined) return route;
@@ -286,6 +324,8 @@ function expandShared(pattern: string, route: RouteConfig, shared: Record<string
   const result: RouteConfig = { ...rest };
   if (rest.request === undefined && block.request !== undefined) result.request = structuredClone(block.request);
   if (rest.response === undefined && block.response !== undefined) result.response = structuredClone(block.response);
+  if (block.env !== undefined) result.env = { ...structuredClone(block.env), ...rest.env };
+  if (block.secrets !== undefined) result.secrets = { ...structuredClone(block.secrets), ...rest.secrets };
   return result;
 }
 /** The input declaration a short-form function gets for each `{param}` it does not declare itself. */
@@ -516,7 +556,7 @@ export async function loadDocumentInWorker(project: string, {sources=false}: {so
   await lstat(resolve(root, 'urlcode.yaml')).catch(() => { throw new ConfigError(`No urlcode.yaml in ${quotePath(project)}; run urlcode init there to create a project, or pass --project <directory>`, { code: 'no-project', file: 'urlcode.yaml' }); });
   const file = await safeFile(root, 'urlcode.yaml');
   const locations: Record<string, SourceLocation> = {};
-  const document = await located('urlcode.yaml', file, budget, (data, locate) => { const valid = validateDocument(data); referenceLocations(valid, 'urlcode.yaml', locate, locations); return valid; });
+  const document = await located('urlcode.yaml', file, budget, (data, locate) => { const valid = validateDocument(data, undefined, locate); referenceLocations(valid, 'urlcode.yaml', locate, locations); return valid; });
   const routes: Record<string, RouteConfig> = Object.assign(Object.create(null) as Record<string, RouteConfig>, document.routes);
   const extensions = Object.assign(Object.create(null),document.extensions??{}) as NonNullable<ProjectDocument['extensions']>;
   const files = [file];
@@ -528,7 +568,7 @@ export async function loadDocumentInWorker(project: string, {sources=false}: {so
     const path = await safeFile(root, include);
     assert(!files.includes(path), 'Duplicate include');
     files.push(path);
-    const part = await located(include, path, budget, (data, locate) => { const valid = validateDocument(data, document.shared ?? {}); referenceLocations(valid, include, locate, locations); return valid; });
+    const part = await located(include, path, budget, (data, locate) => { const valid = validateDocument(data, document.shared ?? {}, locate); referenceLocations(valid, include, locate, locations); return valid; });
     assert(!part.includes?.length, 'Nested includes are unsupported');
     assert(part.site===undefined, 'site may only be set in the entry urlcode.yaml');
     assert(part.shared===undefined, 'shared may only be set in the entry urlcode.yaml');

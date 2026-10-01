@@ -47,9 +47,13 @@ export interface Budget {
 // (packed/unpacked bytes/entries), sizes rounded up to a KiB.
 export const budgets: Record<string, Budget> = {
   '@jimhoyd/urlcode': {
-    packed: 1090 * 1024,
-    unpacked: 4274 * 1024,
-    entries: 561,
+    // Raised for #1131-#1133: the upgrade file-record repair, the legacy request.body hint
+    // (legacy-request-body.ts and its HTTP.md section) and shared env/secrets with the
+    // examples/shared-bindings example (5 files). Measured on the merged branch (Node 26):
+    // 1120281 packed, 4396305 unpacked, 565 entries.
+    packed: 1098 * 1024,
+    unpacked: 4300 * 1024,
+    entries: 570,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },

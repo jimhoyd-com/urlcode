@@ -1,0 +1,6 @@
+[
+  {"path":"/skills","status":200,"expectBody":"{\"skills\":[\"search\",\"summarize\"]}"},
+  {"path":"/skills/search","status":200,"expectBody":"{\"skill\":\"search\",\"enabled\":true}"},
+  {"path":"/skills/translate","status":404},
+  {"path":"/status","status":200,"expectBody":"{\"region\":\"us-east-1\",\"skills\":2}"}
+]

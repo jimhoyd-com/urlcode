@@ -227,7 +227,7 @@ test('the webhook recipe verifies an HMAC signature on a trusted route with a gr
 });
 
 test('examples carry the same metadata shape and search returns the smallest runnable match with its route',async t=>{
-  const examples=await listExamples();assert.equal(examples.length,19);
+  const examples=await listExamples();assert.equal(examples.length,20);
   for(const example of examples){
     const root=fileURLToPath(new URL('../examples/'+example.id+'/',import.meta.url));
     if(example.runnable===false){assert.equal(example.capabilities,undefined);await assert.rejects(lstat(join(root,'urlcode.yaml')),{code:'ENOENT'});continue;}

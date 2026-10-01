@@ -1,5 +1,5 @@
 import { addAddons, listAddons, outdatedAddons, removeAddon, verifyAddons } from './addon-install.ts';
-import type { OutdatedReport, VerifyReport } from './addon-install.ts';
+import type { AddResult, OutdatedReport, VerifyReport } from './addon-install.ts';
 import { readAddonManifest } from './addon-manifest.ts';
 import type { AddonKind } from './addon-manifest.ts';
 import { inspectInstalledArtifact } from './artifact-inspect.ts';
@@ -14,6 +14,15 @@ interface AddonCliOptions { site?: string | undefined; json?: boolean | undefine
 
 const addonCommands = ['available', 'add', 'remove', 'list', 'verify', 'outdated', 'inspect', 'stage'] as const;
 const artifactOnly = new Set<string>(['inspect', 'stage']);
+
+/**
+ * What `add` says about an already-installed request: the file record it wrote (#1131), or that nothing changed at all.
+ * "nothing to do" is only true when no package was added or upgraded and the record was left as it was.
+ */
+export function recordStatus(result: Pick<AddResult, 'added' | 'upgraded' | 'recorded'>, names: readonly string[]): string[] {
+  if (result.recorded.length) return [`Recorded the installed files of ${result.recorded.join(', ')} in addon-files.lock.json; ${result.recorded.length === 1 ? 'it was' : 'they were'} already installed. Commit the record with package-lock.json.`];
+  return result.added.length || result.upgraded.length ? [] : [`${names.join(', ')} already installed; nothing to do.`];
+}
 
 /**
  * `urlcode extensions|artifacts available|add|remove|list|verify|outdated`: the same verbs for both add-on kinds, plus
@@ -42,7 +51,7 @@ export async function runAddonCommand(command: 'extensions' | 'artifacts', opera
       print(values.json ? { event: `${kind}s-added`, ...result } : [
         ...(result.added.length ? [`Added ${result.added.join(', ')}${result.development ? ' (development install from local sources, not pinned)' : ''}.`] : []),
         ...result.upgraded.map(item => `Upgraded ${item.name} (${item.package}) from ${item.from ?? '?'} to ${item.to ?? '?'}; its declaration, routes and host.mjs line are unchanged. Review the new version before deploying it.`),
-        ...(result.added.length || result.upgraded.length ? [] : [`${names.join(', ')} already installed; nothing to do.`]),
+        ...recordStatus(result, names),
         ...(result.examples.length ? [`Example written for ${result.examples.join(', ')} (--example).`] : kind === 'extension' && result.added.length ? ['Capability only: no sample routes were written. Add --example to a fresh add for a working demo.'] : []),
         ...result.keptFiles.map(file => `Kept existing ${file}.`),
         ...Object.entries(result.env).map(([key, text]) => `Environment: ${key}: ${text}`),
