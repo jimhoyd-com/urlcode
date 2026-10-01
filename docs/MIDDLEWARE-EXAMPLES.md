@@ -29,7 +29,7 @@ than that subset are listed at the end.
 | --- | --- | --- | --- |
 | Bearer token gate | `auth.mjs` `bearer` | Hono `bearerAuth`, `express-bearer-token` | Early 401, `www-authenticate`, constant-time compare against an `env` binding |
 | Basic authentication | `auth.mjs` `basic` | Hono `basicAuth`, `express-basic-auth` | Hand-written base64 (no `atob`), both checks always evaluated, `state.user` |
-| CORS | `cors.mjs` | Express `cors`, Hono `cors` | `OPTIONS` answered before the handler, origin allowlist, `vary: origin` |
+| CORS | `cors.mjs` | Express `cors`, Hono `cors` | `OPTIONS` answered before the handler, origin allowlist, `origin` merged into the downstream `vary` |
 | Correlation id and timing | `request-id.mjs` | Hono `requestId`/`timing`, Express `response-time` | Validating a caller header, `server-timing`, coexisting with the runtime's own `x-request-id` |
 | Maintenance switch | `maintenance.mjs` | Next.js and Netlify Edge maintenance examples | 503 with `retry-after`, bypass header, flipping behavior from a binding |
 | Error boundary | `errors.mjs` | Koa `onerror`, Express error handlers | Catching a downstream throw, JSON 500 instead of a bare 502 |
