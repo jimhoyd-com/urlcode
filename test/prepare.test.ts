@@ -1,13 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { spawnSync } from 'node:child_process';
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { assertNpmSucceeded, runNpmSync } from '../scripts/npm-command.ts';
 
 test('packing with ignored scripts preserves built output, while prepare still builds a checkout', async t => {
-  const npm = process.env.npm_execpath;
-  assert(npm, 'Run this test through npm');
+  assert(process.env.npm_execpath, 'Run this test through npm');
   const root = await mkdtemp(join(tmpdir(), 'urlcode-prepare-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, 'scripts'));
@@ -18,9 +17,11 @@ test('packing with ignored scripts preserves built output, while prepare still b
   await writeFile(join(root, 'scripts', 'build.ts'), "import { writeFile } from 'node:fs/promises'; await writeFile('dist/addons.json', 'rebuilt');\n");
   const manifest = join(root, 'dist', 'addons.json');
   await writeFile(manifest, 'existing build');
+  // A timeout reports signal, elapsed time and both stream tails (#1130), and every run's time is logged as evidence.
   const run = (...args: string[]) => {
-    const result = spawnSync(process.execPath, [npm, ...args], { cwd: root, encoding: 'utf8', timeout: 30_000, env: { ...process.env, npm_config_cache: join(root, 'cache') } });
-    assert.equal(result.status, 0, result.stderr || result.stdout || result.error?.message || 'npm failed');
+    const result = runNpmSync(args, { cwd: root, timeoutMs: 30_000, env: { ...process.env, npm_config_cache: join(root, 'cache') } });
+    t.diagnostic(`npm ${args.join(' ')}: status ${result.status} after ${result.elapsedMs} ms`);
+    assertNpmSucceeded(result);
   };
   // npm 10 invokes prepare even here; newer npm versions skip the lifecycle.
   run('pack', '--ignore-scripts', '--json');

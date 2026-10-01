@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parsePackJson } from '../scripts/pack-json.ts';
+import { assertNpmSucceeded, runNpmSync } from '../scripts/npm-command.ts';
 
 // agent-context.ts's searchDocs (the urlcode docs search CLI and the MCP
 // search_docs tool) reads docs/*.md from the package root at runtime, but
@@ -21,29 +22,20 @@ interface PackReport { name: string; filename: string; version: string }
 const root = resolve(fileURLToPath(new URL('../', import.meta.url)));
 
 test('urlcode docs search works against the published npm tarball', async t => {
-  const npm = process.env.npm_execpath;
-  assert(npm, 'Run this test through npm');
+  assert(process.env.npm_execpath, 'Run this test through npm');
   const cache = await mkdtemp(join(tmpdir(), 'urlcode-docs-search-'));
   t.after(async () => { await rm(cache, { recursive: true, force: true }); });
 
-  const pack = spawnSync(process.execPath, [npm, 'pack', '--ignore-scripts', '--json', '--pack-destination', cache], {
-    cwd: root,
-    encoding: 'utf8',
-    env: { ...process.env, npm_config_cache: cache },
-    timeout: 120_000,
-  });
-  assert.equal(pack.status, 0, pack.stderr || pack.stdout || pack.error?.message || 'npm pack failed');
+  const pack = runNpmSync(['pack', '--ignore-scripts', '--json', '--pack-destination', cache], { cwd: root, env: { ...process.env, npm_config_cache: cache }, timeoutMs: 120_000 });
+  assertNpmSucceeded(pack);
   const [report] = parsePackJson<PackReport>(pack.stdout, pack.stderr);
   assert(report, 'npm pack reported no package');
 
   const install = join(cache, 'install');
   await mkdir(install);
-  const installResult = spawnSync(process.execPath, [npm, 'install', '--omit=dev', '--omit=optional', '--ignore-scripts', '--no-audit', '--no-fund', '--prefix', install, join(cache, report.filename)], {
-    encoding: 'utf8',
-    env: { ...process.env, npm_config_cache: cache },
-    timeout: 120_000,
-  });
-  assert.equal(installResult.status, 0, installResult.stderr || installResult.stdout || installResult.error?.message || 'npm install failed');
+  assertNpmSucceeded(runNpmSync(['install', '--omit=dev', '--omit=optional', '--ignore-scripts', '--no-audit', '--no-fund', '--prefix', install, join(cache, report.filename)], {
+    cwd: process.cwd(), env: { ...process.env, npm_config_cache: cache }, timeoutMs: 120_000,
+  }));
 
   const cli = join(install, 'node_modules', ...report.name.split('/'), 'dist', 'cli.js');
   assert.ok(existsSync(cli), 'Installed package did not ship the built CLI');
