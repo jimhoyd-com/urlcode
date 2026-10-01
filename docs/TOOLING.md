@@ -1499,8 +1499,8 @@ What it can do, all inside the selected project root (resolved with realpath):
 
 `run_tests` or `run_test`? Both replay the same fixtures through one execution
 core, the one `urlcode test` uses: the same local review, the same revision pin
-for the operator host, a fresh data directory per run, and the same per-case
-outcome. A fix there reaches both
+for the operator host, a fresh data directory per run, the host file's
+extensions and `plugins`, and the same per-case outcome. A fix there reaches both
 ([#1095](https://github.com/jimhoyd-com/urlcode/issues/1095)). Use `run_tests`
 when you want structured results: `total`, `failed`, `localReview` and every
 per-case event, passes included, as JSON. It runs in the server process,
@@ -1509,10 +1509,13 @@ when you want exactly what `urlcode test` prints and its exit status, with the
 project isolated from the server process: a minimal environment, the two-minute
 deadline and output capped at 32 KiB. What stays separate is deliberate. Each
 tool keeps its own process, environment, timeout, host lifetime and result
-shape, and callers depend on both. The child also receives the host file's
-`plugins`. `run_tests` passes the operator host's extensions and no plugins,
-and takes no `--alias-origin`, as before
-([#1112](https://github.com/jimhoyd-com/urlcode/issues/1112)).
+shape, and callers depend on both. A fixture that relies on a host plugin (a
+response header its `onResponse` hook adds, say) therefore passes or fails the
+same way under either tool
+([#1112](https://github.com/jimhoyd-com/urlcode/issues/1112)). Neither takes
+`--alias-origin`: `urlcode mcp` has none to forward, so the fixtures run
+against `--origin` alone, while `urlcode test --alias-origin` passes its alias
+origins through the same core.
 
 `create_route`, `add_recipe`, `merge_recipe` and `scaffold_feature` return `validation`, the
 `validateProject` verdict of the project after the operation, computed with the
