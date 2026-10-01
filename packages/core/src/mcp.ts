@@ -143,7 +143,8 @@ export async function serveMcp(options:McpOptions):Promise<void> {
    // Reachable only when --allow-authoring listed it: the names check above refuses it otherwise.
    // The in-process adapter of the fixture core `urlcode test` (and so run_test) uses (#1095): the same local review
    // (#932, #964) and a hermetic host of its own per run (RIM-EXT-HERMETIC-001). It returns every event, not the
-   // CLI's filtered output, and keeps its existing inputs: no alias origins, and no host plugins.
+   // CLI's filtered output. The host file's plugins reach it from that core as they reach `urlcode test` (#1112); it
+   // takes no alias origins, since the server has no --alias-origin to give it (nor does run_test's child).
    case 'run_tests':{const events:unknown[]=[],review=await localReviewFor(project,{pinned:policy!==undefined,origin:options.origin||undefined});
     if(review)events.push(localReviewEvent(review));
     const result=await runHermeticFixtures(project,{hostFile:options.hostFile,policy,review,origin:options.origin||undefined,log:(event:object)=>{events.push(event);}});

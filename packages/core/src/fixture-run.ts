@@ -2,6 +2,7 @@ import {loadDocument} from './config.ts';
 import {prepareFunctionSnapshot} from './policy.ts';
 import type {OperatorPolicy} from './policy.ts';
 import {loadOperatorHost} from './operator-host.ts';
+import type {OperatorHost} from './operator-host.ts';
 import {runProjectTests} from './project-tests.ts';
 import type {ProjectTestOptions,ProjectTestResult} from './project-tests.ts';
 import {localReviewNote,localReviewOrigin} from './cli-command-metadata.ts';
@@ -38,14 +39,25 @@ export function reportedWithoutVerbose(event:object):boolean {
  return (kind==='test'&&pass===false)||kind==='warning'||kind==='extension_warning';
 }
 
-export interface HermeticFixtureOptions extends Omit<ProjectTestOptions,'extensions'|'permissions'> {hostFile?:string|undefined;policy?:OperatorPolicy|undefined;review?:LocalReview|undefined}
+export interface FixtureRunOptions extends Pick<ProjectTestOptions,'log'|'origin'|'aliasOrigins'> {policy?:OperatorPolicy|undefined;review?:LocalReview|undefined}
+/**
+ * One fixture run on an operator host that is already loaded (#1112): the host's extensions and its plugins, the
+ * verified policy's grants and the operator's alias origins all reach the run from here, so `urlcode test` (and so
+ * `run_test`) and `run_tests` cannot replay a fixture against different hooks. A local review's origin replaces the
+ * given one. With no host file the host is empty and nothing is added.
+ */
+export async function runFixturesOnHost(project:string,host:OperatorHost,{policy,review,log,origin,aliasOrigins}:FixtureRunOptions):Promise<ProjectTestResult> {
+ return runProjectTests(project,{log,origin:review?.origin??origin,aliasOrigins,extensions:host.extensions,plugins:host.plugins,...(policy?{permissions:policy}:{})});
+}
+
+export interface HermeticFixtureOptions extends FixtureRunOptions {hostFile?:string|undefined}
 /**
  * One in-process fixture run on its own hermetic host (RIM-EXT-HERMETIC-001): the operator host file, when given, is
- * loaded again on a fresh, empty data directory under the run's revision pin and closed afterward, so the run never
- * reads the site's live data or what an earlier run wrote. A local review's origin replaces the given one.
+ * loaded again on a fresh, empty data directory under the run's revision pin, run through `runFixturesOnHost` and
+ * closed afterward, so the run never reads the site's live data or what an earlier run wrote.
  */
-export async function runHermeticFixtures(project:string,{hostFile,policy,review,log,origin,aliasOrigins,plugins}:HermeticFixtureOptions):Promise<ProjectTestResult> {
- const host=hostFile===undefined?undefined:await loadOperatorHost(hostFile,project,{revision:hostRevision(policy,review),hermetic:true});
- try{return await runProjectTests(project,{log,origin:review?.origin??origin,aliasOrigins,plugins,extensions:host?.extensions,...(policy?{permissions:policy}:{})});}
- finally{await host?.close?.();}
+export async function runHermeticFixtures(project:string,{hostFile,...options}:HermeticFixtureOptions):Promise<ProjectTestResult> {
+ const host=await loadOperatorHost(hostFile,project,{revision:hostRevision(options.policy,options.review),hermetic:true});
+ try{return await runFixturesOnHost(project,host,options);}
+ finally{await host.close?.();}
 }
