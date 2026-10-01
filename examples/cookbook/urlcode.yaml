@@ -9,7 +9,7 @@ includes:
   - routes/middleware.yaml
 routes: {}
 # Site conventions: each key generates one native route (see
-# https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SITE.md).
+# https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/SITE.md).
 # sitemap is left out here because the cookbook audit runs without --origin.
 site:
   robots:

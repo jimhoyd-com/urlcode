@@ -57,5 +57,5 @@ helper, its options and guarantees, the limits and how a larger site generates
 its source project.
 
 <!-- urlcode-current-version:start -->
-[docs/PRERENDER.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/PRERENDER.md
+[docs/PRERENDER.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/PRERENDER.md
 <!-- urlcode-current-version:end -->

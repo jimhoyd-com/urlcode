@@ -450,32 +450,32 @@ Requires the matching `@jimhoyd/urlcode` core as a peer. Apache-2.0.
 <!-- The links below are pinned to this release, so an installed copy of this README reads the docs of the
 version it describes; `npm run release:bump` moves them and scripts/check-local-links.ts checks their targets. -->
 <!-- urlcode-current-version:start -->
-[store-guide]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md
-[store-http-contract]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#http-contract
-[store-openapi]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#openapi
-[http-error-format]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#error-format
-[http-named-schemas]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#named-schemas
-[tooling-openapi-export]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TOOLING.md#openapi-export
-[add-ons]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#add-ons-extensions-and-artifacts
-[store-durability]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#durability
-[reference-client]: https://github.com/jimhoyd-com/urlcode/tree/v0.6.5/proofs/private-requests/client
-[store-reload]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#reload
-[store-per-record-ownership]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#per-record-ownership
-[store-clearing-a-property]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#clearing-a-property
-[store-audited-writes]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#audited-writes
-[store-forwarding-events-to-a-sink]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#forwarding-events-to-a-sink
-[store-backups]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#storage-and-concurrency-what-it-does-and-does-not-guarantee
-[store-using-a-collection-from-another-extension]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#using-a-collection-from-another-extension
-[store-conditional-transitions-and-result-aware-retries]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#conditional-transitions-and-result-aware-retries
-[store-what-the-caller-may-run]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#what-the-caller-may-run
-[store-membership-gates-and-cross-owner-reads]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#membership-gates-and-cross-owner-reads
-[store-bounded-keyed-transitions]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#bounded-keyed-transitions
-[store-non-overlapping-intervals]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#non-overlapping-intervals
-[store-declared-transfers]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#declared-transfers
-[store-edit-and-delete-states]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#edit-and-delete-states
-[store-a-directory-by-a-unique-handle]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#a-directory-by-a-unique-handle
-[extensions-artifacts]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#artifacts
-[extensions-owner-choice]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#native-independent-integration-or-bundled-default
+[store-guide]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/STORE.md
+[store-http-contract]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/STORE.md#http-contract
+[store-openapi]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/STORE.md#openapi
+[http-error-format]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/HTTP.md#error-format
+[http-named-schemas]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/HTTP.md#named-schemas
+[tooling-openapi-export]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/TOOLING.md#openapi-export
+[add-ons]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/EXTENSIONS.md#add-ons-extensions-and-artifacts
+[store-durability]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/STORE.md#durability
+[reference-client]: https://github.com/jimhoyd-com/urlcode/tree/v0.6.6/proofs/private-requests/client
+[store-reload]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/STORE.md#reload
+[store-per-record-ownership]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/STORE.md#per-record-ownership
+[store-clearing-a-property]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/STORE.md#clearing-a-property
+[store-audited-writes]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/STORE.md#audited-writes
+[store-forwarding-events-to-a-sink]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/STORE.md#forwarding-events-to-a-sink
+[store-backups]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/STORE.md#storage-and-concurrency-what-it-does-and-does-not-guarantee
+[store-using-a-collection-from-another-extension]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/STORE.md#using-a-collection-from-another-extension
+[store-conditional-transitions-and-result-aware-retries]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/STORE.md#conditional-transitions-and-result-aware-retries
+[store-what-the-caller-may-run]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/STORE.md#what-the-caller-may-run
+[store-membership-gates-and-cross-owner-reads]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/STORE.md#membership-gates-and-cross-owner-reads
+[store-bounded-keyed-transitions]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/STORE.md#bounded-keyed-transitions
+[store-non-overlapping-intervals]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/STORE.md#non-overlapping-intervals
+[store-declared-transfers]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/STORE.md#declared-transfers
+[store-edit-and-delete-states]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/STORE.md#edit-and-delete-states
+[store-a-directory-by-a-unique-handle]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/STORE.md#a-directory-by-a-unique-handle
+[extensions-artifacts]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/EXTENSIONS.md#artifacts
+[extensions-owner-choice]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/EXTENSIONS.md#native-independent-integration-or-bundled-default
 <!-- urlcode-current-version:end -->
 
 <!-- extension-reference:start -->

@@ -164,12 +164,12 @@ reporting path and outstanding assessment gate are the authoritative claims on
 this page and in [the sandbox review][docs/SANDBOX-REVIEW.md].
 
 <!-- urlcode-current-version:start -->
-[packages/auth/SECURITY.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth/SECURITY.md
-[docs/EXTENSIONS.md#request-bound-capabilities]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#request-bound-capabilities
-[docs/EGRESS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EGRESS.md
-[docs/EXTENSIONS.md#the-installed-file-record]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-installed-file-record
-[docs/OPERATIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OPERATIONS.md
-[docs/READINESS.md#test-data-and-seeds]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#test-data-and-seeds
-[docs/OPERATIONS.md#host-admission-on-a-loopback-bind]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OPERATIONS.md#host-admission-on-a-loopback-bind
-[docs/SANDBOX-REVIEW.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SANDBOX-REVIEW.md
+[packages/auth/SECURITY.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/packages/auth/SECURITY.md
+[docs/EXTENSIONS.md#request-bound-capabilities]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/EXTENSIONS.md#request-bound-capabilities
+[docs/EGRESS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/EGRESS.md
+[docs/EXTENSIONS.md#the-installed-file-record]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/EXTENSIONS.md#the-installed-file-record
+[docs/OPERATIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/OPERATIONS.md
+[docs/READINESS.md#test-data-and-seeds]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/READINESS.md#test-data-and-seeds
+[docs/OPERATIONS.md#host-admission-on-a-loopback-bind]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/OPERATIONS.md#host-admission-on-a-loopback-bind
+[docs/SANDBOX-REVIEW.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/SANDBOX-REVIEW.md
 <!-- urlcode-current-version:end -->

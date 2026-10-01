@@ -21,5 +21,5 @@ redirect, or a host/scheme-based redirect — run
 validation error, or see [docs/OPEN-DECISIONS.md][docs/OPEN-DECISIONS.md].
 
 <!-- urlcode-current-version:start -->
-[docs/OPEN-DECISIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OPEN-DECISIONS.md
+[docs/OPEN-DECISIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/OPEN-DECISIONS.md
 <!-- urlcode-current-version:end -->

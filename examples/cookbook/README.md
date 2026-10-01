@@ -26,6 +26,6 @@ middleware version. `/maintenance` returns 503 without its bypass header and
 starter remains the recommended starting point for a new application.
 
 <!-- urlcode-current-version:start -->
-[docs/MIDDLEWARE-EXAMPLES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/MIDDLEWARE-EXAMPLES.md
-[docs/YAML-GUIDE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/YAML-GUIDE.md
+[docs/MIDDLEWARE-EXAMPLES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/MIDDLEWARE-EXAMPLES.md
+[docs/YAML-GUIDE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/YAML-GUIDE.md
 <!-- urlcode-current-version:end -->

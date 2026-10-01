@@ -12,5 +12,5 @@ evidence format and limitations. CI replays the fixture through local adapters;
 that does not establish that any provider deployment has been verified.
 
 <!-- urlcode-current-version:start -->
-[docs/PROVIDER-VERIFICATION.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/PROVIDER-VERIFICATION.md
+[docs/PROVIDER-VERIFICATION.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/PROVIDER-VERIFICATION.md
 <!-- urlcode-current-version:end -->

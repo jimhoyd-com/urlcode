@@ -13,5 +13,5 @@ Conditions compare request inputs; they do not authorize users or grant guest
 capabilities. See [the condition contract][docs/CONDITIONS.md].
 
 <!-- urlcode-current-version:start -->
-[docs/CONDITIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CONDITIONS.md
+[docs/CONDITIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/CONDITIONS.md
 <!-- urlcode-current-version:end -->

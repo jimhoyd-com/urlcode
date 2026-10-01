@@ -4,7 +4,7 @@
  * `CORE_VERSION` is the one version literal in core's source: `npm run release:bump` rewrites it and
  * `release:bump --check` fails unless it equals package.json. It has no Node import, so any runtime target can read it.
  */
-export const CORE_VERSION = '0.6.5';
+export const CORE_VERSION = '0.6.6';
 
 const REPOSITORY_BLOB = 'https://github.com/jimhoyd-com/urlcode/blob/';
 

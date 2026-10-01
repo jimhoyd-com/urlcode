@@ -335,10 +335,10 @@ Implementation references: [QuickJS/WASM project](https://github.com/justjake/qu
 and its [runtime isolation/limits API](https://github.com/justjake/quickjs-emscripten/blob/main/doc/quickjs-emscripten/classes/QuickJSRuntime.md).
 
 <!-- urlcode-current-version:start -->
-[docs/HTTP.md#responses]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#responses
-[docs/SPECIFICATION.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SPECIFICATION.md
-[docs/EXTENSIONS.md#project-level-lifecycle-hooks]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#project-level-lifecycle-hooks
-[docs/CAPACITY.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CAPACITY.md
-[docs/SPECIFICATION.md#streamed-responses]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SPECIFICATION.md#streamed-responses
-[docs/EXTENSIONS.md#request-context-route-env-and-request-id]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#request-context-route-env-and-request-id
+[docs/HTTP.md#responses]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/HTTP.md#responses
+[docs/SPECIFICATION.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/SPECIFICATION.md
+[docs/EXTENSIONS.md#project-level-lifecycle-hooks]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/EXTENSIONS.md#project-level-lifecycle-hooks
+[docs/CAPACITY.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/CAPACITY.md
+[docs/SPECIFICATION.md#streamed-responses]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/SPECIFICATION.md#streamed-responses
+[docs/EXTENSIONS.md#request-context-route-env-and-request-id]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/EXTENSIONS.md#request-context-route-env-and-request-id
 <!-- urlcode-current-version:end -->

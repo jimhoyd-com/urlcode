@@ -340,9 +340,9 @@ Fast checks: `urlcode validate --project app`, `urlcode validate --local --proje
 <!-- extension-reference:end -->
 
 <!-- urlcode-current-version:start -->
-[extensions-owner-choice]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#native-independent-integration-or-bundled-default
-[extensions-request-helpers]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#request-helpers
-[readiness-authenticated-routes]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#authenticated-routes-auth-true
-[readiness-seeds]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#test-data-and-seeds
-[store-one-process]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#one-serving-process-per-database
+[extensions-owner-choice]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/EXTENSIONS.md#native-independent-integration-or-bundled-default
+[extensions-request-helpers]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/EXTENSIONS.md#request-helpers
+[readiness-authenticated-routes]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/READINESS.md#authenticated-routes-auth-true
+[readiness-seeds]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/READINESS.md#test-data-and-seeds
+[store-one-process]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/STORE.md#one-serving-process-per-database
 <!-- urlcode-current-version:end -->

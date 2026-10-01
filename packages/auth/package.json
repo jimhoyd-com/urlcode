@@ -1,6 +1,6 @@
 {
   "name": "@jimhoyd/urlcode-auth",
-  "version": "0.6.5",
+  "version": "0.6.6",
   "type": "module",
   "description": "Operator-installed authentication extension for URLCode: Better Auth accounts and sessions on one mount",
   "license": "Apache-2.0",
@@ -49,7 +49,7 @@
     "better-auth": "1.7.6"
   },
   "peerDependencies": {
-    "@jimhoyd/urlcode": "0.6.5"
+    "@jimhoyd/urlcode": "0.6.6"
   },
   "bin": {
     "urlcode-auth": "./dist/cli.js"

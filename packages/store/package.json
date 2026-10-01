@@ -1,6 +1,6 @@
 {
   "name": "@jimhoyd/urlcode-store",
-  "version": "0.6.5",
+  "version": "0.6.6",
   "type": "module",
   "description": "Operator-installed declarative data store extension for URLCode: SQLite-backed collections served as a bounded CRUD API",
   "repository": {
@@ -45,7 +45,7 @@
     "typescript": "6.0.3"
   },
   "peerDependencies": {
-    "@jimhoyd/urlcode": "0.6.5"
+    "@jimhoyd/urlcode": "0.6.6"
   },
   "bin": {
     "urlcode-store": "./dist/cli.js"

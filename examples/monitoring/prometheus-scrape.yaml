@@ -8,7 +8,7 @@
 # publicly.
 #
 # Metric names and labels are fixed in
-# https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OBSERVABILITY.md.
+# https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/OBSERVABILITY.md.
 # Requests are labelled by status_class (2xx..5xx), not exact status, so the
 # example rules in prometheus-rules.yaml carry a status_class form of each
 # expression next to the log-derived one from vector.toml.

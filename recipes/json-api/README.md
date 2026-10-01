@@ -8,5 +8,5 @@ JSON envelope ([error format][docs/HTTP.md#error-format]). Do not submit credent
 echo endpoint. This recipe grants no network or filesystem access.
 
 <!-- urlcode-current-version:start -->
-[docs/HTTP.md#error-format]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#error-format
+[docs/HTTP.md#error-format]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/HTTP.md#error-format
 <!-- urlcode-current-version:end -->

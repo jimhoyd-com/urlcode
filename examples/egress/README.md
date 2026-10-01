@@ -24,5 +24,5 @@ with trusted fake transport and public-address fixtures, never by allowing priva
 network destinations in production.
 
 <!-- urlcode-current-version:start -->
-[docs/EGRESS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EGRESS.md
+[docs/EGRESS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/EGRESS.md
 <!-- urlcode-current-version:end -->

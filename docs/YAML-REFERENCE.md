@@ -649,27 +649,27 @@ See [YAML guide][docs/YAML-GUIDE.md] for examples.
 | `schemas.*` | object | no | — | A JSON Schema 2020-12 document in the request body profile (see request.body.<METHOD>.schema), or {file: <path>}: a project-relative .json, .yaml or .yml file holding one. A file is read offline: its relative $refs to other project files are followed and bundled into /$defs (a whole file as <stem>, one of its /$defs entries as <stem>.<name>); a remote reference, a path that leaves the project, a symlink, a missing target and more than 256 KiB per file, 2 MiB or 64 files in all are refused before serving. An object whose only key is file is a file reference. |
 
 <!-- urlcode-current-version:start -->
-[docs/YAML-GUIDE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/YAML-GUIDE.md
-[docs/SPECIFICATION.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SPECIFICATION.md
-[docs/yaml/organization.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/organization.md
-[docs/yaml/functions.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/functions.md
-[docs/yaml/redirects.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/redirects.md
-[docs/yaml/assets.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/assets.md
-[docs/yaml/responses.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/responses.md
-[docs/yaml/middleware.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/middleware.md
-[docs/yaml/conditions.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/conditions.md
-[docs/EGRESS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EGRESS.md
-[docs/EXTENSIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md
-[docs/yaml/policies.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/policies.md
-[docs/yaml/site.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/site.md
-[docs/HTTP.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md
-[docs/ROUTING.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/ROUTING.md
-[docs/policies/throttle.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/policies/throttle.md
-[docs/policies/agents.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/policies/agents.md
-[docs/policies/security.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/policies/security.md
-[docs/policies/compression.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/policies/compression.md
-[docs/policies/cache.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/policies/cache.md
-[docs/CONDITIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CONDITIONS.md
-[docs/MIDDLEWARE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/MIDDLEWARE.md
-[docs/HTTP.md#named-schemas]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#named-schemas
+[docs/YAML-GUIDE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/YAML-GUIDE.md
+[docs/SPECIFICATION.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/SPECIFICATION.md
+[docs/yaml/organization.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/yaml/organization.md
+[docs/yaml/functions.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/yaml/functions.md
+[docs/yaml/redirects.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/yaml/redirects.md
+[docs/yaml/assets.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/yaml/assets.md
+[docs/yaml/responses.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/yaml/responses.md
+[docs/yaml/middleware.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/yaml/middleware.md
+[docs/yaml/conditions.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/yaml/conditions.md
+[docs/EGRESS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/EGRESS.md
+[docs/EXTENSIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/EXTENSIONS.md
+[docs/yaml/policies.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/yaml/policies.md
+[docs/yaml/site.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/yaml/site.md
+[docs/HTTP.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/HTTP.md
+[docs/ROUTING.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/ROUTING.md
+[docs/policies/throttle.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/policies/throttle.md
+[docs/policies/agents.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/policies/agents.md
+[docs/policies/security.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/policies/security.md
+[docs/policies/compression.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/policies/compression.md
+[docs/policies/cache.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/policies/cache.md
+[docs/CONDITIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/CONDITIONS.md
+[docs/MIDDLEWARE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/MIDDLEWARE.md
+[docs/HTTP.md#named-schemas]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/HTTP.md#named-schemas
 <!-- urlcode-current-version:end -->

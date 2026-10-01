@@ -203,7 +203,7 @@ for the vocabulary these two paragraphs use.
 ## Status
 
 <!-- urlcode-current-version:start -->
-This checkout prepares the `0.6.5` core release. The auth, store
+This checkout prepares the `0.6.6` core release. The auth, store
 and mcp extensions and the store-schema artifact are workspace packages
 released as add-on tarballs with core, not npm packages. Package availability
 remains a live registry fact: see the GitHub Releases page or
@@ -324,50 +324,50 @@ permitted. See [contributing][CONTRIBUTING.md], [security](SECURITY.md),
 [governance][GOVERNANCE.md] and the [roadmap][ROADMAP.md].
 
 <!-- urlcode-current-version:start -->
-[docs/CONCEPTS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CONCEPTS.md
-[docs/FRAMEWORK.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/FRAMEWORK.md
-[docs/STARTERS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STARTERS.md
-[CONTRIBUTING.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/CONTRIBUTING.md
-[docs/PROJECT-DIRECTION.md#why-your-ai-should-build-your-application-not-your-framework]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/PROJECT-DIRECTION.md#why-your-ai-should-build-your-application-not-your-framework
-[ROADMAP.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/ROADMAP.md
-[docs/INSTALL.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/INSTALL.md
-[docs/MIDDLEWARE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/MIDDLEWARE.md
-[docs/YAML-GUIDE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/YAML-GUIDE.md
-[docs/EXTENSIONS.md#artifacts]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#artifacts
-[docs/BEST-PRACTICES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/BEST-PRACTICES.md
-[docs/CAPACITY.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CAPACITY.md
-[docs/RESILIENCE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RESILIENCE.md
-[docs/TYPESCRIPT.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/TYPESCRIPT.md
-[ROADMAP.md#history]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/ROADMAP.md#history
-[packages/auth]: https://github.com/jimhoyd-com/urlcode/tree/v0.6.5/packages/auth
-[packages/store]: https://github.com/jimhoyd-com/urlcode/tree/v0.6.5/packages/store
-[packages/mcp]: https://github.com/jimhoyd-com/urlcode/tree/v0.6.5/packages/mcp
-[artifacts/store-schema]: https://github.com/jimhoyd-com/urlcode/tree/v0.6.5/artifacts/store-schema
-[docs/EXTENSIONS.md#add-ons-extensions-and-artifacts]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#add-ons-extensions-and-artifacts
-[docs/STORE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md
-[docs/PROJECT-DIRECTION.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/PROJECT-DIRECTION.md
-[docs/RELEASE-OPERATIONS.md#production-readiness]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RELEASE-OPERATIONS.md#production-readiness
-[docs/SCAFFOLDING.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SCAFFOLDING.md
-[packages/auth/README.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth/README.md
-[docs/ASSETS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/ASSETS.md
-[docs/HTTP.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md
-[docs/POLICIES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/POLICIES.md
-[docs/SITE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SITE.md
-[docs/CONDITIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CONDITIONS.md
-[docs/EGRESS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EGRESS.md
-[docs/ORGANIZATION.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/ORGANIZATION.md
-[docs/BULK.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/BULK.md
-[docs/RECIPES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/RECIPES.md
-[docs/READINESS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md
-[docs/CI.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CI.md
-[docs/OPERATIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OPERATIONS.md
-[docs/CAPABILITIES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CAPABILITIES.md
-[docs/VERCEL.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/VERCEL.md
-[docs/AWS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/AWS.md
-[docs/CLOUDFLARE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CLOUDFLARE.md
-[docs/STATIC.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STATIC.md
-[proofs/private-requests/README.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/private-requests/README.md
-[proofs/private-requests/client/main.js]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/private-requests/client/main.js
-[docs/OPEN-DECISIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OPEN-DECISIONS.md
-[GOVERNANCE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/GOVERNANCE.md
+[docs/CONCEPTS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/CONCEPTS.md
+[docs/FRAMEWORK.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/FRAMEWORK.md
+[docs/STARTERS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/STARTERS.md
+[CONTRIBUTING.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/CONTRIBUTING.md
+[docs/PROJECT-DIRECTION.md#why-your-ai-should-build-your-application-not-your-framework]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/PROJECT-DIRECTION.md#why-your-ai-should-build-your-application-not-your-framework
+[ROADMAP.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/ROADMAP.md
+[docs/INSTALL.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/INSTALL.md
+[docs/MIDDLEWARE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/MIDDLEWARE.md
+[docs/YAML-GUIDE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/YAML-GUIDE.md
+[docs/EXTENSIONS.md#artifacts]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/EXTENSIONS.md#artifacts
+[docs/BEST-PRACTICES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/BEST-PRACTICES.md
+[docs/CAPACITY.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/CAPACITY.md
+[docs/RESILIENCE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/RESILIENCE.md
+[docs/TYPESCRIPT.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/TYPESCRIPT.md
+[ROADMAP.md#history]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/ROADMAP.md#history
+[packages/auth]: https://github.com/jimhoyd-com/urlcode/tree/v0.6.6/packages/auth
+[packages/store]: https://github.com/jimhoyd-com/urlcode/tree/v0.6.6/packages/store
+[packages/mcp]: https://github.com/jimhoyd-com/urlcode/tree/v0.6.6/packages/mcp
+[artifacts/store-schema]: https://github.com/jimhoyd-com/urlcode/tree/v0.6.6/artifacts/store-schema
+[docs/EXTENSIONS.md#add-ons-extensions-and-artifacts]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/EXTENSIONS.md#add-ons-extensions-and-artifacts
+[docs/STORE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/STORE.md
+[docs/PROJECT-DIRECTION.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/PROJECT-DIRECTION.md
+[docs/RELEASE-OPERATIONS.md#production-readiness]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/RELEASE-OPERATIONS.md#production-readiness
+[docs/SCAFFOLDING.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/SCAFFOLDING.md
+[packages/auth/README.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/packages/auth/README.md
+[docs/ASSETS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/ASSETS.md
+[docs/HTTP.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/HTTP.md
+[docs/POLICIES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/POLICIES.md
+[docs/SITE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/SITE.md
+[docs/CONDITIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/CONDITIONS.md
+[docs/EGRESS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/EGRESS.md
+[docs/ORGANIZATION.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/ORGANIZATION.md
+[docs/BULK.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/BULK.md
+[docs/RECIPES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/RECIPES.md
+[docs/READINESS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/READINESS.md
+[docs/CI.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/CI.md
+[docs/OPERATIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/OPERATIONS.md
+[docs/CAPABILITIES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/CAPABILITIES.md
+[docs/VERCEL.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/VERCEL.md
+[docs/AWS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/AWS.md
+[docs/CLOUDFLARE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/CLOUDFLARE.md
+[docs/STATIC.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/STATIC.md
+[proofs/private-requests/README.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/proofs/private-requests/README.md
+[proofs/private-requests/client/main.js]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/proofs/private-requests/client/main.js
+[docs/OPEN-DECISIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/OPEN-DECISIONS.md
+[GOVERNANCE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/GOVERNANCE.md
 <!-- urlcode-current-version:end -->

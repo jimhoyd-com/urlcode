@@ -19,5 +19,5 @@ function route and one regular redirect. Add asset routes when you need them.
 URLCode is licensed under the Apache License 2.0.
 
 <!-- urlcode-current-version:start -->
-[docs/ASSETS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/ASSETS.md
+[docs/ASSETS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/ASSETS.md
 <!-- urlcode-current-version:end -->

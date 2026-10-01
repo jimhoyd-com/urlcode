@@ -13,5 +13,5 @@ package must contain the project files the routes read: the entry YAML, any
 includes, and every page, download and static directory.
 
 <!-- urlcode-current-version:start -->
-[docs/AWS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/AWS.md
+[docs/AWS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/AWS.md
 <!-- urlcode-current-version:end -->
