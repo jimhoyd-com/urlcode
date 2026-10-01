@@ -13,21 +13,20 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { TestContext } from 'node:test';
+import { npmCommand } from '../scripts/npm-command.ts';
 import { packAddons } from '../scripts/pack-addons.ts';
 import { repositoryRoot } from '../scripts/workspaces.ts';
 
 const proof = join(repositoryRoot, 'proofs', 'private-requests');
-// npm's own CLI under this Node, as `npm run test:proof` provides it: no shell, so Windows needs no npm.cmd quoting.
-const npmCli = process.env.npm_execpath;
-const npmCommand = npmCli ? process.execPath : process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
 interface Run { status: number | null; stdout: string; stderr: string }
 function run(t: TestContext, cwd: string, command: string, args: string[], env: Record<string, string> = {}): Run {
-  const result = spawnSync(command, args, { cwd, encoding: 'utf8', timeout: 600000, env: { ...process.env, ...env }, shell: command === 'npm.cmd' });
+  const result = spawnSync(command, args, { cwd, encoding: 'utf8', timeout: 600000, env: { ...process.env, ...env } });
   t.diagnostic(`${command} ${args.join(' ')} -> ${result.status}`);
   return { status: result.status, stdout: result.stdout, stderr: result.stderr };
 }
-const npm = (t: TestContext, cwd: string, args: string[], env: Record<string, string> = {}): Run => run(t, cwd, npmCommand, npmCli ? [npmCli, ...args] : args, env);
+// npm's own CLI under this Node (scripts/npm-command.ts): no shell, so Windows needs no npm.cmd quoting.
+const npm = (t: TestContext, cwd: string, args: string[], env: Record<string, string> = {}): Run => { const command = npmCommand(args); return run(t, cwd, command.command, command.args, env); };
 const urlcode = (t: TestContext, site: string, args: string[], env: Record<string, string> = {}): Run => run(t, site, process.execPath, [join(site, 'node_modules', '@jimhoyd', 'urlcode', 'dist', 'cli.js'), ...args], env);
 const freePort = (): Promise<number> => new Promise((resolve, reject) => {
   const server = createServer().listen(0, '127.0.0.1', () => { const { port } = server.address() as { port: number }; server.close(() => resolve(port)); }).on('error', reject);

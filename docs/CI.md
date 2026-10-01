@@ -205,6 +205,18 @@ stack: Node runs separate `t.after()` hooks in registration order, so an earlier
 directory-removal hook would run while those later resources are still open.
 Filesystem retries cannot repair that ordering.
 
+Tests and scripts start npm through `scripts/npm-command.ts`, never through
+`npm.cmd` and a shell: `npmCommand` runs npm's JavaScript entry under the
+current Node, and `runNpmSync` adds a bounded synchronous run with no stdin,
+no update check, funding or audit request, and a failure message that names
+the exit status, signal, whether the timeout fired, the elapsed time and the
+tail of both streams
+([#1130](https://github.com/jimhoyd-com/urlcode/issues/1130)). To repeat a
+suspected Windows npm hang, rerun the failing job, or run the test file in a
+loop on a Windows machine, for example
+`for /L %i in (1,1,50) do npm run test:shard -- test/prepare.test.ts`; each
+npm call logs its elapsed time as a test diagnostic.
+
 The store suite uses a two-minute test-file timeout.
 Keep large suites split into focused files so a file can finish within its budget
 on supported CI runners, with fixtures isolated between files. Platform-sensitive Windows coverage is Node 24

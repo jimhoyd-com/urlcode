@@ -12,14 +12,13 @@ import { pathToFileURL } from 'node:url';
 import type { TestContext } from 'node:test';
 import { addons, repositoryRoot } from '../scripts/workspaces.ts';
 import { loadDocument } from '../packages/core/src/config.ts';
+import { npmCommand } from '../scripts/npm-command.ts';
 import { packAddons, shippedManifest } from '../scripts/pack-addons.ts';
 import type { PackedAddons } from '../scripts/pack-addons.ts';
 
 const cli = join(repositoryRoot, 'dist', 'cli.js');
 /** npm's own CLI under this Node when a script started the test, so no shell is needed on Windows. */
-const npmRun = (args: string[], cwd: string) => process.env.npm_execpath
-  ? spawnSync(process.execPath, [process.env.npm_execpath, ...args], { cwd, encoding: 'utf8' })
-  : spawnSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', args, { cwd, encoding: 'utf8', shell: process.platform === 'win32' });
+const npmRun = (args: string[], cwd: string) => { const command = npmCommand(args); return spawnSync(command.command, command.args, { cwd, encoding: 'utf8' }); };
 
 let packed: Promise<PackedAddons> | undefined;
 /** Packs once per run: core and every add-on, with an addons.json pinning the add-on tarballs by sha512. */
@@ -275,9 +274,7 @@ test('an auth site\'s generated validate script reviews locally with no context,
   assert.equal(added.status, 0, added.stderr);
   operatorCli(t, dir, 'urlcode-auth', ['migrate'], {});
   const { PROJECT_SHA256: _pin, URLCODE_ORIGIN: _origin, URLCODE_POLICY: _policy, ...ambient } = process.env;
-  const npmScript = (script: string, env: Record<string, string>) => process.env.npm_execpath
-    ? spawnSync(process.execPath, [process.env.npm_execpath, 'run', '--silent', script], { cwd: dir, encoding: 'utf8', timeout: 300000, env: { ...ambient, ...env } })
-    : spawnSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', '--silent', script], { cwd: dir, encoding: 'utf8', timeout: 300000, env: { ...ambient, ...env }, shell: process.platform === 'win32' });
+  const npmScript = (script: string, env: Record<string, string>) => { const command = npmCommand(['run', '--silent', script]); return spawnSync(command.command, command.args, { cwd: dir, encoding: 'utf8', timeout: 300000, env: { ...ambient, ...env } }); };
   const refusal = (stderr: string) => JSON.parse(stderr.trim().split('\n').filter(line => line.startsWith('{')).at(-1)!) as { message: string; code: string; command: string };
 
   // No context at all: the generated validate script reviews the current revision locally (#932), with no pin or origin.

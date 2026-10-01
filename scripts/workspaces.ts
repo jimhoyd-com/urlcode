@@ -10,6 +10,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { npmCommand } from './npm-command.ts';
 
 export interface Addon { name: string; kind: 'extension' | 'artifact'; directory: string; packageName: string; version: string; description: string; requires: string[]; uses: string[]; testsWith: string[]; scripts: Record<string, string> }
 export const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -44,10 +45,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const list = await addons();
   if (command === 'list') process.stdout.write(JSON.stringify(list.map(({ scripts: _scripts, ...addon }) => addon), null, 2) + '\n');
   else if (command === 'run' && script) {
-    const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
     for (const addon of list) {
       if (!addon.scripts[script]) continue;
-      const result = spawnSync(npm, ['run', script, '--workspace', addon.packageName], { stdio: 'inherit', shell: process.platform === 'win32' });
+      const npm = npmCommand(['run', script, '--workspace', addon.packageName]);
+      const result = spawnSync(npm.command, npm.args, { stdio: 'inherit' });
       if (result.status !== 0) process.exit(result.status ?? 1);
     }
   } else { process.stderr.write('Use: node scripts/workspaces.ts list | run <script>\n'); process.exit(2); }
