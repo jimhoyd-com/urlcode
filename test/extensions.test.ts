@@ -724,7 +724,7 @@ export default await composeHost(import.meta.url,[demo]);
     };
     await writeFile(join(root,'urlcode.yaml'),(await readFile(join(root,'urlcode.yaml'),'utf8')).replace(/label: \w+/,'label: agent'));
     const revision=await inspectExtensionRevision(root);
-    // The three servers are independent reads of the edited project, so they run with bounded concurrency.
+    // The three servers are independent reads of the edited project, so they run concurrently.
     const [reviewed,pinned,policy]=await Promise.all([mcp(),mcp({PROJECT_SHA256:'b'.repeat(64),URLCODE_ORIGIN:origin}),mcp({URLCODE_ORIGIN:origin},['--policy',stale])]);
     for(const result of reviewed.runners){
       assert.equal(result.exitCode,0,result.command+result.stdout+result.stderr);
