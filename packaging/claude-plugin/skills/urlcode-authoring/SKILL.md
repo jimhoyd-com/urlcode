@@ -76,7 +76,8 @@ The npm package is `@jimhoyd/urlcode` — always scoped. There is no unscoped
 `urlcode` package on the registry; `npm view urlcode` 404s. Install with
 `npm install @jimhoyd/urlcode`, then scaffold with
 `npx --no --package @jimhoyd/urlcode urlcode init .` (works in a directory
-holding only `package.json`, `package-lock.json`, `node_modules` or `.git`;
+holding only `package.json`, `package-lock.json`, `node_modules`, `.git`,
+`.mcp.json` or an agent client's `.claude/` or `.codex/`;
 `--no` runs the installed copy and never fetches). It writes a site: the route
 project in `app/`, the operator host `host.mjs` beside it, and a `package.json`
 with an exact runtime pin and npm scripts. Run from the site, commands default
