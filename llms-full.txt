@@ -6810,7 +6810,9 @@ urlcode artifacts add @example/urlcode-petstore-docs@^1.4.0
 `outdated` is informational and asks the registry (`npm view <spec> version`,
 a network call this explicit command makes) for the newest version matching
 each independent package's recorded spec, and prints the `add` command that
-would move it. A path, URL or repository spec has no registry version to
+would move it. "Newest" is SemVer 2.0.0 precedence, with numeric identifiers
+of any length compared exactly; an answer that is not a strict SemVer 2.0.0
+version is ignored, and one with no valid version is reported. A path, URL or repository spec has no registry version to
 compare, and a registry that cannot be reached is reported, never guessed.
 `urlcode upgrade` never moves an independent package, so every change of what
 the site trusts stays an explicit operator action.
