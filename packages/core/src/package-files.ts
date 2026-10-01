@@ -126,27 +126,46 @@ export async function checkPackageFiles(site: string, pkg: string, entry: LockEn
   return { status: 'modified', recorded: Object.keys(recorded.files).length, drift, message: `${pkg}'s installed files differ from ${ADDON_FILES_LOCK} (${describeDrift(drift)}); reinstall with \`npm ci --ignore-scripts\`` };
 }
 
-/** The highest of npm version strings by semver precedence (a prerelease sorts below its release); unparsable ones last. */
+/**
+ * The highest of npm version strings by SemVer 2.0.0 precedence (semver.org §11), or undefined when none is valid.
+ * Only strict SemVer 2.0.0 versions take part: a `v` prefix, a leading zero in a numeric identifier, an empty
+ * identifier or empty build metadata makes a string invalid, and an invalid string is ignored, never chosen.
+ * Numeric identifiers compare by digit count then digits, so precision never runs out (#1119). A prerelease sorts
+ * below its release; numeric prerelease identifiers sort below alphanumeric ones. Build metadata does not affect
+ * precedence; versions of equal precedence (differing only in build metadata) resolve to the greatest string, so
+ * the answer never depends on input order.
+ */
 export function newestVersion(versions: readonly string[]): string | undefined {
-  const parse = (version: string): [number[], string[] | undefined] | undefined => {
-    const match = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+.*)?$/.exec(version);
-    return match ? [[Number(match[1]), Number(match[2]), Number(match[3])], match[4]?.split('.')] : undefined;
-  };
-  const compare = (a: string, b: string): number => {
-    const x = parse(a), y = parse(b);
-    if (!x || !y) return x ? 1 : y ? -1 : 0;
-    for (let index = 0; index < 3; index++) if (x[0][index] !== y[0][index]) return x[0][index]! - y[0][index]!;
-    if (!x[1] || !y[1]) return x[1] ? -1 : y[1] ? 1 : 0;
-    for (let index = 0; index < Math.max(x[1].length, y[1].length); index++) {
-      const p = x[1][index], q = y[1][index];
-      if (p === undefined || q === undefined) return p === undefined ? -1 : 1;
-      if (p === q) continue;
-      const numeric = /^\d+$/.test(p) && /^\d+$/.test(q);
-      return numeric ? Number(p) - Number(q) : /^\d+$/.test(p) ? -1 : /^\d+$/.test(q) ? 1 : p < q ? -1 : 1;
-    }
-    return 0;
-  };
-  return [...versions].sort(compare).at(-1);
+  let best: string | undefined, bestParsed: ParsedVersion | undefined;
+  for (const version of versions) {
+    const parsed = parseSemver(version);
+    if (!parsed) continue;
+    const order = bestParsed ? compareSemver(parsed, bestParsed) : 1;
+    if (order > 0 || (order === 0 && version > best!)) { best = version; bestParsed = parsed; }
+  }
+  return best;
+}
+
+interface ParsedVersion { core: [string, string, string]; prerelease: string[] }
+const NUMERIC = '0|[1-9]\\d*', PRERELEASE_ID = `(?:${NUMERIC}|\\d*[A-Za-z-][0-9A-Za-z-]*)`;
+const SEMVER = new RegExp(`^(${NUMERIC})\\.(${NUMERIC})\\.(${NUMERIC})(?:-(${PRERELEASE_ID}(?:\\.${PRERELEASE_ID})*))?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$`);
+function parseSemver(version: string): ParsedVersion | undefined {
+  const match = SEMVER.exec(version);
+  return match ? { core: [match[1]!, match[2]!, match[3]!], prerelease: match[4]?.split('.') ?? [] } : undefined;
+}
+/** Two digit strings without leading zeros, compared exactly. */
+function compareDigits(a: string, b: string): number { return a.length !== b.length ? a.length - b.length : a < b ? -1 : a > b ? 1 : 0; }
+function compareSemver(a: ParsedVersion, b: ParsedVersion): number {
+  for (let index = 0; index < 3; index++) { const order = compareDigits(a.core[index]!, b.core[index]!); if (order) return order; }
+  if (!a.prerelease.length || !b.prerelease.length) return b.prerelease.length - a.prerelease.length;
+  for (let index = 0; index < Math.max(a.prerelease.length, b.prerelease.length); index++) {
+    const p = a.prerelease[index], q = b.prerelease[index];
+    if (p === undefined || q === undefined) return p === undefined ? -1 : 1;
+    const pNumeric = /^\d+$/.test(p), qNumeric = /^\d+$/.test(q);
+    const order = pNumeric && qNumeric ? compareDigits(p, q) : pNumeric !== qNumeric ? (pNumeric ? -1 : 1) : p < q ? -1 : p > q ? 1 : 0;
+    if (order) return order;
+  }
+  return 0;
 }
 
 /** The package name of a registry spec (`name`, `name@range`, `@scope/name@range`), or undefined for a path, URL or git spec. */

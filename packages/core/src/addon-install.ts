@@ -1174,8 +1174,9 @@ export async function outdatedAddons(directory: string, kind: AddonKind, { manif
       try {
         const answer = JSON.parse((await runNpm(['view', spec, 'version', '--json'], site.site)).trim() || 'null') as unknown;
         const versions = (Array.isArray(answer) ? answer : [answer]).filter((value): value is string => typeof value === 'string');
-        assert(versions.length, `the registry has no version matching ${spec}`);
-        item.latest = newestVersion(versions)!;
+        const latest = newestVersion(versions);
+        assert(latest, versions.length ? `the registry answered no valid semver version for ${spec}` : `the registry has no version matching ${spec}`);
+        item.latest = latest;
         item.status = item.latest === locked ? 'current' : 'outdated';
         if (item.status === 'outdated') item.upgrade = `urlcode ${kindNoun(kind)} add ${spec}`;
       } catch (error) { item.message = `could not ask the registry (offline, or the spec does not resolve): ${(error instanceof Error ? error.message : String(error)).split('\n')[0]}`; }

@@ -41,6 +41,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseYaml, validateDocument } from '../packages/core/src/config.ts';
+import { fenceLanguage, fenceLines } from '../packages/core/src/markdown-fences.ts';
 
 const root = new URL('../', import.meta.url);
 
@@ -51,22 +52,24 @@ const PROJECT_KEYS = new Set(['version', 'routes', 'includes', 'policies', 'prof
 
 export interface YamlBlock { line: number; text: string }
 
-/** Fenced ```yaml / ```yml blocks of a Markdown source, with the 1-based line of their first content line. */
+/**
+ * Fenced ```yaml / ```yml blocks of a Markdown source, with the 1-based line of their first content line. Fences follow
+ * packages/core/src/markdown-fences.ts; an unclosed yaml fence runs to the end of the document.
+ */
 export function yamlBlocks(markdown: string): YamlBlock[] {
   const blocks: YamlBlock[] = [];
-  let open: { fence: string; yaml: boolean; line: number; body: string[] } | undefined;
-  for (const [index, line] of markdown.split('\n').entries()) {
-    if (open) {
-      const trimmed = line.trim();
-      if (trimmed.startsWith(open.fence) && /^(`+|~+)$/.test(trimmed)) {
-        if (open.yaml) blocks.push({ line: open.line, text: open.body.join('\n') });
-        open = undefined;
-      } else open.body.push(line);
-      continue;
+  const lines = markdown.split('\n');
+  let open: { line: number; body: string[] } | undefined;
+  for (const [index, fence] of fenceLines(markdown).entries()) {
+    if (fence.kind === 'open' && /^ya?ml$/.test(fenceLanguage(fence.fence))) open = { line: index + 2, body: [] };
+    else if (fence.kind === 'content') open?.body.push(lines[index]!);
+    else if (open) {
+      // A close, or the end of the document for an unclosed fence, ends the block.
+      blocks.push({ line: open.line, text: open.body.join('\n') });
+      open = undefined;
     }
-    const start = /^\s*(`{3,}|~{3,})\s*([A-Za-z0-9_-]*)/.exec(line);
-    if (start) open = { fence: start[1]!, yaml: /^ya?ml$/i.test(start[2] ?? ''), line: index + 2, body: [] };
   }
+  if (open) blocks.push({ line: open.line, text: open.body.join('\n') });
   return blocks;
 }
 

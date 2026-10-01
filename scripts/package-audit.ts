@@ -9,6 +9,8 @@ import { parsePackJson } from './pack-json.ts';
 import { publishedManifest } from './published-manifest.mjs';
 import { addons, repositoryRoot } from './workspaces.ts';
 import { isArtifactFile } from '../packages/core/src/addon-install.ts';
+import { fenceLines } from '../packages/core/src/markdown-fences.ts';
+import { markdownLinkTargets } from './check-local-links.ts';
 
 interface PackedFile { path: string; size: number }
 interface PackReport {
@@ -96,8 +98,6 @@ export function packFileProblems(kind: PackageKind, paths: readonly string[]): s
   return problems;
 }
 
-const INLINE_LINK = /\[[^\]]*\]\(([^()\s]+)\)/g;
-const REFERENCE_LINK = /^ {0,3}\[[^\]]+\]:\s+(\S+)/;
 
 /** Whether a packed path is documentation an installed reader follows links in: Markdown and the llms indexes. */
 export const isPackedDocument = (path: string): boolean => path.endsWith('.md') || path === 'llms.txt' || path === 'llms-full.txt';
@@ -116,18 +116,16 @@ export function packedLinkProblems(path: string, source: string, packed: Readonl
   const directories = new Set<string>();
   for (const file of packed) for (let index = file.indexOf('/'); index > 0; index = file.indexOf('/', index + 1)) directories.add(file.slice(0, index));
   const problems: string[] = [];
-  let fence: string | undefined;
+  // Fences follow the one CommonMark reader every Markdown check shares, and links the local-link checker's scanner
+  // (titles, <angle> destinations, balanced parentheses, reference definitions), so the two checks agree (#1118).
+  const kinds = fenceLines(source);
   for (const [index, line] of source.split('\n').entries()) {
-    const trimmed = line.trim();
-    if (fence) { if (trimmed.startsWith(fence) && /^(`+|~+)$/.test(trimmed)) fence = undefined; continue; }
-    const opening = /^ {0,3}(`{3,}|~{3,})/.exec(line);
-    if (opening) { fence = opening[1]; continue; }
-    const text = line.replace(/(`+)[^`]*?\1/g, '');
+    if (kinds[index]?.kind !== 'text') continue;
+    // Code spans are masked, not removed, so a span that starts the line still keeps `[ref]: x` after it from reading as
+    // a reference definition.
+    const text = line.replace(/(`+)[^`]*?\1/g, span => '\u0000'.repeat(span.length));
     for (const match of line.matchAll(MAIN_BRANCH)) problems.push(`${path}:${index + 1} names \`${match[0]}\`, this repository's main branch; link blob/v<current version>/... instead`);
-    const targets = [...text.matchAll(INLINE_LINK)].map(match => match[1] ?? '');
-    const reference = REFERENCE_LINK.exec(line)?.[1];
-    if (reference) targets.push(reference);
-    for (const target of targets) {
+    for (const target of markdownLinkTargets(text)) {
       if (/^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i.test(target)) continue;
       const relativeTarget = target.replace(/[#?].*$/, '');
       if (relativeTarget === '') continue;

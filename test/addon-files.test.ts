@@ -71,6 +71,51 @@ test('the spec and version helpers', () => {
   assert.equal(newestVersion(['2.0.0-alpha.1', '2.0.0']), '2.0.0');
 });
 
+// #1119: SemVer 2.0.0 precedence with exact numeric identifiers; an invalid version is ignored, never chosen.
+test('newestVersion orders by SemVer 2.0.0 precedence and ignores invalid versions', () => {
+  assert.equal(newestVersion(['1.0.0-9007199254740993', '1.0.0-9007199254740992']), '1.0.0-9007199254740993');
+  assert.equal(newestVersion(['1.0.0-01', '1.0.0-0']), '1.0.0-0');
+  assert.equal(newestVersion(['1.0.0+', '1.0.0-alpha']), '1.0.0-alpha');
+  for (const invalid of ['', 'x', 'v1.0.0', '=1.0.0', '1.0', '1.0.0.0', '01.0.0', '1.01.0', '1.0.01', '1.0.0-', '1.0.0-a..b', '1.0.0+a..b', '1.0.0-a_b', ' 1.0.0', '1.0.0 '])
+    assert.equal(newestVersion([invalid, '0.0.1']), '0.0.1', invalid);
+  assert.equal(newestVersion(['v9.0.0', 'nope']), undefined);
+  assert.equal(newestVersion([]), undefined);
+  assert.equal(newestVersion(['1.2.3', '1.2.3']), '1.2.3');
+  assert.equal(newestVersion(['99999999999999999999.0.0', '99999999999999999998.9.9']), '99999999999999999999.0.0');
+  assert.equal(newestVersion(['1.0.0-alpha.123456789012345678901234567890', '1.0.0-alpha.123456789012345678901234567889']), '1.0.0-alpha.123456789012345678901234567890');
+  assert.equal(newestVersion(['1.0.0-1', '1.0.0-alpha']), '1.0.0-alpha');
+  assert.equal(newestVersion(['1.0.0-999999999999999999999', '1.0.0-0a']), '1.0.0-0a');
+  assert.equal(newestVersion(['1.0.0-rc.1', '1.0.0+build.5']), '1.0.0+build.5');
+  assert.equal(newestVersion(['1.0.1-alpha', '1.0.0+zzz']), '1.0.1-alpha');
+  // Equal precedence differing only in build metadata: the greatest string, whatever the input order.
+  assert.equal(newestVersion(['1.0.0+b', '1.0.0+a']), '1.0.0+b');
+  assert.equal(newestVersion(['1.0.0+a', '1.0.0+b']), '1.0.0+b');
+  const permutations = <T>(items: readonly T[]): T[][] => items.length <= 1 ? [[...items]] : items.flatMap((item, index) => permutations([...items.slice(0, index), ...items.slice(index + 1)]).map(rest => [item, ...rest]));
+  const mixed = ['1.0.0-alpha', '1.0.0-alpha.1', '1.0.0-alpha.beta', '1.0.0-beta.11', '1.0.0-rc.1', '1.0.0+build', '1.0.0-01', 'v2.0.0'];
+  for (const order of permutations(mixed)) assert.equal(newestVersion(order), '1.0.0+build', order.join(' '));
+});
+
+test('newestVersion agrees with semver.rsort on generated valid versions', async () => {
+  // Numeric identifiers stay within Number.MAX_SAFE_INTEGER here: semver 7.8.5 compares them as Numbers, so it ranks
+  // 1.0.0-9007199254740992 and 1.0.0-9007199254740993 equal; the exact large-identifier cases are pinned above.
+  const { default: semver } = await import('semver');
+  let seed = 1119;
+  const random = (n: number): number => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % n; };
+  const identifiers = ['0', '1', '2', '10', '11', '9007199254740990', '9007199254740991', 'alpha', 'beta', 'rc', '0a', 'a-1', '-', 'A', 'Z'];
+  const version = (): string => {
+    const core = [random(3), random(3), random(3)].join('.');
+    const pre = random(3) ? '' : `-${Array.from({ length: 1 + random(3) }, () => identifiers[random(identifiers.length)]).join('.')}`;
+    return `${core}${pre}${random(5) ? '' : `+b${random(9)}`}`;
+  };
+  for (let round = 0; round < 500; round++) {
+    const set = Array.from({ length: 1 + random(8) }, version);
+    for (const value of set) assert.ok(semver.valid(value), value);
+    const ours = newestVersion(set)!, theirs = semver.rsort([...set])[0]!;
+    assert.equal(semver.compare(ours, theirs), 0, `${set.join(' ')}: ${ours} vs ${theirs}`);
+    if (!set.some(value => value.includes('+'))) assert.equal(ours, theirs, set.join(' '));
+  }
+});
+
 test('add records every installed file; list --strict, describe, inspect and verify catch a hand-edited file offline; remove drops the record', async t => {
   const dir = await site(t), packages = await temp(t, 'urlcode-tarballs-');
   const file = await tarball(t, packages, 'petstore-docs', '1.4.0');

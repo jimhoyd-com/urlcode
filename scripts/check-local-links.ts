@@ -35,7 +35,8 @@
 //                          `-` and `_` removed, each space a `-`, and a
 //                          repeated heading suffixed `-1`, `-2`, ...) plus any
 //                          explicit `<a id="...">` / `<a name="...">`.
-//                          Headings inside fenced code blocks are not anchors.
+//                          Headings inside fenced code blocks are not anchors
+//                          (fences read by packages/core/src/markdown-fences.ts).
 //   5. shipped-link        A Markdown file a package ships (its README.md and
 //                          any root .md its package.json `files` names) links
 //                          a relative path outside the package, which an
@@ -49,6 +50,11 @@
 // A `blob/v<current version>/<path>` or `tree/v<current version>/<path>` link
 // to this repository is checked like a relative link against the checkout:
 // the path must exist and a Markdown fragment must name an anchor.
+//
+// Links are read as CommonMark reads them (`markdownLinkTargets`, #1118):
+// inline links and images with or without a title, angle-bracket destinations,
+// destinations with balanced parentheses, and reference definitions. Links
+// inside fenced code blocks are code, not links.
 //
 // What it scans: every authored Markdown file in the checkout, and the root
 // llms.txt (its pinned links are checked like any other, #938). Build output,
@@ -74,6 +80,7 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { fenceLines } from '../packages/core/src/markdown-fences.ts';
 
 const root = new URL('../', import.meta.url);
 
@@ -151,17 +158,11 @@ export function markdownAnchors(source: string): Set<string> {
     seen.set(slug, seen.get(slug) ?? 0);
     anchors.add(slug);
   };
-  let fence: string | undefined;
+  const fences = fenceLines(source);
   let previous = '';
-  for (const line of source.split('\n')) {
+  for (const [index, line] of source.split('\n').entries()) {
     const trimmed = line.trim();
-    if (fence) {
-      if (trimmed.startsWith(fence) && /^(`+|~+)$/.test(trimmed)) fence = undefined;
-      previous = '';
-      continue;
-    }
-    const opening = /^ {0,3}(`{3,}|~{3,})/.exec(line);
-    if (opening) { fence = opening[1]; previous = ''; continue; }
+    if (fences[index]!.kind !== 'text') { previous = ''; continue; }
     for (const match of line.matchAll(EXPLICIT_ANCHOR)) anchors.add(match[1] ?? match[2] ?? match[3] ?? '');
     const atx = /^ {0,3}#{1,6}(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$/.exec(line);
     if (atx) { addHeading(atx[1] ?? ''); previous = ''; continue; }
@@ -176,10 +177,81 @@ export function markdownAnchors(source: string): Set<string> {
   return anchors;
 }
 
-// A Markdown inline link target. Reference definitions (`[label]: target`) are
-// matched separately below.
-const INLINE_LINK = /\[[^\]]*\]\(([^()\s]+)\)/g;
-const REFERENCE_LINK = /^\s*\[[^\]]+\]:\s+(\S+)/;
+const ASCII_PUNCTUATION = /[!-/:-@[-`{-~]/;
+const isSpace = (char: string | undefined): boolean => char === ' ' || char === '\t';
+
+/**
+ * The link destination starting at `start` in `text`, read as CommonMark does, with its backslash escapes removed:
+ * `<...>` (spaces allowed, no `<` or line break) or a run of non-space characters whose unescaped parentheses
+ * balance. Undefined when there is none; `end` is the index just past it.
+ */
+function destination(text: string, start: number): { target: string; end: number } | undefined {
+  let target = '';
+  if (text[start] === '<') {
+    for (let index = start + 1; index < text.length; index += 1) {
+      const char = text[index]!;
+      if (char === '>') return { target, end: index + 1 };
+      if (char === '<' || char === '\r') return undefined;
+      if (char === '\\' && ASCII_PUNCTUATION.test(text[index + 1] ?? '')) target += text[++index];
+      else target += char;
+    }
+    return undefined;
+  }
+  let depth = 0, index = start;
+  for (; index < text.length; index += 1) {
+    const char = text[index]!;
+    if (char <= ' ' || char === '\x7f') break;
+    if (char === '\\' && ASCII_PUNCTUATION.test(text[index + 1] ?? '')) { target += text[++index]; continue; }
+    if (char === '(') depth += 1;
+    else if (char === ')') { if (depth === 0) break; depth -= 1; }
+    target += char;
+  }
+  return depth === 0 ? { target, end: index } : undefined;
+}
+
+/** The index just past a link title (`"t"`, `'t'` or `(t)`) starting at `start`, or undefined when there is none. */
+function titleEnd(text: string, start: number): number | undefined {
+  const close = ({ '"': '"', "'": "'", '(': ')' } as Record<string, string>)[text[start] ?? ''];
+  if (!close) return undefined;
+  for (let index = start + 1; index < text.length; index += 1) {
+    const char = text[index]!;
+    if (char === '\\') index += 1;
+    else if (char === close) return index + 1;
+    else if (close === ')' && char === '(') return undefined;
+  }
+  return undefined;
+}
+
+const skipSpaces = (text: string, index: number): number => { while (isSpace(text[index])) index += 1; return index; };
+
+/**
+ * The link targets a line of Markdown names, as CommonMark reads them: every inline link or image
+ * `[text](destination "optional title")` -- destinations in angle brackets, with balanced parentheses or escapes, and
+ * titles in double quotes, single quotes or parentheses (#1118) -- and a link reference definition
+ * `[label]: destination "optional title"`. A GitHub footnote (`[^1]: ...`) is not a definition. The reading is per
+ * line: a link whose text or title breaks across lines is not seen.
+ */
+export function markdownLinkTargets(line: string): string[] {
+  const targets: string[] = [];
+  const definition = /^ {0,3}\[((?:[^\\\]]|\\.)+)\]:[ \t]*/.exec(line);
+  if (definition && !definition[1]!.startsWith('^')) {
+    const found = destination(line, definition[0].length);
+    if (found && found.target !== '' && (found.end === line.length || isSpace(line[found.end]) || line[found.end] === '\r')) targets.push(found.target);
+  }
+  for (let open = line.indexOf('](', 0); open >= 0; open = line.indexOf('](', open + 1)) {
+    // An escaped `\]` is text, and link text needs an opening bracket before it.
+    if (line[open - 1] === '\\' || !line.slice(0, open).includes('[')) continue;
+    const found = destination(line, skipSpaces(line, open + 2));
+    if (!found) continue;
+    let end = skipSpaces(line, found.end);
+    if (line[end] !== ')' && end > found.end) {
+      const after = titleEnd(line, end);
+      if (after !== undefined) end = skipSpaces(line, after);
+    }
+    if (line[end] === ')') targets.push(found.target);
+  }
+  return targets;
+}
 
 const exists = async (path: URL): Promise<boolean> => stat(path).then(() => true, () => false);
 
@@ -269,6 +341,7 @@ async function main(): Promise<void> {
     // a line exempts just that line. Same shape as check-trust-model-prose.ts.
     let pending = false;
     let exemptParagraph = false;
+    const fences = fenceLines(source);
     for (const [index, line] of source.split('\n').entries()) {
       const trimmed = line.trim();
       if (trimmed === LINE_MARKER) { pending = true; continue; }
@@ -293,9 +366,8 @@ async function main(): Promise<void> {
         }
       }
 
-      const targets = [...line.matchAll(INLINE_LINK)].map(match => match[1] ?? '');
-      const reference = REFERENCE_LINK.exec(line);
-      if (reference?.[1]) targets.push(reference[1]);
+      // A fenced code block holds code, not links (a retired-repository URL in it still counts, above).
+      const targets = fences[index]!.kind === 'text' ? markdownLinkTargets(line) : [];
       for (const rawTarget of targets) {
         if (shipped.has(file)) {
           const problem = shippedLinkProblem(file, rawTarget);

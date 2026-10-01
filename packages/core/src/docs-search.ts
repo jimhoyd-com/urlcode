@@ -8,6 +8,7 @@ import { readFilesLock } from './package-files.ts';
 import type { PackageJson } from './addon-install.ts';
 import { isCode, isRecord } from './object-guards.ts';
 import { getSchemaFragment } from './schema-query.ts';
+import { fenceLines } from './markdown-fences.ts';
 
 /**
  * Bounded documentation search for agents (`searchDocs`, MCP `search_docs`, `urlcode docs search`; #759).
@@ -105,24 +106,21 @@ function score(candidate: Candidate, query: Query): Scored | undefined {
 interface Heading { title: string; index: number }
 /**
  * The ATX headings of a Markdown document, in order, found once per document. A `#` line inside a fenced code block
- * (a shell or YAML comment) is not a heading (#826). Fences follow CommonMark: a run of at least three backticks or
- * tildes indented at most three spaces opens one (a backtick fence's info string has no backtick); only a run of the
- * same character, at least as long, with nothing but whitespace after it, closes it; an unclosed fence runs to the
- * end of the document. Headings are recognised only at column 0, so an indented code block, which needs four spaces
- * of indentation, never holds one.
+ * (a shell or YAML comment) is not a heading (#826); fences follow the shared CommonMark rules of markdown-fences.ts.
+ * Headings are recognised only at column 0, so an indented code block, which needs four spaces of indentation, never
+ * holds one.
  */
 export function headingsOf(text: string): Heading[] {
-  const headings: Heading[] = [];
-  let fence: { char: string; length: number } | undefined;
-  for (let start = 0; ;) {
-    const newline = text.indexOf('\n', start), line = text.slice(start, newline < 0 ? text.length : newline);
-    const run = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
-    if (fence) { if (run && run[1]![0] === fence.char && run[1]!.length >= fence.length && /^[ \t\r]*$/.test(run[2]!)) fence = undefined; }
-    else if (run && !(run[1]![0] === '`' && run[2]!.includes('`'))) fence = { char: run[1]![0]!, length: run[1]!.length };
-    else { const heading = /^#{1,6}[ \t]+(.+?)[ \t]*#*[ \t]*$/.exec(line); if (heading) headings.push({ title: heading[1]!, index: start }); }
-    if (newline < 0) return headings;
-    start = newline + 1;
+  const headings: Heading[] = [], fences = fenceLines(text);
+  let start = 0;
+  for (const [index, line] of text.split('\n').entries()) {
+    if (fences[index]!.kind === 'text') {
+      const heading = /^#{1,6}[ \t]+(.+?)[ \t]*#*[ \t]*$/.exec(line);
+      if (heading) headings.push({ title: heading[1]!, index: start });
+    }
+    start += line.length + 1;
   }
+  return headings;
 }
 /** The nearest heading starting at or before `position`. */
 function sectionAt(headings: readonly Heading[], position: number): Heading | undefined {
