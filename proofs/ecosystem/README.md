@@ -125,7 +125,7 @@ handler; one without raw header lines declares `headerLines: 'unavailable'`.
 | Loopback `Host` admission | A foreign `Host` is refused with 421 by both hosts on URLCode's paths (`loopbackHost`); Hono's own routes are Hono's to guard |
 | Base path | Behind `mount('/mounted', …)`, the redirect is `/mounted/app/api/who/ada` and a function's URL keeps `/mounted` |
 | Startup refusal | A stale revision pin, or a sandboxed direct import, exits 1 with URLCode's message and no stack; nothing listens |
-| Shutdown | SIGTERM closes Hono's server, then `runtime.close()`; the port is released |
+| Shutdown | Explicit `close()` closes Hono's server, then `runtime.close()`, and releases the port on every platform. The SIGTERM handler is checked on Unix; Windows process termination does not invoke it |
 
 ### Gaps
 

@@ -16,6 +16,7 @@ import { request as httpRequest } from 'node:http';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import type { TestContext } from 'node:test';
 import { withPublishedManifest } from '../scripts/published-manifest.mjs';
 import { npmCommand } from '../scripts/npm-command.ts';
@@ -100,7 +101,7 @@ test('ecosystem: direct npm library use and URLCode hosted inside Hono', { timeo
   assert.equal(installed.status, 0, installed.stderr);
 
   const cli = join(site, 'node_modules', '@jimhoyd', 'urlcode', 'dist', 'cli.js');
-  const { inspectExtensionRevision } = await import(join(site, 'node_modules', '@jimhoyd', 'urlcode', 'dist', 'extensions.js')) as { inspectExtensionRevision(project: string): Promise<string> };
+  const { inspectExtensionRevision } = await import(pathToFileURL(join(site, 'node_modules', '@jimhoyd', 'urlcode', 'dist', 'extensions.js')).href) as { inspectExtensionRevision(project: string): Promise<string> };
   // The evaluator's step: review the project, then pin the operator extensions in host.mjs to this revision.
   const reviewed = { PROJECT_SHA256: await inspectExtensionRevision(join(site, 'app')) };
   const urlcode = (args: string[], env: Record<string, string> = reviewed): Run => run(t, site, process.execPath, [cli, ...args], env);
@@ -297,7 +298,21 @@ test('ecosystem: direct npm library use and URLCode hosted inside Hono', { timeo
     }
   });
 
-  await t.test('lifecycle: SIGTERM closes the Hono server and the runtime', async () => {
+  await t.test('lifecycle: close releases the Hono server and runtime on every platform', async () => {
+    const port = await freePort();
+    const moduleUrl = pathToFileURL(join(site, 'hono', 'server.mjs')).href;
+    const script = `import {start} from ${JSON.stringify(moduleUrl)};
+const running = await start({origin: 'http://localhost:${port}', port: ${port}});
+await running.close();
+console.log('closed');`;
+    const result = run(t, site, process.execPath, ['--input-type=module', '-e', script], reviewed);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.match(result.stdout, /closed/);
+    assert.equal(await listening(port), false);
+  });
+
+  // Windows kill(SIGTERM) terminates the child without running its signal handlers.
+  await t.test('lifecycle: SIGTERM closes the Hono server and the runtime', { skip: process.platform === 'win32' ? 'Windows does not deliver SIGTERM to Node handlers; close() is tested above' : false }, async () => {
     assert.equal(await stop(hono), 0, hono.output());
     assert.equal(await listening(hono.port), false);
   });
