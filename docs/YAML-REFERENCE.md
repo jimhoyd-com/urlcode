@@ -42,7 +42,7 @@ See [organization][docs/yaml/organization.md] for examples.
 | `version` | constant | yes | const: "1" | Project format version; always "1". |
 | `includes` | array | no | maxItems: 256; uniqueItems: true | Other YAML files whose routes join this project; entry urlcode.yaml only, with no nesting. |
 | `includes[]` | string | no | maxLength: 1024 | — |
-| `shared` | object | no | maxProperties: 32 | Reusable named request and response.headers blocks a route selects with use. Resolved at load time; the route hash, audit and routes output show the resolved route. Entry urlcode.yaml only. Response headers the runtime owns are refused. |
+| `shared` | object | no | maxProperties: 32 | Reusable named request, response.headers, env and secrets blocks a route selects with use. Resolved at load time into each route: the route hash, project revision, urlcode permissions (requested grants per route), operator policy pins, audit, routes and explain show the resolved route, so grants stay per route. Entry urlcode.yaml only. Response headers the runtime owns are refused. |
 | `shared.*` | object | no | unknown keys rejected | — |
 | `shared.*.request` | object | no | unknown keys rejected | Request body checks a route inherits when it names this block with use. |
 | `shared.*.request.body` | object | no | minProperties: 1; unknown keys rejected | Request body checks, keyed by HTTP method: each key is one of the route's methods and holds that method's policy, so GET and POST on one path state their own rules. A method without an entry has no body policy ([docs/HTTP.md]). |
@@ -86,6 +86,16 @@ See [organization][docs/yaml/organization.md] for examples.
 | `shared.*.response.headers.* (option 1)` | string | no | maxLength: 4096 | — |
 | `shared.*.response.headers.* (option 2)` | array | no | minItems: 1; maxItems: 16 | — |
 | `shared.*.response.headers.* (option 2)[]` | string | no | maxLength: 4096 | — |
+| `shared.*.env` | object | no | — | Non-secret bindings (literal or granted process environment variable) a route inherits when it names this block with use; merged name by name with the route's own env, which wins. Each route using the block requests its own operator grant. |
+| `shared.*.env.*` | one of the shapes below | no | — | — |
+| `shared.*.env.* (option 1)` | object | no | unknown keys rejected | — |
+| `shared.*.env.* (option 1).value` | string | yes | — | Literal value, never overridden by the host environment and needing no grant. |
+| `shared.*.env.* (option 2)` | object | no | unknown keys rejected | — |
+| `shared.*.env.* (option 2).env` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Process environment variable to read, which an operator policy must grant to this route. |
+| `shared.*.env.* (option 2).default` | string | no | — | Value used when the variable is ungranted or unset, so the route still activates without an operator grant. |
+| `shared.*.secrets` | object | no | — | Secret bindings a route inherits when it names this block with use; merged name by name with the route's own secrets, which wins. Each route using the block requests its own operator grant; values never appear in YAML. |
+| `shared.*.secrets.*` | object | no | unknown keys rejected | — |
+| `shared.*.secrets.*.secret` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | External secret name the operator grants to this route; the value never appears in YAML. |
 
 ## Routes: common fields (methods, parameters, env, secrets, policies, cache)
 
@@ -126,14 +136,14 @@ See [functions, inputs and methods][docs/yaml/functions.md] and [bindings, split
 | `routes.*.parameters[].schema.items` | object | no | unknown keys rejected | Element type of a query array input. |
 | `routes.*.parameters[].schema.items.type` | string | yes | enum: ["string","integer","number","boolean"] | Scalar type each repeated query value is converted to. |
 | `routes.*.parameters[].schema.maxItems` | integer | no | minimum: 0; maximum: 100 | Most repeated values a query array input accepts. |
-| `routes.*.env` | object | no | — | Non-secret values the route's function and middleware read as context.env, each a literal or a granted process environment variable. |
+| `routes.*.env` | object | no | — | Non-secret values the route's function and middleware read as context.env, each a literal or a granted process environment variable. Merged name by name over the env of a shared block named by use; the route's own entry wins. |
 | `routes.*.env.*` | one of the shapes below | no | — | — |
 | `routes.*.env.* (option 1)` | object | no | unknown keys rejected | — |
 | `routes.*.env.* (option 1).value` | string | yes | — | Literal value, never overridden by the host environment and needing no grant. |
 | `routes.*.env.* (option 2)` | object | no | unknown keys rejected | — |
 | `routes.*.env.* (option 2).env` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Process environment variable to read, which an operator policy must grant to this route. |
 | `routes.*.env.* (option 2).default` | string | no | — | Value used when the variable is ungranted or unset, so the route still activates without an operator grant. |
-| `routes.*.secrets` | object | no | — | Secret values the route's function, middleware, proxy and signals can use, each resolved from a name an operator policy grants to this route. |
+| `routes.*.secrets` | object | no | — | Secret values the route's function, middleware, proxy and signals can use, each resolved from a name an operator policy grants to this route. Merged name by name over the secrets of a shared block named by use; the route's own entry wins. |
 | `routes.*.secrets.*` | object | no | unknown keys rejected | — |
 | `routes.*.secrets.*.secret` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | External secret name the operator grants to this route; the value never appears in YAML. |
 | `routes.*.request` | object | no | unknown keys rejected | Request body checks run before the handler; declaring it replaces the request block of a shared block named by use. |
@@ -270,7 +280,7 @@ See [functions, inputs and methods][docs/yaml/functions.md] and [bindings, split
 | `routes.*.cache.maxBytes` | integer | no | minimum: 0; maximum: 16777216 | Largest body the origin cache stores |
 | `routes.*.cache.maxEntries` | integer | no | minimum: 1; maximum: 1000000 | Most responses the origin memory cache keeps for this configuration; the least recently used is evicted first. |
 | `routes.*.cache.force` | boolean | no | default: false | Allow immutable on a path without a content hash |
-| `routes.*.use` | string | no | pattern: "^[a-z][a-z0-9-]{0,63}$" | Name of a top-level shared block whose request and response.headers this route inherits. A key the route declares itself replaces the shared block as a whole; there is no deep merge. |
+| `routes.*.use` | string | no | pattern: "^[a-z][a-z0-9-]{0,63}$" | Name of a top-level shared block this route inherits. A request or response key the route declares itself replaces the shared one as a whole (no deep merge); env and secrets merge name by name, the route's own entry winning. The resolved route, inherited bindings included, is what the route hash, urlcode permissions, the operator grant and routes/explain/audit show. |
 
 ## Handler: function
 

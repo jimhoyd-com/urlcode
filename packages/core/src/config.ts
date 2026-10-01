@@ -311,8 +311,10 @@ export function validateDocument(data: unknown, inherited?: Record<string, Share
 }
 /**
  * Resolves `use: <name>` at load time. The route's own `request` or `response` key wins as a whole block
- * (no deep merge); otherwise the shared block's key is copied in. `use` is removed, so the route hash,
- * audit and routes output show what actually applies. An unknown name fails validation.
+ * (no deep merge); otherwise the shared block's key is copied in. `env` and `secrets` merge name by name,
+ * the route's own entry winning (#1133). `use` is removed, so the route hash, project revision, requested
+ * grants, operator pins, audit and routes output all see each route's effective bindings. An unknown name
+ * fails validation.
  */
 function expandShared(pattern: string, route: RouteConfig, shared: Record<string, SharedBlock> | undefined): RouteConfig {
   if (route.use === undefined) return route;
@@ -322,6 +324,8 @@ function expandShared(pattern: string, route: RouteConfig, shared: Record<string
   const result: RouteConfig = { ...rest };
   if (rest.request === undefined && block.request !== undefined) result.request = structuredClone(block.request);
   if (rest.response === undefined && block.response !== undefined) result.response = structuredClone(block.response);
+  if (block.env !== undefined) result.env = { ...structuredClone(block.env), ...rest.env };
+  if (block.secrets !== undefined) result.secrets = { ...structuredClone(block.secrets), ...rest.secrets };
   return result;
 }
 /** The input declaration a short-form function gets for each `{param}` it does not declare itself. */

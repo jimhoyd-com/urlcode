@@ -324,7 +324,7 @@ export const capabilityDetails: Record<CapabilityName, CapabilityDetail> = {
   'response.headers': { kind: 'request', summary: 'Static response headers added to the reply.', schema: ['response.headers'],
     constraints: ['At most 64 headers; values up to 4096 characters or lists of at most 16', 'Cloudflare coalesces duplicate headers'], grants: [] },
   bindings: { kind: 'binding', summary: 'Route `env` literals/references and `secrets` references.', schema: ['env', 'secrets'],
-    constraints: ['Names match ^[A-Za-z_][A-Za-z0-9_]*$', '`env` entries are `{value}` literals or `{env}` references; `secrets` entries are `{secret}` references', 'Refused on Cloudflare: bindings would be baked into the artifact'],
+    constraints: ['Names match ^[A-Za-z_][A-Za-z0-9_]*$', '`env` entries are `{value}` literals or `{env}` references; `secrets` entries are `{secret}` references', 'Refused on Cloudflare: bindings would be baked into the artifact', 'A top-level `shared` block may declare them once for routes that name it with `use`; they merge name by name into each route (the route\'s own entry wins) and are requested, granted and pinned per route'],
     grants: ['External operator policy (--policy) granting each referenced env/secret name; values never enter the project'] },
   'policies.agents': policyDetail('agents', 'Agent allow/deny rules by bundled list name.', ['List names come from the bundled agent lists']),
   'policies.security': policyDetail('security', 'Security response headers.', ['Fixed header set with validated values']),

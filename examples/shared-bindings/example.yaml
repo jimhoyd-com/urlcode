@@ -1,0 +1,22 @@
+id: shared-bindings
+description: A shared block carries the env bindings three routes repeat; use resolves them into each route, so permissions, explain and the operator grant still list them per route.
+tags: [shared, use, env, secrets, binding, grant, policy, permissions, reuse, deduplicate]
+complexity: intermediate
+capabilities: [bindings, enabled, function, methods, parameters]
+targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused, static: refused}
+routes: 3
+grants:
+  - kind: env
+    description: Optional. The exact name MCP_ENABLED_SKILLS granted to each of /skills, /skills/{name} and /status in an operator policy outside the project (urlcode permissions prints the proposal, one entry per route). Without it the declared default applies.
+files: [urlcode.yaml, functions/skills.mjs, tests/requests.json, README.md]
+tests:
+  fixtures: tests/requests.json
+  commands:
+    - urlcode validate --local --project .
+    - urlcode test --project .
+    - urlcode audit --project . --expect-routes 3
+    - urlcode permissions --project .
+behavior:
+  - every route naming the skills block reads SKILLS and REGION from its context.env
+  - a route-level binding with the same name wins over the shared one; the other shared bindings are still inherited
+  - urlcode permissions requests MCP_ENABLED_SKILLS separately for each route that uses the block

@@ -370,7 +370,7 @@
     },
     "shared": {
       "type": "object",
-      "description": "Reusable named request and response.headers blocks a route selects with use. Resolved at load time; the route hash, audit and routes output show the resolved route. Entry urlcode.yaml only. Response headers the runtime owns are refused.",
+      "description": "Reusable named request, response.headers, env and secrets blocks a route selects with use. Resolved at load time into each route: the route hash, project revision, urlcode permissions (requested grants per route), operator policy pins, audit, routes and explain show the resolved route, so grants stay per route. Entry urlcode.yaml only. Response headers the runtime owns are refused.",
       "maxProperties": 32,
       "propertyNames": {
         "pattern": "^[a-z][a-z0-9-]{0,63}$"
@@ -385,6 +385,14 @@
           "response": {
             "description": "Response headers a route inherits when it names this block with use.",
             "$ref": "#/$defs/responseBlock"
+          },
+          "env": {
+            "description": "Non-secret bindings (literal or granted process environment variable) a route inherits when it names this block with use; merged name by name with the route's own env, which wins. Each route using the block requests its own operator grant.",
+            "$ref": "#/$defs/envBindings"
+          },
+          "secrets": {
+            "description": "Secret bindings a route inherits when it names this block with use; merged name by name with the route's own secrets, which wins. Each route using the block requests its own operator grant; values never appear in YAML.",
+            "$ref": "#/$defs/secretBindings"
           }
         },
         "additionalProperties": false
@@ -821,69 +829,12 @@
           ]
         },
         "env": {
-          "type": "object",
-          "description": "Non-secret values the route's function and middleware read as context.env, each a literal or a granted process environment variable.",
-          "propertyNames": {
-            "type": "string",
-            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-          },
-          "additionalProperties": {
-            "oneOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "value": {
-                    "type": "string",
-                    "description": "Literal value, never overridden by the host environment and needing no grant."
-                  }
-                },
-                "required": [
-                  "value"
-                ],
-                "additionalProperties": false
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "env": {
-                    "type": "string",
-                    "description": "Process environment variable to read, which an operator policy must grant to this route.",
-                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-                  },
-                  "default": {
-                    "type": "string",
-                    "description": "Value used when the variable is ungranted or unset, so the route still activates without an operator grant."
-                  }
-                },
-                "required": [
-                  "env"
-                ],
-                "additionalProperties": false
-              }
-            ]
-          }
+          "description": "Non-secret values the route's function and middleware read as context.env, each a literal or a granted process environment variable. Merged name by name over the env of a shared block named by use; the route's own entry wins.",
+          "$ref": "#/$defs/envBindings"
         },
         "secrets": {
-          "type": "object",
-          "description": "Secret values the route's function, middleware, proxy and signals can use, each resolved from a name an operator policy grants to this route.",
-          "propertyNames": {
-            "type": "string",
-            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-          },
-          "additionalProperties": {
-            "type": "object",
-            "properties": {
-              "secret": {
-                "type": "string",
-                "description": "External secret name the operator grants to this route; the value never appears in YAML.",
-                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-              }
-            },
-            "required": [
-              "secret"
-            ],
-            "additionalProperties": false
-          }
+          "description": "Secret values the route's function, middleware, proxy and signals can use, each resolved from a name an operator policy grants to this route. Merged name by name over the secrets of a shared block named by use; the route's own entry wins.",
+          "$ref": "#/$defs/secretBindings"
         },
         "page": {
           "type": "object",
@@ -1124,7 +1075,7 @@
         "use": {
           "type": "string",
           "pattern": "^[a-z][a-z0-9-]{0,63}$",
-          "description": "Name of a top-level shared block whose request and response.headers this route inherits. A key the route declares itself replaces the shared block as a whole; there is no deep merge."
+          "description": "Name of a top-level shared block this route inherits. A request or response key the route declares itself replaces the shared one as a whole (no deep merge); env and secrets merge name by name, the route's own entry winning. The resolved route, inherited bindings included, is what the route hash, urlcode permissions, the operator grant and routes/explain/audit show."
         }
       },
       "required": [],
@@ -1176,6 +1127,69 @@
           ]
         }
       ]
+    },
+    "envBindings": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "string",
+                "description": "Literal value, never overridden by the host environment and needing no grant."
+              }
+            },
+            "required": [
+              "value"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "env": {
+                "type": "string",
+                "description": "Process environment variable to read, which an operator policy must grant to this route.",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+              },
+              "default": {
+                "type": "string",
+                "description": "Value used when the variable is ungranted or unset, so the route still activates without an operator grant."
+              }
+            },
+            "required": [
+              "env"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "secretBindings": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "secret": {
+            "type": "string",
+            "description": "External secret name the operator grants to this route; the value never appears in YAML.",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          }
+        },
+        "required": [
+          "secret"
+        ],
+        "additionalProperties": false
+      }
     },
     "routeAuth": {
       "type": "object",

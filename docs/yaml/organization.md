@@ -35,6 +35,40 @@ plain `{value: ...}` literal (like `GREETING` above) never combines with
 `env`: it always stays exactly the reviewable literal it declares, with no
 grant and no possible host override.
 
+**Shared bindings.** When several routes need the same bindings, declare them
+once in a top-level `shared` block (entry `urlcode.yaml` only) and name it
+with `use`:
+
+```yaml
+version: "1"
+shared:
+  skills:
+    env:
+      SKILLS: {env: MCP_ENABLED_SKILLS}
+      REGION: {value: eu-west-1}
+    secrets:
+      KEY: {secret: skills_api_key}
+routes:
+  /skills:
+    use: skills
+    function: functions/skills.mjs
+  /status:
+    use: skills
+    env:
+      REGION: {value: us-east-1}   # the route's own entry wins by name
+    function: {source: functions/skills.mjs, export: status}
+```
+
+The block's `env` and `secrets` merge name by name into each route that uses
+it, the route's own entry winning. They are resolved when the project loads,
+so `urlcode permissions` proposes the grants under each route separately, the
+operator grants each route on its own, and `urlcode explain` lists each
+route's effective bindings (names only). A shared block grants nothing and is
+not project-wide. Adding a route to a block changes that route's requested
+grants and the project revision, so the old policy's pin is refused until it
+is reviewed. See [shared blocks](../SPECIFICATION.md#shared-blocks) and the
+runnable [`examples/shared-bindings`](../../examples/shared-bindings/README.md).
+
 Use ignored `.env.local` for local values; process environment wins. Production
 `serve` reads process environment, never `.env.local`. Let your supervisor resolve
 provider secrets and inject them; direct provider secret-store adapters do not

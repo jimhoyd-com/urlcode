@@ -131,8 +131,8 @@ export type HandlerName = typeof handlerNames[number];
 export function resolveHandlerName(route: Partial<Record<HandlerName, unknown>>, fallback: string): string {
   return handlerNames.find(name => route[name] !== undefined) ?? fallback;
 }
-/** A named, reusable `request` and `response.headers` block a route selects with `use`. */
-export interface SharedBlock { request?: RouteConfig['request']; response?: RouteConfig['response'] }
+/** A named, reusable `request`, `response.headers`, `env` and `secrets` block a route selects with `use`. */
+export interface SharedBlock { request?: RouteConfig['request']; response?: RouteConfig['response']; env?: RouteConfig['env']; secrets?: RouteConfig['secrets'] }
 export interface ProjectDocument {
   version: '1'; extensions?:Record<string,ExtensionDeclaration>; routes: Record<string, RouteConfig>; includes?: string[];
   policies?: PoliciesConfig; profiles?: Record<string, PolicyLayer>; shared?: Record<string, SharedBlock>; site?: SiteConfig;
