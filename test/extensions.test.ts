@@ -447,7 +447,8 @@ test('activation errors name the extension, keep the message bounded and stay ou
   assert.equal(result.statusCode,500);const body=Buffer.from(result.body,'base64').toString();assert.equal(body,'Internal server error\n');assert.ok(!body.includes('maxLength'));
   assert.ok(logged.some(entry=>entry instanceof ConfigError&&entry.details.extension==='demo'));
 });
-test('validate, test and dev print an extension activation error with its name (#714)',{concurrency:true},async t=>{
+// Each CLI child can create configuration workers: bound subtests as well as test-file concurrency.
+test('validate, test and dev print an extension activation error with its name (#714)',{concurrency:2},async t=>{
   const root=await project(t,{'/demo/*':mount},{'tests/demo.test.yaml':'version: "1"\ncases:\n  - {request: {path: /demo}, expect: {status: 200}}\n'},{extensions:declarations});
   const dir=await mkdtemp(join(tmpdir(),'urlcode-host-'));t.after(()=>rm(dir,{recursive:true,force:true}));
   const {activate:_activate,...data}=await registration(root);
@@ -482,7 +483,7 @@ export default await composeHost(import.meta.url,[demo]);
   await Promise.all(cases);
   assert.equal(describeError(new Error('internal detail')),'Operation failed; check project files, module dependencies and command options');
 });
-test('validate, test and dev print a host file load failure and an extension host() failure; requests never see them (#724)',{concurrency:true},async t=>{
+test('validate, test and dev print a host file load failure and an extension host() failure; requests never see them (#724)',{concurrency:2},async t=>{
   const root=await project(t,{'/demo/*':mount},{'tests/demo.test.yaml':'version: "1"\ncases:\n  - {request: {path: /demo}, expect: {status: 200}}\n'},{extensions:declarations});
   const dir=await mkdtemp(join(tmpdir(),'urlcode-host-'));t.after(()=>rm(dir,{recursive:true,force:true}));
   const hostModule=new URL('../packages/core/src/host.ts',import.meta.url).href;
@@ -525,7 +526,7 @@ test('validate, test and dev print a host file load failure and an extension hos
   assert.equal(asConfigError(Object.assign(new Error('look-alike'),{details:{code:'x'}})),undefined);
 });
 
-test('a verified --policy pins the extension host; PROJECT_SHA256 must agree and a stale or missing policy still refuses (#723)',{concurrency:true},async t=>{
+test('a verified --policy pins the extension host; PROJECT_SHA256 must agree and a stale or missing policy still refuses (#723)',{concurrency:2},async t=>{
   const root=await project(t,{'/demo/*':mount},{'tests/requests.json':JSON.stringify([{path:'/demo/x',status:200}])},{extensions:declarations});
   const revision=await inspectExtensionRevision(root);
   const dir=await mkdtemp(join(tmpdir(),'urlcode-host-'));t.after(()=>rm(dir,{recursive:true,force:true}));
@@ -546,7 +547,7 @@ export default await composeHost(import.meta.url,[demo]);
   const {PROJECT_SHA256:_unset,...base}=process.env;
   const run=(command:string,env:Record<string,string>,...args:string[])=>spawnAsync(process.execPath,[cli,command,'--project',root,'--origin',origin,'--host-file',host,...args],{encoding:'utf8',timeout:20000,env:{...base,...env}});
   const lastError=(stderr:string)=>JSON.parse(stderr.trim().split('\n').at(-1)!) as {event:string;message:string;code?:string};
-  // Every case below is an independent CLI run against the unchanged project, so they run concurrently.
+  // Every case below is an independent CLI run against the unchanged project, so they run with bounded concurrency.
   const cases:Promise<void>[]=[];
   for(const command of ['validate','test'])cases.push(t.test(`${command} takes the pin from --policy`,async()=>{
     const out=await run(command,{},'--policy',policy);assert.equal(out.status,0,out.stderr);
@@ -633,7 +634,7 @@ export default await composeHost(import.meta.url,[demo]);
 
 // #932: the generated validate, test, routes and audit scripts pass --local-review, so an edit needs no new pin; serving
 // still does, an operator pin always wins, and a local review reads no policy, so it holds no grant.
-test('--local-review pins a non-serving run to the current revision, never serves, never outranks an operator pin and grants nothing (#932)',{concurrency:true},async t=>{
+test('--local-review pins a non-serving run to the current revision, never serves, never outranks an operator pin and grants nothing (#932)',{concurrency:2},async t=>{
   const root=await project(t,{'/demo/*':{...mount,methods:['GET','HEAD']}},{'tests/requests.json':JSON.stringify([{path:'/demo/x',status:200,expectBody:'pinned'}])},{extensions:declarations});
   const dir=await mkdtemp(join(tmpdir(),'urlcode-host-'));t.after(()=>rm(dir,{recursive:true,force:true}));
   const {activate:_activate,projectSha256:_pin,...data}=await registration(root);
