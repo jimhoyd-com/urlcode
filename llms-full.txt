@@ -2085,7 +2085,7 @@ See [organization][docs/yaml/organization.md] for examples.
 | `version` | constant | yes | const: "1" | Project format version; always "1". |
 | `includes` | array | no | maxItems: 256; uniqueItems: true | Other YAML files whose routes join this project; entry urlcode.yaml only, with no nesting. |
 | `includes[]` | string | no | maxLength: 1024 | — |
-| `shared` | object | no | maxProperties: 32 | Reusable named request and response.headers blocks a route selects with use. Resolved at load time; the route hash, audit and routes output show the resolved route. Entry urlcode.yaml only. Response headers the runtime owns are refused. |
+| `shared` | object | no | maxProperties: 32 | Reusable named request, response.headers, env and secrets blocks a route selects with use. Resolved at load time into each route: the route hash, project revision, urlcode permissions (requested grants per route), operator policy pins, audit, routes and explain show the resolved route, so grants stay per route. Entry urlcode.yaml only. Response headers the runtime owns are refused. |
 | `shared.*` | object | no | unknown keys rejected | — |
 | `shared.*.request` | object | no | unknown keys rejected | Request body checks a route inherits when it names this block with use. |
 | `shared.*.request.body` | object | no | minProperties: 1; unknown keys rejected | Request body checks, keyed by HTTP method: each key is one of the route's methods and holds that method's policy, so GET and POST on one path state their own rules. A method without an entry has no body policy ([docs/HTTP.md]). |
@@ -2129,6 +2129,16 @@ See [organization][docs/yaml/organization.md] for examples.
 | `shared.*.response.headers.* (option 1)` | string | no | maxLength: 4096 | — |
 | `shared.*.response.headers.* (option 2)` | array | no | minItems: 1; maxItems: 16 | — |
 | `shared.*.response.headers.* (option 2)[]` | string | no | maxLength: 4096 | — |
+| `shared.*.env` | object | no | — | Non-secret bindings (literal or granted process environment variable) a route inherits when it names this block with use; merged name by name with the route's own env, which wins. Each route using the block requests its own operator grant. |
+| `shared.*.env.*` | one of the shapes below | no | — | — |
+| `shared.*.env.* (option 1)` | object | no | unknown keys rejected | — |
+| `shared.*.env.* (option 1).value` | string | yes | — | Literal value, never overridden by the host environment and needing no grant. |
+| `shared.*.env.* (option 2)` | object | no | unknown keys rejected | — |
+| `shared.*.env.* (option 2).env` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Process environment variable to read, which an operator policy must grant to this route. |
+| `shared.*.env.* (option 2).default` | string | no | — | Value used when the variable is ungranted or unset, so the route still activates without an operator grant. |
+| `shared.*.secrets` | object | no | — | Secret bindings a route inherits when it names this block with use; merged name by name with the route's own secrets, which wins. Each route using the block requests its own operator grant; values never appear in YAML. |
+| `shared.*.secrets.*` | object | no | unknown keys rejected | — |
+| `shared.*.secrets.*.secret` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | External secret name the operator grants to this route; the value never appears in YAML. |
 
 ### Routes: common fields (methods, parameters, env, secrets, policies, cache)
 
@@ -2169,14 +2179,14 @@ See [functions, inputs and methods][docs/yaml/functions.md] and [bindings, split
 | `routes.*.parameters[].schema.items` | object | no | unknown keys rejected | Element type of a query array input. |
 | `routes.*.parameters[].schema.items.type` | string | yes | enum: ["string","integer","number","boolean"] | Scalar type each repeated query value is converted to. |
 | `routes.*.parameters[].schema.maxItems` | integer | no | minimum: 0; maximum: 100 | Most repeated values a query array input accepts. |
-| `routes.*.env` | object | no | — | Non-secret values the route's function and middleware read as context.env, each a literal or a granted process environment variable. |
+| `routes.*.env` | object | no | — | Non-secret values the route's function and middleware read as context.env, each a literal or a granted process environment variable. Merged name by name over the env of a shared block named by use; the route's own entry wins. |
 | `routes.*.env.*` | one of the shapes below | no | — | — |
 | `routes.*.env.* (option 1)` | object | no | unknown keys rejected | — |
 | `routes.*.env.* (option 1).value` | string | yes | — | Literal value, never overridden by the host environment and needing no grant. |
 | `routes.*.env.* (option 2)` | object | no | unknown keys rejected | — |
 | `routes.*.env.* (option 2).env` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Process environment variable to read, which an operator policy must grant to this route. |
 | `routes.*.env.* (option 2).default` | string | no | — | Value used when the variable is ungranted or unset, so the route still activates without an operator grant. |
-| `routes.*.secrets` | object | no | — | Secret values the route's function, middleware, proxy and signals can use, each resolved from a name an operator policy grants to this route. |
+| `routes.*.secrets` | object | no | — | Secret values the route's function, middleware, proxy and signals can use, each resolved from a name an operator policy grants to this route. Merged name by name over the secrets of a shared block named by use; the route's own entry wins. |
 | `routes.*.secrets.*` | object | no | unknown keys rejected | — |
 | `routes.*.secrets.*.secret` | string | yes | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | External secret name the operator grants to this route; the value never appears in YAML. |
 | `routes.*.request` | object | no | unknown keys rejected | Request body checks run before the handler; declaring it replaces the request block of a shared block named by use. |
@@ -2313,7 +2323,7 @@ See [functions, inputs and methods][docs/yaml/functions.md] and [bindings, split
 | `routes.*.cache.maxBytes` | integer | no | minimum: 0; maximum: 16777216 | Largest body the origin cache stores |
 | `routes.*.cache.maxEntries` | integer | no | minimum: 1; maximum: 1000000 | Most responses the origin memory cache keeps for this configuration; the least recently used is evicted first. |
 | `routes.*.cache.force` | boolean | no | default: false | Allow immutable on a path without a content hash |
-| `routes.*.use` | string | no | pattern: "^[a-z][a-z0-9-]{0,63}$" | Name of a top-level shared block whose request and response.headers this route inherits. A key the route declares itself replaces the shared block as a whole; there is no deep merge. |
+| `routes.*.use` | string | no | pattern: "^[a-z][a-z0-9-]{0,63}$" | Name of a top-level shared block this route inherits. A request or response key the route declares itself replaces the shared one as a whole (no deep merge); env and secrets merge name by name, the route's own entry winning. The resolved route, inherited bindings included, is what the route hash, urlcode permissions, the operator grant and routes/explain/audit show. |
 
 ### Handler: function
 
@@ -2857,27 +2867,48 @@ security restrictions and examples.
 ### Shared blocks
 
 An optional top-level `shared` map (entry `urlcode.yaml` only; at most 32 names
-matching `^[a-z][a-z0-9-]{0,63}$`) holds named `request` and `response.headers`
-blocks. A route selects one with `use: <name>`. This is the reuse mechanism;
-anchors, aliases and merge keys stay rejected. Rules:
+matching `^[a-z][a-z0-9-]{0,63}$`) holds named `request`, `response.headers`,
+`env` and `secrets` blocks. A route selects one with `use: <name>`. This is the
+reuse mechanism; anchors, aliases and merge keys stay rejected. Rules:
 
 - A route's own `request` (or `response`) key replaces the shared block's key as
   a whole. There is no deep merge, so a reviewer never reconstructs a header set
   from two places.
+- `env` and `secrets` merge name by name: the route inherits every binding the
+  block declares, and a binding the route declares itself with the same name
+  wins. Both use exactly the route-level shapes (`{value}`, `{env}`,
+  `{env, default}`; `{secret}`).
+- A route names at most one block (`use` is a single name), so two blocks can
+  never disagree about a binding.
 - Resolution happens at load time, before the route hash, `audit`, `routes` and
   every compiler run. The resolved route carries no `use`, and changing a shared
   block changes the hash of exactly the routes that select it.
+- Inherited bindings are the route's bindings. The project revision
+  (`projectSha256`), `urlcode permissions` (the requested grants, listed per
+  route), the operator policy's per-route grants and revision pin, `explain`
+  and `audit` all see the resolved route, exactly as if the bindings had been
+  written on it. A shared block grants nothing and is never project-wide: each
+  route that names it requests its own grant, an operator grants each route
+  separately, and adding a route to a block changes that route's requested
+  grants and the revision, so the old pin is refused. A `sandbox: true` route
+  receives inherited bindings exactly as declared ones.
 - An unknown name fails validation, as does a shared block whose
   `response.headers` name a header the runtime owns (the same set a route may
   not set). Included files may `use` names from the entry file but may not
-  declare `shared`. Per-route rules, such as the asset-handler header limits,
-  still apply to the resolved route.
-- Only `request` and `response.headers` are shareable. `sandbox`,
-  `sandboxReason`, `policies` and other route defaults are deliberately left
-  out for now, so each trust decision stays on its route.
+  declare `shared`. Per-route rules, such as the asset-handler header limits
+  and a target's refusal of bindings, still apply to the resolved route.
+- Only `request`, `response.headers`, `env` and `secrets` are shareable.
+  `sandbox`, `sandboxReason`, `policies` and other route defaults are
+  deliberately left out, so each trust decision stays on its route.
 - No cross-file or remote reuse of blocks.
 
-See the [shared-blocks example](https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/examples/shared-blocks/README.md).
+Shared `env`/`secrets` were declined once (#576), to keep each route's
+requested authority visible where the route is written. They were admitted on
+2026-10-01 (#1133) on the condition above: the authority stays visible, and
+pinned, per route in every review surface rather than in the YAML alone.
+
+See the [shared-blocks example](https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/examples/shared-blocks/README.md) and the
+[shared-bindings example](https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/examples/shared-bindings/README.md).
 
 ### Named schemas
 
@@ -7715,6 +7746,18 @@ the previous approved snapshot running. A denial caused by a stale pin says
 so: the binding or egress error names the pinned and current revisions and
 points at `urlcode permissions`.
 
+Bindings written once in a top-level `shared` block and selected with `use`
+([shared blocks][docs/SPECIFICATION.md#shared-blocks]) change none of this. They
+are resolved into each route that names the block before anything is hashed or
+inspected, so `urlcode permissions` lists them under every such route, the
+operator grants each route separately, and `projectSha256` covers the resolved
+routes. The block itself grants nothing and has no project-wide effect: a
+route that does not name it gets none of its bindings, adding a route to it
+changes that route's requested grants and the revision (refusing the old pin),
+and the resolved route is checked exactly as if it declared the bindings
+itself (an `extension:` route still refuses `secrets`; a `sandbox: true` route
+receives them as declared ones).
+
 #### Trusted dependency review
 
 `inspect` and `review` include `trustedDependencies`: project-relative file
@@ -7818,4 +7861,5 @@ and its [runtime isolation/limits API](https://github.com/justjake/quickjs-emscr
 [docs/CAPACITY.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/CAPACITY.md
 [docs/SPECIFICATION.md#streamed-responses]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/SPECIFICATION.md#streamed-responses
 [docs/EXTENSIONS.md#request-context-route-env-and-request-id]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/EXTENSIONS.md#request-context-route-env-and-request-id
+[docs/SPECIFICATION.md#shared-blocks]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/SPECIFICATION.md#shared-blocks
 <!-- urlcode-current-version:end -->

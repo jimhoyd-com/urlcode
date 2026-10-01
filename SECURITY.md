@@ -25,6 +25,17 @@ binding grant declared or withheld. The grant only governs what URLCode hands
 that code through `context`; it is not a restriction the code is confined to.
 See the [security model and policy instructions](docs/FUNCTION-SECURITY.md).
 
+A top-level `shared` block may declare `env` and `secrets` that routes inherit
+with `use` (#1133, reversing the earlier decision in #576 to keep bindings
+route-local). The per-route visibility #576 protected is kept by resolving the
+bindings into each route at load time: the project revision, `urlcode
+permissions` (requested grants listed per route), the operator policy's
+per-route grants and revision pin, `explain` and `audit` all see each route's
+effective bindings. A shared block grants nothing, grants stay per route and
+least privilege is unchanged; adding a route to a block changes its requested
+grants and the revision, so an operator re-reviews before it activates. Review
+`urlcode permissions`, not only the YAML, to see a route's authority.
+
 The host/runtime and sandbox engine still require patching, independent review
 and deployment-level resource limits. The stable self-hosted release is not a claim of an audited multi-tenant
 execution platform. Authorized inputs/secrets can be exposed

@@ -1,0 +1,25 @@
+version: "1"
+# One shared block declares the bindings three routes need. Each route that names
+# it with `use` gets the bindings resolved into the route at load time, so
+# `urlcode permissions`, `urlcode explain` and the operator policy still list
+# them per route. A route's own entry with the same name wins.
+shared:
+  skills:
+    env:
+      SKILLS: {env: MCP_ENABLED_SKILLS, default: "search,summarize"}
+      REGION: {value: eu-west-1}
+routes:
+  /skills:
+    use: skills
+    function: functions/skills.mjs
+  /skills/{name}:
+    use: skills
+    parameters:
+      - {name: name, in: path, required: true, schema: {type: string, minLength: 1, maxLength: 64}}
+    function: {source: functions/skills.mjs, export: check}
+  /status:
+    use: skills
+    # Route-level wins by name: REGION is overridden, SKILLS is still inherited.
+    env:
+      REGION: {value: us-east-1}
+    function: {source: functions/skills.mjs, export: status}

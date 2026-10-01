@@ -238,6 +238,18 @@ the previous approved snapshot running. A denial caused by a stale pin says
 so: the binding or egress error names the pinned and current revisions and
 points at `urlcode permissions`.
 
+Bindings written once in a top-level `shared` block and selected with `use`
+([shared blocks][docs/SPECIFICATION.md#shared-blocks]) change none of this. They
+are resolved into each route that names the block before anything is hashed or
+inspected, so `urlcode permissions` lists them under every such route, the
+operator grants each route separately, and `projectSha256` covers the resolved
+routes. The block itself grants nothing and has no project-wide effect: a
+route that does not name it gets none of its bindings, adding a route to it
+changes that route's requested grants and the revision (refusing the old pin),
+and the resolved route is checked exactly as if it declared the bindings
+itself (an `extension:` route still refuses `secrets`; a `sandbox: true` route
+receives them as declared ones).
+
 ### Trusted dependency review
 
 `inspect` and `review` include `trustedDependencies`: project-relative file
@@ -341,4 +353,5 @@ and its [runtime isolation/limits API](https://github.com/justjake/quickjs-emscr
 [docs/CAPACITY.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/CAPACITY.md
 [docs/SPECIFICATION.md#streamed-responses]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/SPECIFICATION.md#streamed-responses
 [docs/EXTENSIONS.md#request-context-route-env-and-request-id]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/EXTENSIONS.md#request-context-route-env-and-request-id
+[docs/SPECIFICATION.md#shared-blocks]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/SPECIFICATION.md#shared-blocks
 <!-- urlcode-current-version:end -->
