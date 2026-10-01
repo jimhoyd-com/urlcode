@@ -1,6 +1,6 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { lstat, readFile, readdir, readlink, realpath, rm, writeFile } from 'node:fs/promises';
+import { lstat, readFile, readdir, readlink, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { AddonKind } from './addon-manifest.ts';
 import type { LockEntry } from './addon-install.ts';
@@ -48,7 +48,10 @@ export async function readFilesLock(site: string): Promise<AddonFilesLock> {
   }
   return raw as unknown as AddonFilesLock;
 }
-/** Writes the lock with sorted packages and files; an empty lock removes the file. */
+/**
+ * Writes the lock with sorted packages and files; an empty lock removes the file. The new text goes to a temporary
+ * file beside it that is then renamed over it, so a failed write leaves the previous record whole, never a torn one.
+ */
 export async function writeFilesLock(site: string, lock: AddonFilesLock): Promise<void> {
   const path = join(site, ADDON_FILES_LOCK), names = Object.keys(lock.packages).sort();
   if (!names.length) { await rm(path, { force: true }); return; }
@@ -56,7 +59,25 @@ export async function writeFilesLock(site: string, lock: AddonFilesLock): Promis
     const entry = lock.packages[name]!;
     return [name, { ...entry, files: Object.fromEntries(Object.keys(entry.files).sort().map(file => [file, entry.files[file]!])) }];
   }));
-  await writeFile(path, JSON.stringify({ lockfileVersion: 1, packages }, null, 2) + '\n');
+  const temporary = `${path}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
+  try {
+    await writeFile(temporary, JSON.stringify({ lockfileVersion: 1, packages }, null, 2) + '\n', { flag: 'wx' });
+    await rename(temporary, path);
+  } catch (error) {
+    await rm(temporary, { force: true });
+    throw new ConfigError(`Could not write ${ADDON_FILES_LOCK} in ${site}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/** Records the files of each named catalog add-on that is installed but has no entry yet; returns the names recorded. */
+export async function recordUnrecorded(site: string, lock: AddonFilesLock, installed: Record<string, LockEntry>, addons: readonly { name: string; package: string; kind: AddonKind }[]): Promise<string[]> {
+  const recorded: string[] = [];
+  for (const addon of addons) {
+    if (lock.packages[addon.package]) continue;
+    lock.packages[addon.package] = await recordPackage(site, addon.package, installed[`node_modules/${addon.package}`], { name: addon.name, kind: addon.kind, spec: null });
+    recorded.push(addon.name);
+  }
+  return recorded;
 }
 
 const sha256File = async (path: string): Promise<string> => {

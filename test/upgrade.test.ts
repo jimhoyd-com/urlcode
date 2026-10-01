@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,7 +23,7 @@ process.env.URLCODE_NPM = join(fixtures, 'fake-npm.mjs');
  * extension) and a dist/cli.js that answers `validate` and `explain` like the real one, so upgrade can be exercised
  * without publishing anything.
  */
-async function registry(t: TestContext, releases: Record<string, { addons: string[]; validate?: 'fail'; manifest?: Record<string, Record<string, unknown>>; files?: Record<string, Record<string, string>> }>): Promise<string> {
+async function registry(t: TestContext, releases: Record<string, { addons: string[]; validate?: 'fail'; manifest?: Record<string, Record<string, unknown>>; files?: Record<string, Record<string, string>>; tarballs?: true }>): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'urlcode-registry-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   for (const [version, release] of Object.entries(releases)) {
@@ -35,7 +35,9 @@ async function registry(t: TestContext, releases: Record<string, { addons: strin
       pkg.version = version;
       await writeFile(join(dir, 'package.json'), JSON.stringify({ ...pkg, ...release.manifest?.[name] }));
       for (const [file, text] of Object.entries(release.files?.[name] ?? {})) await writeFile(join(dir, file), text);
-      pins[name] = { kind: name === 'notes' ? 'artifact' : 'extension', package: `@jimhoyd/urlcode-${name}`, description: name, requires: [], url: `file:${dir}`, integrity: null };
+      // A tarball pin installs unpacked and locked with its integrity, as a released add-on does, so its files are hashed.
+      if (release.tarballs) await writeFile(`${dir}.tgz`, (packTarball as (dir: string) => Buffer)(dir));
+      pins[name] = { kind: name === 'notes' ? 'artifact' : 'extension', package: `@jimhoyd/urlcode-${name}`, description: name, requires: [], url: `file:${dir}${release.tarballs ? '.tgz' : ''}`, integrity: null };
     }
     const core = join(root, `@jimhoyd+urlcode@${version}`);
     await mkdir(join(core, 'dist'), { recursive: true });
@@ -49,13 +51,13 @@ else if (command === 'explain') console.log(JSON.stringify({ projectSha256: '${s
   return root;
 }
 /** A site on core `version` with `addons` installed from that release. */
-async function site(t: TestContext, registryDir: string, version: string, addons: string[]): Promise<string> {
+async function site(t: TestContext, registryDir: string, version: string, addons: string[], { tarballs = false } = {}): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'urlcode-upgrade-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const dir = (await initSite(join(root, 'site'))).site;
   const pkg = JSON.parse(await readFile(join(dir, 'package.json'), 'utf8')) as { dependencies: Record<string, string> };
   pkg.dependencies['@jimhoyd/urlcode'] = version;
-  for (const name of addons) pkg.dependencies[`@jimhoyd/urlcode-${name}`] = `file:${join(registryDir, `addon-${name}-${version}`)}`;
+  for (const name of addons) pkg.dependencies[`@jimhoyd/urlcode-${name}`] = `file:${join(registryDir, `addon-${name}-${version}`)}${tarballs ? '.tgz' : ''}`;
   await writeFile(join(dir, 'package.json'), JSON.stringify(pkg, null, 2) + '\n');
   const workflow = join(dir, '.github', 'workflows', 'urlcode.yml');
   await writeFile(workflow, (await readFile(workflow, 'utf8')).replace(/action@v[^\s#]+/, `action@v${version}`));
@@ -226,4 +228,87 @@ test('a locked independent package survives upgrade and a catalog change, keepin
   const report = await listAddons(dir, 'extension', { manifest: await coreManifest() });
   assert.deepEqual(report.addons.map(item => [item.name, item.version, item.independent ?? false]), [['alpha', '2.0.0', false], ['greeting', '2.3.4', true]]);
   assert.deepEqual(report.problems.filter(problem => problem.startsWith('greeting')), []);
+});
+
+/** The installed core's own catalog, as `urlcode extensions|artifacts list` run from the site reads it. */
+const installedManifest = async (dir: string): Promise<AddonManifest> => parseAddonManifest(JSON.parse(await readFile(join(dir, 'node_modules', '@jimhoyd', 'urlcode', 'dist', 'addons.json'), 'utf8')), 'installed core');
+/** `list --strict` for both kinds: the problems that would make it exit 1. */
+const strictProblems = async (dir: string): Promise<string[]> => [...(await listAddons(dir, 'extension', { manifest: await installedManifest(dir) })).problems, ...(await listAddons(dir, 'artifact', { manifest: await installedManifest(dir) })).problems];
+const tarballReleases = { '1.0.0': { addons: ['alpha', 'notes'], tarballs: true as const }, '2.0.0': { addons: ['alpha', 'notes'], tarballs: true as const, files: { alpha: { 'extension.js': 'export default {};\n' } } } };
+
+test('after upgrade, list --strict passes: every moved add-on\'s installed files are recorded at its new pin (#1131)', async t => {
+  const reg = await registry(t, tarballReleases);
+  env(t, { FAKE_NPM_REGISTRY: reg, FAKE_NPM_VIEW: '"2.0.0"' });
+  const dir = await site(t, reg, '1.0.0', ['alpha', 'notes'], { tarballs: true });
+  await addAddons(dir, 'extension', ['alpha'], { manifest: await installedManifest(dir) });
+  await addAddons(dir, 'artifact', ['notes'], { manifest: await installedManifest(dir) });
+  assert.deepEqual(await strictProblems(dir), [], 'the site starts clean');
+  assert.equal((await upgradeSite(dir)).upgraded, true);
+  assert.deepEqual(await strictProblems(dir), []);
+  const record = await readFilesLock(dir);
+  assert.deepEqual(Object.keys(record.packages).sort(), ['@jimhoyd/urlcode-alpha', '@jimhoyd/urlcode-notes']);
+  assert.ok(Object.values(record.packages).every(entry => entry.version === '2.0.0' && entry.integrity?.startsWith('sha512-') && Object.keys(entry.files).length > 0));
+});
+
+test('an up-to-date site whose add-ons were never recorded is repaired by upgrade; a second run records nothing (#1131)', async t => {
+  // The state an upgrade under a core that wrote no record leaves behind: the add-ons at the new pins, no addon-files.lock.json.
+  const reg = await registry(t, tarballReleases);
+  env(t, { FAKE_NPM_REGISTRY: reg, FAKE_NPM_VIEW: '"2.0.0"' });
+  const dir = await site(t, reg, '2.0.0', ['alpha', 'notes'], { tarballs: true });
+  const broken = await strictProblems(dir);
+  assert.equal(broken.length, 2);
+  assert.ok(broken.every(problem => /has no entry in addon-files\.lock\.json/.test(problem)), broken.join('\n'));
+  const pkgBefore = await readFile(join(dir, 'package.json'), 'utf8'), lockBefore = await readFile(join(dir, 'package-lock.json'), 'utf8');
+  const result = await upgradeSite(dir);
+  assert.deepEqual([result.upgraded, result.recorded], [false, ['alpha', 'notes']]);
+  assert.deepEqual(await strictProblems(dir), []);
+  assert.deepEqual([await readFile(join(dir, 'package.json'), 'utf8'), await readFile(join(dir, 'package-lock.json'), 'utf8')], [pkgBefore, lockBefore], 'only the record changed');
+  const record = await readFile(join(dir, 'addon-files.lock.json'), 'utf8');
+  assert.deepEqual((await upgradeSite(dir)).recorded, [], 'nothing left to record');
+  assert.equal(await readFile(join(dir, 'addon-files.lock.json'), 'utf8'), record);
+});
+
+test('an up-to-date site whose add-on npm moved off its pin is not recorded: list --strict keeps reporting it (#1131)', async t => {
+  const reg = await registry(t, tarballReleases);
+  env(t, { FAKE_NPM_REGISTRY: reg, FAKE_NPM_VIEW: '"2.0.0"' });
+  const dir = await site(t, reg, '2.0.0', ['alpha'], { tarballs: true });
+  // The fixture pins link a local source; a lock entry resolved from a registry instead no longer matches the pin.
+  const lockFile = join(dir, 'package-lock.json'), lock = JSON.parse(await readFile(lockFile, 'utf8')) as { packages: Record<string, { resolved?: string }> };
+  lock.packages['node_modules/@jimhoyd/urlcode-alpha']!.resolved = 'https://registry.example/elsewhere.tgz';
+  await writeFile(lockFile, JSON.stringify(lock, null, 2));
+  assert.deepEqual((await upgradeSite(dir)).recorded, []);
+  assert.deepEqual(Object.keys((await readFilesLock(dir)).packages), []);
+  assert.ok((await strictProblems(dir)).some(problem => /should link the development source/.test(problem)));
+});
+
+test('a record that cannot be written fails the upgrade and leaves nothing half-written (#1131)', { skip: process.platform === 'win32' || process.getuid?.() === 0 ? 'needs POSIX permissions enforced for this user' : false }, async t => {
+  const reg = await registry(t, tarballReleases);
+  env(t, { FAKE_NPM_REGISTRY: reg, FAKE_NPM_VIEW: '"2.0.0"' });
+  // Moving: the new add-on's files cannot be read for hashing, so the record cannot be written; everything rolls back.
+  const dir = await site(t, reg, '1.0.0', ['alpha', 'notes'], { tarballs: true });
+  await addAddons(dir, 'extension', ['alpha'], { manifest: await installedManifest(dir) });
+  await addAddons(dir, 'artifact', ['notes'], { manifest: await installedManifest(dir) });
+  const files = ['package.json', 'package-lock.json', 'addon-files.lock.json', '.github/workflows/urlcode.yml'];
+  const before = await Promise.all(files.map(file => readFile(join(dir, file), 'utf8')));
+  const wrapper = join(dir, '..', 'npm-unreadable.mjs'), original = process.env.URLCODE_NPM!;
+  await writeFile(wrapper, `import { execFileSync } from 'node:child_process';
+import { chmodSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+try { process.stdout.write(execFileSync(process.execPath, [${JSON.stringify(original)}, ...process.argv.slice(2)], { encoding: 'utf8' })); } catch (error) { process.stderr.write(String(error.stderr ?? '')); process.exit(1); }
+const alpha = join(process.cwd(), 'node_modules', '@jimhoyd', 'urlcode-alpha');
+try { if (JSON.parse(readFileSync(join(alpha, 'package.json'), 'utf8')).version === '2.0.0') chmodSync(join(alpha, 'extension.js'), 0o000); } catch {}
+`);
+  env(t, { URLCODE_NPM: wrapper });
+  await assert.rejects(upgradeSite(dir), /EACCES/);
+  assert.deepEqual(await Promise.all(files.map(file => readFile(join(dir, file), 'utf8'))), before);
+  assert.equal(JSON.parse(await readFile(join(dir, 'node_modules', '@jimhoyd', 'urlcode', 'package.json'), 'utf8')).version, '1.0.0', 'the previous install is restored');
+  env(t, { URLCODE_NPM: original });
+  assert.deepEqual(await strictProblems(dir), []);
+
+  // Up to date: the record file cannot be created, so the repair fails loudly and leaves no record, whole or torn.
+  const upToDate = await site(t, reg, '2.0.0', ['alpha'], { tarballs: true });
+  await chmod(upToDate, 0o555);
+  try { await assert.rejects(upgradeSite(upToDate), /Could not write addon-files\.lock\.json/); }
+  finally { await chmod(upToDate, 0o755); }
+  assert.deepEqual((await readdir(upToDate)).filter(name => name.startsWith('addon-files')), []);
 });

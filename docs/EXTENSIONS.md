@@ -1754,9 +1754,20 @@ the site before continuing; it is never silently ignored. The upgrade needs a
 before anything changes: run `npm install --ignore-scripts` first. `urlcode upgrade --check`
 reports the current and target versions and changes nothing. Configuration is
 not migrated: if an extension's schema changed, validation names the field.
-`upgrade` records the moved add-ons' files again. It never moves an
-independent package: the operator's npm spec, not core's catalog, pins it, and
-[re-running its `add`](#upgrading-an-independent-package) is its upgrade.
+`upgrade` records the moved add-ons' files again in
+[`addon-files.lock.json`](#the-installed-file-record), as part of the same
+change: a record that cannot be written fails the upgrade and rolls everything
+back. So `urlcode extensions list --strict` and `urlcode artifacts list --strict`
+pass after an upgrade. On a site that is already up to date, `upgrade` changes
+nothing except that record: an installed catalog add-on that still matches its
+pin but has no entry is recorded as it is now, and the output and the JSON
+`recorded` field name it. That repairs a site upgraded by an older core whose
+`upgrade` predates the record and so wrote none: run `urlcode upgrade` again (or
+`urlcode extensions add <name>`) and commit `addon-files.lock.json`. A package
+npm moved off its pin is not recorded; `list --strict` keeps reporting it. It
+never moves an independent package: the operator's npm spec, not core's
+catalog, pins it, and [re-running its `add`](#upgrading-an-independent-package)
+is its upgrade.
 
 Add-on command-line tools are ordinary npm bins once installed in the site, for
 example `npx urlcode-auth migrate` or `npx urlcode-store members list ...`.
@@ -1796,7 +1807,12 @@ urlcode artifacts verify petstore-docs
 later edit, not a package that was already bad when it was installed. A
 package installed some other way (for example by `npm install` from a committed
 `package.json`) has no record until it is named to `add` again, which records
-its files as they are then, so run `npm ci --ignore-scripts` first.
+its files as they are then, so run `npm ci --ignore-scripts` first. When that
+is all `add` changed, it says `Recorded the installed files of <name> in
+addon-files.lock.json` and lists the name under `recorded` in `--json`; it says
+`nothing to do` only when neither a package nor the record changed. The record
+is written to a temporary file and renamed into place, so a failed write leaves
+the previous record whole.
 
 ### Upgrading an independent package
 

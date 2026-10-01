@@ -15,7 +15,7 @@ import type { ExtensionEntry } from '../packages/core/src/extensions.ts';
 import { parseAddonManifest } from '../packages/core/src/addon-manifest.ts';
 import type { AddonManifest } from '../packages/core/src/addon-manifest.ts';
 import { inspectInstalledArtifact } from '../packages/core/src/artifact-inspect.ts';
-import { runAddonCommand } from '../packages/core/src/extensions-cli.ts';
+import { recordStatus, runAddonCommand } from '../packages/core/src/extensions-cli.ts';
 import { ADDON_FILES_LOCK, newestVersion, readFilesLock, registrySpecName } from '../packages/core/src/package-files.ts';
 import { loadDocument } from '../packages/core/src/config.ts';
 // @ts-expect-error: a plain JavaScript test fixture without type declarations.
@@ -268,9 +268,22 @@ test('naming an installed but unrecorded package to add again records its files,
   await rm(join(dir, ADDON_FILES_LOCK));
   assert.match((await listAddons(dir, 'artifact', { manifest })).problems.join('\n'), /has no entry in addon-files\.lock\.json/);
   const again = await addAddons(dir, 'artifact', ['notes', file], { manifest });
-  assert.deepEqual([again.added, again.upgraded], [[], []]);
+  assert.deepEqual([again.added, again.upgraded, again.recorded], [[], [], ['notes', file]], 'the record write is reported, not hidden as a no-op (#1131)');
   assert.deepEqual(await readFilesLock(dir), recorded);
   assert.deepEqual((await listAddons(dir, 'artifact', { manifest })).problems, []);
+  assert.match(recordStatus(again, ['notes', file]).join('\n'), /^Recorded the installed files of notes, .*petstore-docs-1\.4\.0\.tgz in addon-files\.lock\.json; they were already installed/);
+
+  // A catalog name alone takes the path that runs no npm at all; it reports the record write the same way.
+  await rm(join(dir, ADDON_FILES_LOCK));
+  await addAddons(dir, 'artifact', [file], { manifest });
+  const repaired = await addAddons(dir, 'artifact', ['notes'], { manifest });
+  assert.deepEqual([repaired.added, repaired.upgraded, repaired.recorded], [[], [], ['notes']]);
+  assert.deepEqual(recordStatus(repaired, ['notes']), ['Recorded the installed files of notes in addon-files.lock.json; it was already installed. Commit the record with package-lock.json.']);
+  assert.deepEqual(await readFilesLock(dir), recorded);
+  // Nothing changed at all: only now is it "nothing to do".
+  const noop = await addAddons(dir, 'artifact', ['notes'], { manifest });
+  assert.deepEqual(noop.recorded, []);
+  assert.deepEqual(recordStatus(noop, ['notes']), ['notes already installed; nothing to do.']);
 });
 
 /** The files a refused add must leave exactly as they were. */

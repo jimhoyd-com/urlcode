@@ -5,7 +5,7 @@ import { ConfigError, assert } from './errors.ts';
 import { assertInertArtifacts, dependencyTree, lockPackages, nestedCopies, openSite, pinProblem, readJson, renderJson, rollBack, snapshot } from './addon-install.ts';
 import type { PackageJson } from './addon-install.ts';
 import { parseAddonManifest } from './addon-manifest.ts';
-import { ADDON_FILES_LOCK, readFilesLock, recordPackage, writeFilesLock } from './package-files.ts';
+import { ADDON_FILES_LOCK, readFilesLock, recordPackage, recordUnrecorded, writeFilesLock } from './package-files.ts';
 import { runNpm } from './npm.ts';
 
 const core = '@jimhoyd/urlcode';
@@ -13,7 +13,11 @@ const exact = /^\d+\.\d+\.\d+(?:-alpha\.\d+)?$/;
 const actionRef = /(jimhoyd-com\/urlcode\/action@)v[0-9A-Za-z.-]+/g;
 
 export interface UpgradePlan { site: string; current: string; target: string; upToDate: boolean; addons: string[] }
-export interface UpgradeResult extends UpgradePlan { upgraded: boolean; workflows: string[]; projectSha256: string }
+export interface UpgradeResult extends UpgradePlan {
+  upgraded: boolean; workflows: string[]; projectSha256: string;
+  /** The add-ons whose installed files this run recorded in addon-files.lock.json: every moved one, or on an up-to-date site the ones it found unrecorded (#1131). */
+  recorded: string[];
+}
 
 /** The newest stable release: npm's `latest` dist-tag, which only a stable release moves (prereleases use `alpha`). */
 async function latestStable(site: string): Promise<string> {
@@ -37,6 +41,18 @@ function run(file: string, args: readonly string[], cwd: string): Promise<string
   return new Promise((resolve, reject) => execFile(process.execPath, [file, ...args], { cwd, encoding: 'utf8', timeout: 300000, maxBuffer: 16 * 1024 * 1024 }, (error, stdout, stderr) => error ? reject(new ConfigError(`${args.join(' ')} failed with the new runtime:\n${String(stderr || stdout || error.message).trim().split('\n').slice(-8).join('\n')}`)) : resolve(stdout)));
 }
 
+/** On an up-to-date site, records each installed catalog add-on that matches its pin but has no file record yet. */
+async function recordInstalled(site: string, addons: readonly string[]): Promise<string[]> {
+  if (!addons.length) return [];
+  const manifest = parseAddonManifest(await readJson(join(site, 'node_modules', '@jimhoyd', 'urlcode', 'dist', 'addons.json')), `installed ${core} dist/addons.json`);
+  const lock = await lockPackages(site), files = await readFilesLock(site);
+  // A package npm moved off its pin is left to `list --strict` to report: recording it would bless what it now holds.
+  const pinned = addons.flatMap(name => { const pin = manifest.addons[name]; return pin && !pinProblem(lock, pin) ? [{ name, package: pin.package, kind: pin.kind }] : []; });
+  const recorded = await recordUnrecorded(site, files, lock, pinned);
+  if (recorded.length) await writeFilesLock(site, files);
+  return recorded;
+}
+
 /**
  * `urlcode upgrade [--to X]`: moves core and every installed add-on to one version together. Core is installed
  * first; its own dist/addons.json then says exactly which add-on bytes belong to it, so the add-ons follow its
@@ -47,6 +63,11 @@ function run(file: string, args: readonly string[], cwd: string): Promise<string
  * restores package.json, package-lock.json, addon-files.lock.json and the workflows, then reinstalls node_modules from the restored lock with
  * `npm ci --ignore-scripts`; a reinstall that itself fails is reported with that command, never hidden. The lock is
  * what makes the rollback exact, so a site without one is refused before anything changes.
+ *
+ * An up-to-date site changes nothing but the record: an installed catalog add-on that still matches the installed core's
+ * pin but has no entry in addon-files.lock.json is recorded as it is now (#1131), which is what `extensions|artifacts add`
+ * does for one named again. That repairs a site whose earlier upgrade ran under a core that wrote no record, so
+ * `extensions list --strict` passes after `upgrade` either way. A record that cannot be written fails the command.
  */
 export async function upgradeSite(directory: string, options: { to?: string | undefined } = {}): Promise<UpgradeResult> {
   const plan = await planUpgrade(directory, options), site = await openSite(directory);
@@ -54,7 +75,7 @@ export async function upgradeSite(directory: string, options: { to?: string | un
   const workflows = (await readdir(workflowsDir).catch(() => [] as string[])).filter(name => /\.ya?ml$/.test(name)).map(name => join(workflowsDir, name));
   const newCli = join(site.site, 'node_modules', '@jimhoyd', 'urlcode', 'dist', 'cli.js');
   const revision = async (): Promise<string> => (await run(newCli, ['explain', '--project', 'app', '--json'], site.site).then(out => (JSON.parse(out.trim().split('\n').at(-1)!) as { projectSha256?: string }).projectSha256 ?? '', () => ''));
-  if (plan.upToDate) return { ...plan, upgraded: false, workflows: [], projectSha256: await revision() };
+  if (plan.upToDate) return { ...plan, upgraded: false, workflows: [], recorded: await recordInstalled(site.site, plan.addons), projectSha256: await revision() };
   const tree = await dependencyTree(site.site);
   assert(tree.hadLock, `${site.site} has no package-lock.json, so a failed upgrade could not put node_modules back exactly; run \`npm install --ignore-scripts\` there first, then upgrade`);
   const state = await snapshot([site.packageFile, join(site.site, 'package-lock.json'), join(site.site, ADDON_FILES_LOCK), ...workflows]);
@@ -84,6 +105,6 @@ export async function upgradeSite(directory: string, options: { to?: string | un
       const text = await readFile(file, 'utf8'), next = text.replace(actionRef, `$1v${plan.target}`);
       if (next !== text) { await writeFile(file, next); changed.push(relative(site.site, file).split(sep).join('/')); }
     }
-    return { ...plan, upgraded: true, workflows: changed, projectSha256: await revision() };
+    return { ...plan, upgraded: true, workflows: changed, recorded: plan.addons, projectSha256: await revision() };
   } catch (error) { return rollBack(state, tree, site.site, error); }
 }

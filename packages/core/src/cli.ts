@@ -169,13 +169,14 @@ const helpEntries: HelpEntry[] = [
     # add installs the capability only (no sample endpoints); --example also writes each added extension's example, for example store's /api/todos collection
     # remove refuses while another extension requires it or the project still uses it; data/ and operator files are never deleted
     # list --strict exits 1 on a pin mismatch, a nested copy, drift between package.json, app/urlcode.yaml and host.mjs, or installed files that differ from addon-files.lock.json; an extension neither declared nor imported is a library install, still pin-checked, not drift
-    # add records the sha256 of every installed file in addon-files.lock.json (commit it with package-lock.json); verify compares the installed files with it offline and exits 1 on any difference
+    # add records the sha256 of every installed file in addon-files.lock.json (commit it with package-lock.json); naming an installed but unrecorded one again records it and says so; verify compares the installed files with it offline and exits 1 on any difference
     # re-running add <spec> for an installed independent package upgrades it in place through the same checks, with the same rollback; outdated asks the registry (npm view, network) for the newest version matching each independent package's recorded spec and changes nothing
 ` },
   { name:'upgrade', group:'Extensions', text:
 `  urlcode upgrade [--check] [--to X.Y.Z] [--site directory] [--json]
     # moves the runtime and every released extension and artifact to one version together (never an independent package: re-run its extensions|artifacts add <spec>): the latest stable release (npm's latest dist-tag) unless --to names another, including a prerelease or an older version
     # installs core first, then the add-ons its own addons.json pins; validates the project with the new runtime; moves the site's workflow to the same action release; any failure restores package.json, package-lock.json and the workflows
+    # records every moved add-on's files in addon-files.lock.json, so extensions|artifacts list --strict passes after it; on an up-to-date site it only records installed add-ons that have no entry yet (a failed record write fails the command)
     # --check: report the current and target versions and change nothing
 ` },
   { name:'artifacts', group:'Extensions', text:
@@ -671,8 +672,8 @@ try {
           }
           const result = await upgradeSite(site, { to: values.to });
           print(values.json || !human ? { event: 'upgraded', ...result } : result.upgraded
-            ? [`Upgraded ${result.current} -> ${result.target} (core${result.addons.length ? `, ${result.addons.join(', ')}` : ''}).`, ...result.workflows.map(file => `Moved ${file} to action v${result.target}.`), `Project revision: ${result.projectSha256}. Update the reviewed policy's projectSha256 (or PROJECT_SHA256) if it changed, and restart.`].join('\n') + '\n'
-            : `Up to date: ${result.current}\n`);
+            ? [`Upgraded ${result.current} -> ${result.target} (core${result.addons.length ? `, ${result.addons.join(', ')}` : ''}).`, ...result.workflows.map(file => `Moved ${file} to action v${result.target}.`), ...(result.recorded.length ? [`Recorded the installed files of ${result.recorded.join(', ')} in addon-files.lock.json.`] : []), `Project revision: ${result.projectSha256}. Update the reviewed policy's projectSha256 (or PROJECT_SHA256) if it changed, and restart.`].join('\n') + '\n'
+            : `Up to date: ${result.current}\n${result.recorded.length ? `Recorded the installed files of ${result.recorded.join(', ')} in addon-files.lock.json; commit it with package-lock.json.\n` : ''}`);
           break;
         }
         case 'validate': {

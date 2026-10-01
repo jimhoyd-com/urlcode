@@ -9,7 +9,7 @@ import Ajv from 'ajv/dist/2020.js';
 import { isMap, isNode, isPair, isScalar, isSeq, parseDocument, stringify } from 'yaml';
 import { loadDocument, parseYaml, validateDocument } from './config.ts';
 import { parseInertYaml } from './inert-yaml.ts';
-import { ADDON_FILES_LOCK, checkPackageFiles, newestVersion, readFilesLock, recordPackage, registrySpecName, writeFilesLock } from './package-files.ts';
+import { ADDON_FILES_LOCK, checkPackageFiles, newestVersion, readFilesLock, recordPackage, recordUnrecorded, registrySpecName, writeFilesLock } from './package-files.ts';
 import type { AddonFilesLock, FileCheck } from './package-files.ts';
 import type { LoadedDocument } from './types.ts';
 import { ConfigError, asConfigError, assert, boundedLine } from './errors.ts';
@@ -539,7 +539,13 @@ export interface AddOptions {
 export interface AddResult { added: string[];
   /** Independent packages that were installed already and moved to what their spec resolves to now (#857). */
   upgraded: { name: string; package: string; from: string | null; to: string | null }[];
-  alreadyInstalled: string[]; projectSha256: string | undefined; env: Record<string, string>; notes: string[]; keptFiles: string[]; development: boolean; examples: string[] }
+  alreadyInstalled: string[];
+  /**
+   * Already-installed add-ons (by name, or the spec of an independent package) whose installed files had no entry in
+   * addon-files.lock.json and were recorded by this run (#1131): the record changed although no package did.
+   */
+  recorded: string[];
+  projectSha256: string | undefined; env: Record<string, string>; notes: string[]; keptFiles: string[]; development: boolean; examples: string[] }
 
 /** Plain objects merge key by key; any other value from `over` replaces. Neither input is changed. */
 function deepMerge(base: Record<string, unknown>, over: Record<string, unknown>): Record<string, unknown> {
@@ -586,19 +592,16 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
   const before = new Set(managedNames(manifest, pkg));
   const wanted = withRequirements(manifest, names);
   const toAdd = wanted.filter(name => !before.has(name) || pkg.dependencies?.[manifest.addons[name]!.package] !== manifest.addons[name]!.url);
-  const result: AddResult = { added: [], upgraded: [], alreadyInstalled: wanted.filter(name => !toAdd.includes(name)), projectSha256: undefined, env: {}, notes: [], keptFiles: [], development: isDevelopmentManifest(manifest), examples: [] };
+  const result: AddResult = { added: [], upgraded: [], alreadyInstalled: wanted.filter(name => !toAdd.includes(name)), recorded: [], projectSha256: undefined, env: {}, notes: [], keptFiles: [], development: isDevelopmentManifest(manifest), examples: [] };
   const filesLockPath = join(site.site, ADDON_FILES_LOCK);
   // A catalog add-on installed before its files were recorded is recorded as it is now when it is named again.
-  const unrecorded = (lock: AddonFilesLock): string[] => result.alreadyInstalled.filter(name => manifest.addons[name] && !lock.packages[manifest.addons[name]!.package]);
+  const installedCatalog = (): { name: string; package: string; kind: AddonKind }[] => result.alreadyInstalled.filter(name => manifest.addons[name]).map(name => ({ name, package: manifest.addons[name]!.package, kind: manifest.addons[name]!.kind }));
   if (!toAdd.length && !specs.length) {
     assert(acknowledgements.length === 0, `--ack ${acknowledgements.join(', ')} has no effect: ${requested.join(', ')} is already installed`);
     assert(!options.example, `--example has no effect: ${requested.join(', ')} is already installed; an example is written only when an extension is added`);
-    const files = await readFilesLock(site.site), record = unrecorded(files);
-    if (record.length) {
-      const lock = await lockPackages(site.site);
-      for (const name of record) { const pin = manifest.addons[name]!; files.packages[pin.package] = await recordPackage(site.site, pin.package, lock[`node_modules/${pin.package}`], { name, kind: pin.kind, spec: null }); }
-      await writeFilesLock(site.site, files);
-    }
+    const files = await readFilesLock(site.site);
+    result.recorded = await recordUnrecorded(site.site, files, await lockPackages(site.site), installedCatalog());
+    if (result.recorded.length) await writeFilesLock(site.site, files);
     return result;
   }
   const yamlFile = join(site.project, 'urlcode.yaml');
@@ -786,8 +789,10 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
     }
     // Every package this command installed, upgraded or found unrecorded gets its files recorded as installed now.
     const files = await readFilesLock(site.site), recordLock = await lockPackages(site.site);
-    for (const name of [...toAdd, ...unrecorded(files)]) { const pin = manifest.addons[name]!; files.packages[pin.package] = await recordPackage(site.site, pin.package, recordLock[`node_modules/${pin.package}`], { name, kind: pin.kind, spec: null }); }
+    result.recorded = await recordUnrecorded(site.site, files, recordLock, installedCatalog());
+    for (const name of toAdd) { const pin = manifest.addons[name]!; files.packages[pin.package] = await recordPackage(site.site, pin.package, recordLock[`node_modules/${pin.package}`], { name, kind: pin.kind, spec: null }); }
     for (const [name, dependency] of [...independent, ...upgrades, ...unchanged]) files.packages[dependency] = await recordPackage(site.site, dependency, recordLock[`node_modules/${dependency}`], { name, kind, spec: specOf.get(dependency) ?? null });
+    result.recorded.push(...[...unchanged.values()].map(dependency => specOf.get(dependency) ?? dependency));
     await writeFilesLock(site.site, files);
     result.added = [...toAdd, ...independent.keys()];
     if (kind === 'extension') {
