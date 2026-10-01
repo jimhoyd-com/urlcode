@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { initProject, addRedirect, stampStarterText, planInit, agentClientStateDirectories } from '../packages/core/src/authoring.ts';
 import { loadDocument } from '../packages/core/src/config.ts';
 import { runProjectTests } from '../packages/core/src/project-tests.ts';
-import { project,redirect } from './helpers.ts';
+import { project,redirect,spawnAsync } from './helpers.ts';
 import { renderAgentsGuide, renderMcpConfig, skillPath } from '../packages/core/src/agents-guide.ts';
 import { projectScripts } from '../packages/core/src/context.ts';
 const cli = fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
@@ -239,10 +239,10 @@ test('init in place accepts and never touches coding-agent client state, but sti
 });
 test('CLI errors use nonzero status and do not echo secret arguments', async t => {
   const root = await project(t,{});
-  for (const args of [['init','unused','--template','redirects'],['unknown'],['serve','--port','invalid'],['add','javascript:SECRET','--project',root]]) {
-    const result = spawnSync(process.execPath,[cli,...args],{ encoding:'utf8',timeout:10000 });
+  await Promise.all([['init','unused','--template','redirects'],['unknown'],['serve','--port','invalid'],['add','javascript:SECRET','--project',root]].map(async args => {
+    const result = await spawnAsync(process.execPath,[cli,...args],{ encoding:'utf8',timeout:10000 });
     assert.equal(result.status,1); assert.ok(!result.stderr.includes('SECRET'));
-  }
+  }));
 });
 test('authoring does not read credentials or execute functions in an untrusted project', async t => {
   const root = await project(t,{'/f':{function:{source:'f.mjs'},secrets:{KEY:{secret:'missing'}}}},{'f.mjs':'while(true) {} export default () => new Response("no")','.env.local':'invalid dotenv'});
@@ -250,12 +250,12 @@ test('authoring does not read credentials or execute functions in an untrusted p
 });
 test('audit CLI fails count mismatch and does not print redirect destinations',async t=>{
   const root=await project(t,{'/go':redirect('https://example.com/SECRET')});
-  for(const [count,code] of [['1',0],['2',1]] as const) {
-    const result=spawnSync(process.execPath,[cli,'audit','--project',root,'--expect-routes',count],{encoding:'utf8',timeout:10000});
+  await Promise.all(([['1',0],['2',1]] as const).map(async ([count,code]) => {
+    const result=await spawnAsync(process.execPath,[cli,'audit','--project',root,'--expect-routes',count],{encoding:'utf8',timeout:10000});
     assert.equal(result.status,code);assert.ok(!result.stdout.includes('SECRET'));
     const report: unknown=JSON.parse(result.stdout.trim().split('\n').at(-1) ?? '');
     assert.ok(typeof report==='object' && report!==null && 'ready' in report);assert.equal(report.ready,code===0);
-  }
+  }));
 });
 
 test('serve names the port and a next step when the port is taken, as one JSON error event', async t => {
@@ -283,18 +283,20 @@ test('serve names the port and a next step when the port is taken, as one JSON e
 
 test('serve exposes deployment capacity controls and rejects invalid values', async t => {
   const root = await project(t,{ '/go':redirect() });
-  const run = (...args: string[]) => spawnSync(process.execPath,[cli,...args],{ encoding:'utf8',timeout:20000 });
-  for (const args of [['--workers','0'],['--workers','abc'],['--function-timeout-ms','5'],['--max-in-flight','0'],
-    ['--max-in-flight-health','99999'],['--max-body-bytes','0'],['--request-log','verbose']]) {
-    const result = run('serve','--project',root,'--port','0',...args);
+  const run = (...args: string[]) => spawnAsync(process.execPath,[cli,...args],{ encoding:'utf8',timeout:20000 });
+  const invalid = [['--workers','0'],['--workers','abc'],['--function-timeout-ms','5'],['--max-in-flight','0'],
+    ['--max-in-flight-health','99999'],['--max-body-bytes','0'],['--request-log','verbose']];
+  // Every run is independent and none binds a port, so they start together and are checked in order.
+  const [started, help, ...refused] = await Promise.all([run('validate','--project',root), run('--help'), ...invalid.map(args => run('serve','--project',root,'--port','0',...args))]);
+  for (const [index, args] of invalid.entries()) {
+    const result = refused[index]!;
     assert.equal(result.status,1,`expected ${args.join(' ')} to be rejected`);
     assert.equal(JSON.parse(result.stderr).event,'error');
     assert.ok(!result.stdout.includes('listening'));
   }
   // Accepted values reach the runtime rather than being silently ignored.
-  const started = run('validate','--project',root);
   assert.equal(started.status,0);
-  assert.ok(run('--help').stdout.includes('--max-in-flight-health'));
+  assert.ok(help.stdout.includes('--max-in-flight-health'));
 });
 
 test('doctor reports the node runtime facts', async () => {

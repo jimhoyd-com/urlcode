@@ -1,13 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {spawnSync} from 'node:child_process';
 import {mkdir,mkdtemp,rm,writeFile as writeHostFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {reviewProject} from '../packages/core/src/review.ts';
 import {inspectExtensionRevision} from '../packages/core/src/extensions.ts';
-import {project} from './helpers.ts';
+import {project,spawnAsync} from './helpers.ts';
 const cookbook=fileURLToPath(new URL('../examples/cookbook/',import.meta.url));
 const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
 
@@ -311,11 +310,12 @@ test('the review CLI accepts --host-file to sharpen extension-alternative regist
   const dir=await mkdtemp(join(tmpdir(),'urlcode-review-host-'));t.after(()=>rm(dir,{recursive:true,force:true}));
   const file=join(dir,'host.mjs');
   await writeHostFile(file,`export default {extensions:[{name:'auth',version:'1',projectSha256:${JSON.stringify(projectSha256)},targets:['node'],schema:{},providesPrincipal:true,activate(){throw new Error('review must not activate an extension');}}]};`);
-  const run=(...args:string[])=>spawnSync(process.execPath,[cli,'review','--project',root,'--json',...args],{encoding:'utf8',timeout:20000});
-  const withoutHost=run();assert.equal(withoutHost.status,0);
+  const run=(...args:string[])=>spawnAsync(process.execPath,[cli,'review','--project',root,'--json',...args],{encoding:'utf8',timeout:20000});
+  const [withoutHost,withHost]=await Promise.all([run(),run('--host-file',file)]);
+  assert.equal(withoutHost.status,0);
   const bare=JSON.parse(withoutHost.stdout) as {observations:{signal:string;note:string}[]};
   assert.match(bare.observations.find(item=>item.signal==='manual-cookie-session')!.note,/once registered/);
-  const withHost=run('--host-file',file);assert.equal(withHost.status,0);
+  assert.equal(withHost.status,0);
   const sharpened=JSON.parse(withHost.stdout) as {observations:{signal:string;note:string;registered?:boolean;revisionPinned?:boolean}[]};
   const found=sharpened.observations.find(item=>item.signal==='manual-cookie-session');
   assert.ok(found);
@@ -352,14 +352,15 @@ test('review is unaffected by a route\'s sandbox: true execution mode, and never
   assert.equal(trustedReview.observations[0]!.category,sandboxedReview.observations[0]!.category);
 });
 
-test('the review CLI runs read-only against a real example project and supports --json',()=>{
-  const run=(...args:string[])=>spawnSync(process.execPath,[cli,...args,'--project',cookbook],{encoding:'utf8',timeout:60000});
-  const text=run('review');assert.equal(text.status,0);assert.match(text.stdout,/format: 1/);
-  const json=run('review','--json');assert.equal(json.status,0);
+test('the review CLI runs read-only against a real example project and supports --json',async()=>{
+  const run=(...args:string[])=>spawnAsync(process.execPath,[cli,...args,'--project',cookbook],{encoding:'utf8',timeout:60000});
+  const [text,json,extra]=await Promise.all([run('review'),run('review','--json'),run('review','extra','--project',cookbook)]);
+  assert.equal(text.status,0);assert.match(text.stdout,/format: 1/);
+  assert.equal(json.status,0);
   const review=JSON.parse(json.stdout) as {format:number;summary:Record<string,number>};
   assert.equal(review.format,1);
   assert.ok(Object.keys(review.summary).sort().join(',')==='extension-alternative,gap,manual-review,native-alternative');
-  assert.equal(run('review','extra','--project',cookbook).status,1);
+  assert.equal(extra.status,1);
 });
 
 // test/fixtures/review-recipes holds the recipe modules as they were before

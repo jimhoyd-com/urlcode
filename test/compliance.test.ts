@@ -1,14 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { project, redirect, param, approveBindings } from './helpers.ts';
-import type { ProjectRoutes, ProjectFiles, ProjectSettings } from './helpers.ts';
+import { project, redirect, param, approveBindings, spawnAsync } from './helpers.ts';
+import type { ProjectRoutes, ProjectFiles, ProjectSettings, SpawnResult } from './helpers.ts';
 import type { TestContext } from 'node:test';
-import type { SpawnSyncReturns } from 'node:child_process';
 import type { RouteConfig } from '../packages/core/src/types.ts';
 import { createRuntime } from '../packages/core/src/runtime.ts';
 import { startServer } from '../packages/core/src/server.ts';
@@ -146,30 +144,30 @@ test('auditProject reports compliance beside readiness and null without options'
   assert.equal(audited.ready, true); assert.ok(audited.compliance, 'no compliance report'); assert.equal(audited.compliance.profile, 'baseline'); assert.equal(typeof audited.compliance.pass, 'boolean');
 });
 
-test('audit CLI runs compliance on the cookbook, exits per severity and keeps --compliance-warn at 0', () => {
-  const cliRun = (...args: string[]) => spawnSync(process.execPath, [cli, 'audit', '--project', cookbook, ...args], { encoding: 'utf8', timeout: 60000 });
+test('audit CLI runs compliance on the cookbook, exits per severity and keeps --compliance-warn at 0', async () => {
+  const cliRun = (...args: string[]) => spawnAsync(process.execPath, [cli, 'audit', '--project', cookbook, ...args], { encoding: 'utf8', timeout: 60000 });
   // The CLI prints the audit report as JSON; it is read back with the shape auditProject returns.
   interface AuditJson { ready: boolean; compliance: ComplianceReport | null }
-  const last = (result: SpawnSyncReturns<string>): AuditJson => JSON.parse(result.stdout.trim().split('\n').at(-1) ?? '') as AuditJson;
-  const compliance = (result: SpawnSyncReturns<string>): ComplianceReport => { const report = last(result).compliance; assert.ok(report, 'no compliance report in the audit output'); return report; };
-  const plain = cliRun(); assert.equal(plain.status, 0); assert.equal(last(plain).compliance, null);
-  const baseline = cliRun('--compliance', 'baseline');
+  const last = (result: SpawnResult): AuditJson => JSON.parse(result.stdout.trim().split('\n').at(-1) ?? '') as AuditJson;
+  const compliance = (result: SpawnResult): ComplianceReport => { const report = last(result).compliance; assert.ok(report, 'no compliance report in the audit output'); return report; };
+  // The audits are independent read-only runs of one project: started together, checked in order.
+  const refusals = [['--compliance', 'lax'], ['--compliance-rules', join(cookbook, 'urlcode.yaml')], ['--compliance-ignore', 'not-namespaced'], ['--compliance', 'baseline', '--request-log', 'verbose']];
+  const [plain, baseline, failing, warned, ignored, privacy, ...refused] = await Promise.all([cliRun(), cliRun('--compliance', 'baseline'), cliRun('--compliance', 'baseline', '--compliance-rules', exampleRules),
+    cliRun('--compliance', 'baseline', '--compliance-rules', exampleRules, '--compliance-warn'), cliRun('--compliance-rules', exampleRules, '--compliance-ignore', 'oshp/security-headers,acme/redirect-hosts'),
+    cliRun('--compliance', 'privacy', '--request-log', 'detailed'), ...refusals.map(args => cliRun(...args))]);
+  assert.equal(plain.status, 0); assert.equal(last(plain).compliance, null);
   assert.equal(baseline.status, 0);
   const report = compliance(baseline);
   assert.equal(report.profile, 'baseline'); assert.equal(report.pass, true); assert.equal(report.counts.high, 0);
   assert.ok(report.findings.some((f: Finding) => f.rule === 'rfc9110/expired-routes'));
   assert.ok(report.findings.every((f: Finding) => f.standard.reference && f.remediation));
   assert.deepEqual(report.evidence.host, { requestLog: 'minimal' });
-  const failing = cliRun('--compliance', 'baseline', '--compliance-rules', exampleRules);
   assert.equal(failing.status, 1); assert.equal(last(failing).ready, true); assert.equal(compliance(failing).pass, false);
   assert.ok(compliance(failing).ruleIds.includes('acme/redirect-hosts')); assert.ok(!compliance(failing).ruleIds.includes('rfc9110/expired-routes'));
-  const warned = cliRun('--compliance', 'baseline', '--compliance-rules', exampleRules, '--compliance-warn');
   assert.equal(warned.status, 0); assert.equal(compliance(warned).pass, false);
-  const ignored = cliRun('--compliance-rules', exampleRules, '--compliance-ignore', 'oshp/security-headers,acme/redirect-hosts');
   assert.equal(ignored.status, 0); assert.equal(compliance(ignored).profile, 'baseline'); assert.equal(compliance(ignored).pass, true);
-  const privacy = cliRun('--compliance', 'privacy', '--request-log', 'detailed');
   assert.equal(privacy.status, 0); assert.ok(compliance(privacy).findings.some(f => f.rule === 'privacy/detailed-log-parameters'));
-  for (const args of [['--compliance', 'lax'], ['--compliance-rules', join(cookbook, 'urlcode.yaml')], ['--compliance-ignore', 'not-namespaced'], ['--compliance', 'baseline', '--request-log', 'verbose']]) {
-    const result = cliRun(...args); assert.equal(result.status, 1, args.join(' ')); assert.equal((JSON.parse(result.stderr) as { event?: unknown }).event, 'error');
+  for (const [index, args] of refusals.entries()) {
+    const result = refused[index]!; assert.equal(result.status, 1, args.join(' ')); assert.equal((JSON.parse(result.stderr) as { event?: unknown }).event, 'error');
   }
 });

@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import type {TestContext} from 'node:test';
-import {spawnSync} from 'node:child_process';
+import {spawnAsync} from './helpers.ts';
 import {createHash} from 'node:crypto';
 import {mkdir,mkdtemp,readFile,readdir,realpath,rm,stat,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';import {join} from 'node:path';
@@ -32,21 +32,21 @@ async function snapshot(root:string):Promise<string[]> {
 }
 /** init's host.mjs imports the installed runtime, which these temporary sites do not have: an inert host stands in. */
 const inertHost=(site:string)=>writeFile(join(site,'host.mjs'),'export default {plugins: [], extensions: []};');
-function run(args:string[],cwd?:string) {return spawnSync(process.execPath,['--conditions=development',cli,...args],{encoding:'utf8',...(cwd?{cwd}:{})});}
-function runJson(args:string[],cwd?:string):Bootstrap {const result=run([...args,'--json'],cwd);assert.equal(result.status,0,result.stderr);return JSON.parse(result.stdout) as Bootstrap;}
+function run(args:string[],cwd?:string) {return spawnAsync(process.execPath,['--conditions=development',cli,...args],{encoding:'utf8',...(cwd?{cwd}:{})});}
+async function runJson(args:string[],cwd?:string):Promise<Bootstrap> {const result=await run([...args,'--json'],cwd);assert.equal(result.status,0,result.stderr);return JSON.parse(result.stdout) as Bootstrap;}
 // The emitted commands are POSIX shell text; Windows runners have no /bin/sh (the same skip as test/context-commands.test.ts).
 const posixShell=process.platform!=='win32';
 /** Runs an emitted command through a POSIX shell after its `cd`, with this checkout's CLI standing in for the site-local one. */
 function runEmitted(bootstrap:Bootstrap,name:string) {
  const command=bootstrap.commands![name]!;
  assert.ok(command.startsWith(`${localInvocation} `),command);
- return spawnSync('/bin/sh',['-c',`${bootstrap.commands!.cd} && ${shellWord(process.execPath)} --conditions=development ${shellWord(cli)} ${command.slice(localInvocation.length+1)}`],{encoding:'utf8',cwd:tmpdir()});
+ return spawnAsync('/bin/sh',['-c',`${bootstrap.commands!.cd} && ${shellWord(process.execPath)} --conditions=development ${shellWord(cli)} ${command.slice(localInvocation.length+1)}`],{encoding:'utf8',cwd:tmpdir()});
 }
 
 test('an empty directory is inspected, never created into, and names the explicit create command',async t=>{
  const empty=await directory(t);
  const before=await snapshot(empty);
- const result=runJson(['bootstrap','--capabilities','respond'],empty);
+ const result=await runJson(['bootstrap','--capabilities','respond'],empty);
  assert.equal(result.state,'none');assert.equal(result.site,null);
  assert.deepEqual(await snapshot(empty),before);assert.deepEqual(await readdir(empty),[]);
  assert.match(result.next[0]!,new RegExp(`bootstrap --create ${shellWord(empty).replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}$`));
@@ -54,7 +54,7 @@ test('an empty directory is inspected, never created into, and names the explici
  assert.equal(result.capabilities!.packet[0]!.name,'respond');
  assert.equal(result.runtime.status,'unverified');
  // --create needs a destination the caller named.
- const refused=run(['bootstrap','--create'],empty);
+ const refused=await run(['bootstrap','--create'],empty);
  assert.notEqual(refused.status,0);assert.match(refused.stderr,/explicit destination/);
  assert.deepEqual(await readdir(empty),[]);
  // A directory that does not exist yet is not created either.
@@ -64,7 +64,7 @@ test('an empty directory is inspected, never created into, and names the explici
 
 test('--create with an explicit destination creates one site once; repeating it changes nothing',async t=>{
  const root=await directory(t),site=join(root,'my site');
- const first=runJson(['bootstrap',site,'--create']);
+ const first=await runJson(['bootstrap',site,'--create']);
  assert.equal(first.state,'created');
  assert.ok(first.created!.includes('app')&&first.created!.includes('host.mjs')&&first.created!.includes('package.json'));
  assert.deepEqual(first.site,{root:site,layout:'site',project:'app',projectRoot:join(site,'app'),entry:'app/urlcode.yaml',hostFile:'host.mjs',packageJson:'package.json'});
@@ -72,15 +72,16 @@ test('--create with an explicit destination creates one site once; repeating it 
  assert.equal(first.commands!.install,'npm install');
  await inertHost(site);
  const before=await snapshot(root);
- for(const args of [['bootstrap',site,'--create'],['bootstrap',site],['bootstrap','.','--create'],['bootstrap','app','--create']]) {
-  const again=runJson(args,site);
+ // The repeats change nothing, so they run together.
+ await Promise.all([['bootstrap',site,'--create'],['bootstrap',site],['bootstrap','.','--create'],['bootstrap','app','--create']].map(async args=>{
+  const again=await runJson(args,site);
   assert.equal(again.state,'existing',args.join(' '));assert.equal(again.created,undefined);
   assert.equal(again.site!.root,site);assert.equal(again.site!.projectRoot,join(site,'app'));
- }
+ }));
  assert.deepEqual(await snapshot(root),before);
  await assert.rejects(stat(join(site,'app','app')));
  // The emitted validate and test run from the site root although its path has a space.
- if(posixShell)for(const name of ['validate','test']) {const emitted=runEmitted(first,name);assert.equal(emitted.status,0,`${name}: ${emitted.stderr}`);}
+ if(posixShell)await Promise.all(['validate','test'].map(async name=>{const emitted=await runEmitted(first,name);assert.equal(emitted.status,0,`${name}: ${emitted.stderr}`);}));
 });
 
 test('creation is refused where it would nest a site: at an app directory or inside a project',async t=>{
@@ -117,10 +118,10 @@ test('an existing site is found from its root and from app/, with a supplied fro
  // The mapping holds: a static route naming `public` validates; one naming the site-relative path does not.
  await writeFile(join(site,'app','urlcode.yaml'),'version: "1"\nroutes:\n  /public/*: {static: {directory: public, index: index.html}}\n');
  // Checked through the emitted command where a POSIX shell exists, otherwise through the CLI with the same arguments.
- const validate=():number|null=>posixShell?runEmitted(fromRoot,'validate').status:run(['validate','--local','--project','app','--host-file','host.mjs'],site).status;
- assert.equal(validate(),0);
+ const validate=async():Promise<number|null>=>(await (posixShell?runEmitted(fromRoot,'validate'):run(['validate','--local','--project','app','--host-file','host.mjs'],site))).status;
+ assert.equal(await validate(),0);
  await writeFile(join(site,'app','urlcode.yaml'),'version: "1"\nroutes:\n  /public/*: {static: {directory: app/public}}\n');
- assert.notEqual(validate(),0);
+ assert.notEqual(await validate(),0);
  // --origin reaches the commands, quoted; a project that no longer loads is a diagnostic, not a crash.
  const withOrigin=await buildBootstrap(site,{origin:'https://example.test'});
  assert.ok(withOrigin.commands!.start!.endsWith('--origin https://example.test'));
@@ -194,14 +195,14 @@ test('--create --adopt builds the site around a supplied frontend, moves nothing
  await mkdir(join(site,'dist'));await writeFile(join(site,'dist','app.js'),'console.log(1)');
  const before=await snapshot(site);
  // Inspecting names the adopting command; plain --create is refused by init and says to add --adopt.
- const inspected=runJson(['bootstrap',site]);
+ // Inspecting, plain --create and a misplaced --adopt all leave the directory alone, so they run together.
+ const [inspected,plain,misplaced]=await Promise.all([runJson(['bootstrap',site]),run(['bootstrap',site,'--create']),run(['bootstrap',site,'--adopt'])]);
  assert.equal(inspected.state,'none');
  assert.match(inspected.next[0]!,new RegExp(`already holds dist, frontend, none of which collides .*bootstrap --create ${shellWord(site).replace(/[.*+?^${}()|[\]\\]/g,'\\$&')} --adopt$`));
- const plain=run(['bootstrap',site,'--create']);
  assert.notEqual(plain.status,0);assert.match(plain.stderr,/add --adopt/);
  assert.deepEqual(await snapshot(site),before);
- assert.match(run(['bootstrap',site,'--adopt']).stderr,/--adopt is only supported by init and bootstrap --create/);
- const created=runJson(['bootstrap',site,'--create','--adopt']);
+ assert.match(misplaced.stderr,/--adopt is only supported by init and bootstrap --create/);
+ const created=await runJson(['bootstrap',site,'--create','--adopt']);
  assert.equal(created.state,'created');assert.deepEqual(created.leftAlone,['dist','frontend']);
  assert.ok(!created.created!.includes('frontend')&&created.created!.includes('app')&&created.created!.includes('host.mjs'));
  assert.equal(created.site!.root,site);assert.equal(created.site!.projectRoot,join(site,'app'));
@@ -210,10 +211,10 @@ test('--create --adopt builds the site around a supplied frontend, moves nothing
  assert.match(created.paths!.outsideProject[1]!.note,/build or copy those into app\/frontend and reference them as frontend/);
  const after=await snapshot(site);
  for(const line of before)assert.ok(after.includes(line),`changed: ${line}`);
- for(const args of [['bootstrap',site,'--create','--adopt'],['bootstrap',site,'--create'],['bootstrap',site]]) {
-  const again=runJson(args);
+ await Promise.all([['bootstrap',site,'--create','--adopt'],['bootstrap',site,'--create'],['bootstrap',site]].map(async args=>{
+  const again=await runJson(args);
   assert.equal(again.state,'existing',args.join(' '));assert.equal(again.created,undefined);assert.equal(again.leftAlone,undefined);
- }
+ }));
  assert.deepEqual(await snapshot(site),after);
  await assert.rejects(stat(join(site,'app','app')));
 });

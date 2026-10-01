@@ -1,13 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {explainRoute,explainProject} from '../packages/core/src/tooling.ts';
 import {unenumeratedSubpaths} from '../packages/core/src/explain.ts';
 import {createRuntime} from '../packages/core/src/runtime.ts';
 import {inspectExtensionRevision} from '../packages/core/src/extensions.ts';
 import type {RuntimeExtension} from '../packages/core/src/extensions.ts';
-import {project,redirect} from './helpers.ts';
+import {project,redirect,spawnAsync} from './helpers.ts';
 const cookbook=fileURLToPath(new URL('../examples/cookbook/',import.meta.url));
 const extensions=fileURLToPath(new URL('../examples/extensions/',import.meta.url));
 const conditions=fileURLToPath(new URL('../examples/conditions/',import.meta.url));
@@ -107,7 +106,8 @@ test('explain agrees with the runtime on methods and policies for every route',a
     const inventory=runtime.testPlan().inventory;
     const explained=await explainProject(root,{...(registry?{extensions:registry}:{})});
     assert.equal(explained.routes.length,inventory.length,root);
-    for(const entry of inventory){
+    // Each explainRoute loads the project again; two at a time is the in-process configuration load cap.
+    for(let index=0;index<inventory.length;index+=2)await Promise.all(inventory.slice(index,index+2).map(async entry=>{
       const explanation=explained.routes.find(route=>route.path===entry.path);assert.ok(explanation,entry.path);
       assert.deepEqual(explanation.methods,entry.methods,entry.path);
       assert.deepEqual(explanation.policies.names,entry.policies,entry.path);
@@ -116,7 +116,7 @@ test('explain agrees with the runtime on methods and policies for every route',a
       assert.equal(explanation.middleware.length,entry.middleware,entry.path);
       const single=await explainRoute(root,entry.path.replace(/\/\*$/,'/probe'),{...(registry?{extensions:registry}:{})});
       assert.ok(single.matched&&single.path===entry.path,entry.path);
-    }
+    }));
   }
 });
 test('explain names nearest routes for a miss and never carries binding values',async t=>{
@@ -127,14 +127,16 @@ test('explain names nearest routes for a miss and never carries binding values',
   assert.deepEqual(hit.bindings,{env:{A:{env:'AMBIENT'}},secrets:{KEY:{secret:'NEVER_PRINT_VALUE'}}});
   assert.equal(JSON.stringify(hit).includes('leaked'),false);
 });
-test('the explain CLI prints a project table, a route detail and exits 1 for an unknown route',()=>{
-  const run=(...args:string[])=>spawnSync(process.execPath,[cli,...args,'--project',cookbook],{encoding:'utf8',timeout:60000});
-  const all=run('explain');assert.equal(all.status,0);assert.match(all.stdout,/^route\s+methods\s+handler/);assert.ok(all.stdout.includes('/hello/{name}'));
-  const one=run('explain','/cached');assert.equal(one.status,0);assert.ok(one.stdout.includes('cache: public (public, max-age=60)'));
-  const json=run('explain','/cached','--json','--target','cloudflare');assert.equal(json.status,0);assert.equal((JSON.parse(json.stdout) as {path:string}).path,'/cached');
-  const miss=run('explain','/cachd');assert.equal(miss.status,1);assert.ok(miss.stdout.includes('nearest: /cached'));
-  const missJson=run('explain','/cachd','--json');assert.equal(missJson.status,1);assert.equal((JSON.parse(missJson.stdout) as {matched:boolean}).matched,false);
-  assert.equal(run('explain','relative').status,1);
-  const perMethod=spawnSync(process.execPath,[cli,'explain','/requests','--project',fileURLToPath(new URL('../examples/body-validation/',import.meta.url))],{encoding:'utf8',timeout:60000});
+test('the explain CLI prints a project table, a route detail and exits 1 for an unknown route',async()=>{
+  const run=(...args:string[])=>spawnAsync(process.execPath,[cli,...args,'--project',cookbook],{encoding:'utf8',timeout:60000});
+  // Independent read-only runs: started together, checked in order.
+  const [all,one,json,miss,missJson,relative,perMethod]=await Promise.all([run('explain'),run('explain','/cached'),run('explain','/cached','--json','--target','cloudflare'),run('explain','/cachd'),run('explain','/cachd','--json'),run('explain','relative'),
+    spawnAsync(process.execPath,[cli,'explain','/requests','--project',fileURLToPath(new URL('../examples/body-validation/',import.meta.url))],{encoding:'utf8',timeout:60000})]);
+  assert.equal(all.status,0);assert.match(all.stdout,/^route\s+methods\s+handler/);assert.ok(all.stdout.includes('/hello/{name}'));
+  assert.equal(one.status,0);assert.ok(one.stdout.includes('cache: public (public, max-age=60)'));
+  assert.equal(json.status,0);assert.equal((JSON.parse(json.stdout) as {path:string}).path,'/cached');
+  assert.equal(miss.status,1);assert.ok(miss.stdout.includes('nearest: /cached'));
+  assert.equal(missJson.status,1);assert.equal((JSON.parse(missJson.stdout) as {matched:boolean}).matched,false);
+  assert.equal(relative.status,1);
   assert.equal(perMethod.status,0);assert.match(perMethod.stdout,/^inputs: none; body GET \{"maxBytes":0\}, POST \{"maxBytes":4096,/m);
 });
