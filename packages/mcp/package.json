@@ -1,6 +1,6 @@
 {
   "name": "@jimhoyd/urlcode-mcp",
-  "version": "0.6.5",
+  "version": "0.6.6",
   "description": "Operator-installed declarative MCP (Model Context Protocol) tool server for URLCode",
   "private": true,
   "type": "module",
@@ -50,7 +50,7 @@
     "@modelcontextprotocol/client": "2.1.0"
   },
   "peerDependencies": {
-    "@jimhoyd/urlcode": "0.6.5"
+    "@jimhoyd/urlcode": "0.6.6"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.1.0"

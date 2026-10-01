@@ -13,5 +13,5 @@ headers; `/health` overrides `response` and drops the shared headers. `routes`
 prints the resolved result. See [the specification][docs/SPECIFICATION.md].
 
 <!-- urlcode-current-version:start -->
-[docs/SPECIFICATION.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/SPECIFICATION.md
+[docs/SPECIFICATION.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/SPECIFICATION.md
 <!-- urlcode-current-version:end -->

@@ -21,5 +21,5 @@ section lists every finding with its rule, severity, route, message,
 remediation and the standard it cites.
 
 <!-- urlcode-current-version:start -->
-[docs/COMPLIANCE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/COMPLIANCE.md
+[docs/COMPLIANCE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/COMPLIANCE.md
 <!-- urlcode-current-version:end -->

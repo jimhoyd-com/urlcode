@@ -137,8 +137,8 @@ or functions when the answer must be computed per request.
   on [#809](https://github.com/jimhoyd-com/urlcode/issues/809).
 
 <!-- urlcode-current-version:start -->
-[docs/ASSETS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/ASSETS.md
-[docs/HTTP.md#error-format]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#error-format
-[docs/PLUGINS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/PLUGINS.md
-[docs/PLUGINS.md#ordering]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/PLUGINS.md#ordering
+[docs/ASSETS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/ASSETS.md
+[docs/HTTP.md#error-format]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/HTTP.md#error-format
+[docs/PLUGINS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/PLUGINS.md
+[docs/PLUGINS.md#ordering]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/PLUGINS.md#ordering
 <!-- urlcode-current-version:end -->

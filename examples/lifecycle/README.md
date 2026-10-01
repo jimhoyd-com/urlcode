@@ -16,5 +16,5 @@ fresh temporary directory for each run. All data is synthetic. See the
 [fixture reference][docs/READINESS.md#multi-step-fixtures].
 
 <!-- urlcode-current-version:start -->
-[docs/READINESS.md#multi-step-fixtures]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#multi-step-fixtures
+[docs/READINESS.md#multi-step-fixtures]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/READINESS.md#multi-step-fixtures
 <!-- urlcode-current-version:end -->

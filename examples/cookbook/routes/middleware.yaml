@@ -1,6 +1,6 @@
 version: "1"
 # Reusable middleware patterns. Each module lives in middleware/ and is documented
-# in https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/MIDDLEWARE-EXAMPLES.md.
+# in https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/MIDDLEWARE-EXAMPLES.md.
 # Bindings are literal values here; production projects use {secret: name} with
 # an operator grant instead.
 routes:

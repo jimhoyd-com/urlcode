@@ -63,6 +63,6 @@ targets refuse extensions, and the store keeps a local SQLite file, so run it on
 the self-hosted runtime with a persistent disk.
 
 <!-- urlcode-current-version:start -->
-[docs/STORE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md
-[docs/STORE.md#per-record-ownership]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#per-record-ownership
+[docs/STORE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/STORE.md
+[docs/STORE.md#per-record-ownership]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/STORE.md#per-record-ownership
 <!-- urlcode-current-version:end -->

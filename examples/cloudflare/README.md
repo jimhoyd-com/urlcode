@@ -18,5 +18,5 @@ precompiled schema validators use Web standards only, so nothing here needs a
 Node compatibility layer.
 
 <!-- urlcode-current-version:start -->
-[docs/CLOUDFLARE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/CLOUDFLARE.md
+[docs/CLOUDFLARE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/CLOUDFLARE.md
 <!-- urlcode-current-version:end -->

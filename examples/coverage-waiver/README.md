@@ -8,5 +8,5 @@ fixture (here `GET`). See
 [readiness][docs/READINESS.md#waive-a-method-covered-elsewhere].
 
 <!-- urlcode-current-version:start -->
-[docs/READINESS.md#waive-a-method-covered-elsewhere]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#waive-a-method-covered-elsewhere
+[docs/READINESS.md#waive-a-method-covered-elsewhere]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/READINESS.md#waive-a-method-covered-elsewhere
 <!-- urlcode-current-version:end -->

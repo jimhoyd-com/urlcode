@@ -36,8 +36,8 @@ property such as `extra` is named in `property` when it looks like an
 identifier; see [HTTP][docs/HTTP.md#body-schema-and-input-patterns].
 
 <!-- urlcode-current-version:start -->
-[docs/HTTP.md#per-method-body-rules]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#per-method-body-rules
-[docs/HTTP.md#named-schemas]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#named-schemas
-[docs/HTTP.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md
-[docs/HTTP.md#body-schema-and-input-patterns]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#body-schema-and-input-patterns
+[docs/HTTP.md#per-method-body-rules]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/HTTP.md#per-method-body-rules
+[docs/HTTP.md#named-schemas]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/HTTP.md#named-schemas
+[docs/HTTP.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/HTTP.md
+[docs/HTTP.md#body-schema-and-input-patterns]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/HTTP.md#body-schema-and-input-patterns
 <!-- urlcode-current-version:end -->

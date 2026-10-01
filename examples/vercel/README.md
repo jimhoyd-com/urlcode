@@ -13,5 +13,5 @@ with `createVercelHandler`. `includeFiles` must list every file the project
 reads; add to it when you add a page, download or static directory.
 
 <!-- urlcode-current-version:start -->
-[docs/VERCEL.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/VERCEL.md
+[docs/VERCEL.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/VERCEL.md
 <!-- urlcode-current-version:end -->

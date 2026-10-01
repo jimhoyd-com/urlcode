@@ -86,11 +86,11 @@ Add the package to the site's `package.json`, and declare `sandboxReason` to
 say why the route is trusted (the `webhook-receiver` recipe shows the shape).
 
 <!-- urlcode-current-version:start -->
-[docs/HTTP.md#body-schema-and-input-patterns]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/HTTP.md#body-schema-and-input-patterns
-[docs/EGRESS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EGRESS.md
-[docs/EGRESS.md#checking-signals-locally]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EGRESS.md#checking-signals-locally
-[docs/POLICIES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/POLICIES.md
-[docs/OBSERVABILITY.md#privacy-guarantees]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/OBSERVABILITY.md#privacy-guarantees
-[packages/store/README.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/store/README.md
-[docs/STORE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md
+[docs/HTTP.md#body-schema-and-input-patterns]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/HTTP.md#body-schema-and-input-patterns
+[docs/EGRESS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/EGRESS.md
+[docs/EGRESS.md#checking-signals-locally]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/EGRESS.md#checking-signals-locally
+[docs/POLICIES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/POLICIES.md
+[docs/OBSERVABILITY.md#privacy-guarantees]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/OBSERVABILITY.md#privacy-guarantees
+[packages/store/README.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/packages/store/README.md
+[docs/STORE.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/STORE.md
 <!-- urlcode-current-version:end -->

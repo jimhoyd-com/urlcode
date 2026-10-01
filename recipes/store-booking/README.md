@@ -100,7 +100,7 @@ Cloudflare, AWS, Vercel and static targets refuse the store, so run it on the
 self-hosted runtime with a persistent disk.
 
 <!-- urlcode-current-version:start -->
-[docs/STORE.md#non-overlapping-intervals]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/STORE.md#non-overlapping-intervals
-[docs/READINESS.md#authenticated-routes-auth-true]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#authenticated-routes-auth-true
-[docs/EXTENSIONS.md#the-local-review-loop]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-local-review-loop
+[docs/STORE.md#non-overlapping-intervals]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/STORE.md#non-overlapping-intervals
+[docs/READINESS.md#authenticated-routes-auth-true]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/READINESS.md#authenticated-routes-auth-true
+[docs/EXTENSIONS.md#the-local-review-loop]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/EXTENSIONS.md#the-local-review-loop
 <!-- urlcode-current-version:end -->

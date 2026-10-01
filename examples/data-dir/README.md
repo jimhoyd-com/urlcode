@@ -41,5 +41,5 @@ production `serve` reads only the process environment. See
 and [policy setup](../../docs/FUNCTION-SECURITY.md).
 
 <!-- urlcode-current-version:start -->
-[docs/yaml/organization.md#12-environment-and-secret-references]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/yaml/organization.md#12-environment-and-secret-references
+[docs/yaml/organization.md#12-environment-and-secret-references]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/yaml/organization.md#12-environment-and-secret-references
 <!-- urlcode-current-version:end -->

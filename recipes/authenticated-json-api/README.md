@@ -82,10 +82,10 @@ Edit `functions/profile.mjs` to return real data. Cloudflare refuses extensions;
 functions need the self-hosted runtime.
 
 <!-- urlcode-current-version:start -->
-[packages/auth/README.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/packages/auth/README.md
-[docs/EXTENSIONS.md#the-local-review-loop]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-local-review-loop
-[docs/READINESS.md#authenticated-routes-auth-true]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/READINESS.md#authenticated-routes-auth-true
-[docs/EXTENSIONS.md#the-revision-pin]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md#the-revision-pin
-[docs/EXTENSIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/docs/EXTENSIONS.md
-[proofs/private-requests/README.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.5/proofs/private-requests/README.md
+[packages/auth/README.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/packages/auth/README.md
+[docs/EXTENSIONS.md#the-local-review-loop]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/EXTENSIONS.md#the-local-review-loop
+[docs/READINESS.md#authenticated-routes-auth-true]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/READINESS.md#authenticated-routes-auth-true
+[docs/EXTENSIONS.md#the-revision-pin]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/EXTENSIONS.md#the-revision-pin
+[docs/EXTENSIONS.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/EXTENSIONS.md
+[proofs/private-requests/README.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/proofs/private-requests/README.md
 <!-- urlcode-current-version:end -->
