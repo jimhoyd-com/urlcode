@@ -113,6 +113,14 @@ bundled recipes and cookbook routes that use it. Names are the catalog names
 (`redirect`, `bindings`, `policies.cache`); an unknown name fails with exit 1
 and lists the valid names. `--target` applies to the full catalog only.
 
+`urlcode capabilities function` also carries an `example`: the cookbook's
+`/hello/{name}` route lines exactly as `examples/cookbook/routes/code.yaml` has
+them, the handler module it names read from its file, and one sentence on how
+declared `args`, `context.inputs`, `context.env`, `context.secrets` and
+`context.requestId` reach `(request, context)`. It is read from the bundled
+cookbook, which its request fixtures run, rather than copied, and it is bounded
+at 2 KiB, so the handler signature needs no example copied into the project.
+
 `urlcode schema <path>` prints only that fragment of
 `schemas/urlcode.schema.json` with local `$ref`s resolved inline. Paths are
 top-level document keys (`routes`, `policies`, `site`, `extensions`), `route`,

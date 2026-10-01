@@ -13,10 +13,11 @@ import { ADDON_FILES_LOCK, checkPackageFiles, newestVersion, readFilesLock, reco
 import type { AddonFilesLock, FileCheck } from './package-files.ts';
 import type { LoadedDocument } from './types.ts';
 import { ConfigError, asConfigError, assert, boundedLine } from './errors.ts';
-import { checkExtensionPolicies, effectiveExtensionPolicies, emptyPolicyOnly, inspectExtensionRevision } from './extensions.ts';
+import { checkExtensionPolicies, effectiveExtensionPolicies, emptyPolicyOnly } from './extensions.ts';
 import type { DefinedExtension, ExtensionDefinition, ScaffoldResult } from './extensions.ts';
 import { orderByRequires } from './host.ts';
 import { runNpm } from './npm.ts';
+import { prepareFunctionSnapshot } from './policy.ts';
 import { auditExpectationFile, readAuditExpectation } from './readiness.ts';
 import { generatedPaths } from './site.ts';
 import { activeProjectAuditGuidance, emptyProjectAuditGuidance } from './agents-guide.ts';
@@ -388,8 +389,13 @@ export interface Snapshot { restore(): Promise<void>; created: string[] }
 /** The committed audit route count `extensions add|remove` keeps in step with the routes it writes (#910, #955). */
 function expectedRouteFile(site: Site): string { return join(site.project, ...auditExpectationFile.split('/')); }
 /** Configured routes as the audit counts them: declared routes plus each active `site.*` convention no route shadows. */
-export async function configuredRouteCount(project: string): Promise<number> {
-  const loaded = await loadDocument(project), site: Record<string, unknown> = { ...loaded.document.site };
+export async function configuredRouteCount(project: string): Promise<number> { return routeCount(await loadDocument(project)); }
+/**
+ * `configuredRouteCount` of a document already loaded. `extensions add|remove` load the project once before and once
+ * after their YAML edit and count from those two loads (#1105), since each load is a fresh configuration worker.
+ */
+function routeCount(loaded: LoadedDocument): number {
+  const site: Record<string, unknown> = { ...loaded.document.site };
   const conventions = Object.entries(generatedPaths).filter(([key, path]) => site[key] !== undefined && site[key] !== null && site[key] !== false && !Object.hasOwn(loaded.routes, path));
   return Object.keys(loaded.routes).length + conventions.length;
 }
@@ -597,11 +603,16 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
   }
   const yamlFile = join(site.project, 'urlcode.yaml');
   const state = await snapshot([site.packageFile, join(site.site, 'package-lock.json'), yamlFile, site.hostFile, filesLockPath, expectedRouteFile(site), ...guidanceFiles(site)]);
-  const routesBefore = kind === 'extension' ? await configuredRouteCount(site.project) : 0;
+  // The project as it stands before this command: counted here, then checked against by the upgrade and scaffold steps.
+  // npm and the add-on code this command runs do not write the YAML, so one load serves all three (#1105).
+  const loadedBefore = kind === 'extension' ? await loadDocument(site.project) : undefined;
+  const routesBefore = loadedBefore ? routeCount(loadedBefore) : 0;
   const tree = await dependencyTree(site.site);
   // What each independent package provided before npm ran, so a re-added one is recognised as an upgrade (#857).
   const previous = new Map([...(await installedProviders(site.site, manifest)).providers.values()].filter(provider => !provider.catalog).map(provider => [provider.package, provider]));
   const secrets: Uint8Array[] = [];
+  // The one load after the YAML edit: it validates what was written, and the revision and route count come from it.
+  let loadedAfter: LoadedDocument | undefined;
   let installing = false;
   try {
     pkg.dependencies = { ...pkg.dependencies };
@@ -664,7 +675,7 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
       if (kind === 'extension' && upgrades.size) {
         // An upgraded extension keeps its declaration, routes and host.mjs line: its new entry must still define it,
         // and its new descriptor must still accept the configuration and route policies the project declares.
-        const loaded = await loadDocument(site.project);
+        const loaded = loadedBefore!;
         for (const [name, dependency] of upgrades) {
           const problems = declaredExtensionProblems(loaded, name, providers.get(name)!.descriptor);
           if (problems.length) throw new ConfigError(`Refusing ${dependency}: the new version does not accept the project's declaration: ${problems.join('; ')}. Change the project first, or keep the installed version`);
@@ -701,7 +712,7 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
       for (const name of newExtensions) definitions.set(name, await loadDefinition(site.site, name, packageOf(name), manifest));
       // Within the new set, an extension follows the ones it requires and the ones it uses.
       const ordered = orderByRequires(newExtensions.map(name => ({ name, requires: [...(definitions.get(name)!.requires ?? []), ...(definitions.get(name)!.uses ?? [])].filter(requirement => newExtensions.includes(requirement)) })), (item, requirement) => `${item.name} requires ${requirement}`);
-      const loaded = await loadDocument(site.project);
+      const loaded = loadedBefore!;
       const scaffolds: { name: string; result: ScaffoldResult }[] = [];
       for (const { name } of ordered) {
         const definition = definitions.get(name)!;
@@ -770,8 +781,8 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
       let host = await readFile(site.hostFile, 'utf8');
       for (const { name } of scaffolds) host = hostWithExtension(host, name, packageOf(name));
       await writeFile(site.hostFile, host);
-      await loadDocument(site.project);
-      result.projectSha256 = await inspectExtensionRevision(site.project);
+      loadedAfter = await loadDocument(site.project);
+      result.projectSha256 = (await prepareFunctionSnapshot(loadedAfter)).projectSha256;
     }
     // Every package this command installed, upgraded or found unrecorded gets its files recorded as installed now.
     const files = await readFilesLock(site.site), recordLock = await lockPackages(site.site);
@@ -780,7 +791,8 @@ export async function addAddons(directory: string, kind: AddonKind, requested: r
     await writeFilesLock(site.site, files);
     result.added = [...toAdd, ...independent.keys()];
     if (kind === 'extension') {
-      const routesAfter = await configuredRouteCount(site.project);
+      // Without a new extension the YAML was not edited, so the count before stands.
+      const routesAfter = loadedAfter ? routeCount(loadedAfter) : routesBefore;
       for (const note of [await syncExpectedRoutes(site, routesAfter - routesBefore), await syncEmptyProjectGuidance(site, routesBefore, routesAfter)]) if (note) result.notes.push(note);
     }
     return result;
@@ -794,8 +806,7 @@ export interface RemoveResult {
   notes: string[];
 }
 /** Where the project still uses extension `name`, outside the routes file its own add wrote. */
-async function extensionUses(project: string, name: string): Promise<string[]> {
-  const loaded = await loadDocument(project);
+async function extensionUses(project: string, loaded: LoadedDocument, name: string): Promise<string[]> {
   let own: Record<string, unknown> = {};
   try { const raw = parseYaml(await readFile(join(project, 'routes', `${name}.yaml`), 'utf8')); if (isRecord(raw) && isRecord(raw.routes)) own = raw.routes; } catch (error) { if (!isCode(error, 'ENOENT')) throw error; }
   const uses: string[] = [];
@@ -830,13 +841,16 @@ export async function removeAddon(directory: string, kind: AddonKind, name: stri
   const notes = others.filter(other => edges(other).uses.includes(name)).map(other => other.name).sort().map(other => `${other} uses ${name}; features of ${other} that need ${name} will refuse to activate`);
   const yamlFile = join(site.project, 'urlcode.yaml'), routesFile = join(site.project, 'routes', `${name}.yaml`);
   const state = await snapshot([site.packageFile, join(site.site, 'package-lock.json'), yamlFile, site.hostFile, routesFile, join(site.site, ADDON_FILES_LOCK), expectedRouteFile(site), ...guidanceFiles(site)]);
-  const routesBefore = kind === 'extension' ? await configuredRouteCount(site.project) : 0;
+  // One load before the edit (the route count and the uses check) and one after it (#1105).
+  const loadedBefore = kind === 'extension' ? await loadDocument(site.project) : undefined;
+  const routesBefore = loadedBefore ? routeCount(loadedBefore) : 0;
   const tree = await dependencyTree(site.site);
   const kept: string[] = [];
+  let loadedAfter: LoadedDocument | undefined;
   let installing = false;
   try {
     if (kind === 'extension') {
-      const uses = await extensionUses(site.project, name);
+      const uses = await extensionUses(site.project, loadedBefore!, name);
       assert(!uses.length, `The project still uses ${name} in ${uses.join(', ')}; change those first`);
       const definition = await loadDefinition(site.site, name, packageName).catch(() => undefined);
       const original = await readFile(yamlFile, 'utf8'), doc = parseDocument(original), edits: ((text: string) => string)[] = [];
@@ -850,7 +864,7 @@ export async function removeAddon(directory: string, kind: AddonKind, name: stri
       await writeFile(yamlFile, checkedYamlEdit(original, doc.toJS(), edits));
       await rm(routesFile, { force: true });
       await writeFile(site.hostFile, hostWithoutExtension(await readFile(site.hostFile, 'utf8'), name, packageName));
-      await loadDocument(site.project);
+      loadedAfter = await loadDocument(site.project);
       if (definition?.scaffold) {
         // The files its scaffold would write are listed, never deleted; a scaffold that refuses without its acknowledgement lists none.
         const preview = await (async () => definition.scaffold!({ site: site.site, project: site.project, installed: [...providers.keys()].filter(other => providers.get(other)!.descriptor.kind === 'extension').sort(), principalProviders: [...providers.keys()].filter(other => providers.get(other)!.descriptor.kind === 'extension' && providers.get(other)!.descriptor.providesPrincipal === true).sort(), acknowledgements: [] }))().catch(() => undefined);
@@ -864,11 +878,12 @@ export async function removeAddon(directory: string, kind: AddonKind, name: stri
     const files = await readFilesLock(site.site);
     delete files.packages[packageName];
     await writeFilesLock(site.site, files);
-    if (kind === 'extension') {
-      const routesAfter = await configuredRouteCount(site.project);
+    // npm does not write the YAML, so the load after the edit still describes the project.
+    if (loadedAfter) {
+      const routesAfter = routeCount(loadedAfter);
       for (const note of [await syncExpectedRoutes(site, routesAfter - routesBefore), await syncEmptyProjectGuidance(site, routesBefore, routesAfter)]) if (note) notes.push(note);
     }
-    return { removed: name, kept, projectSha256: kind === 'extension' ? await inspectExtensionRevision(site.project) : undefined, notes };
+    return { removed: name, kept, projectSha256: loadedAfter ? (await prepareFunctionSnapshot(loadedAfter)).projectSha256 : undefined, notes };
   } catch (error) { return rollBack(state, installing ? tree : undefined, site.site, error); }
 }
 
