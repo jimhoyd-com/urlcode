@@ -71,6 +71,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { fenceLines } from '../packages/core/src/markdown-fences.ts';
 
 const root = new URL('../', import.meta.url);
 
@@ -322,16 +323,13 @@ function quoted(sentence: string, index: number): boolean {
 // blanked so line numbers hold; the opening fence stays, as a paragraph of its
 // own, so a marker standing before the fence still exempts the fence and not
 // the prose after it.
+// Fences follow packages/core/src/markdown-fences.ts.
 export function withoutFences(source: string): string {
-  let fence = '';
-  return source.split('\n').map(line => {
-    const marker = /^\s*(`{3,}|~{3,})/.exec(line)?.[1];
-    if (fence) {
-      if (marker && marker[0] === fence[0] && marker.length >= fence.length) fence = '';
-      return '';
-    }
-    if (marker) { fence = marker; return marker; }
-    return line;
+  const fences = fenceLines(source);
+  return source.split('\n').map((line, index) => {
+    const fence = fences[index]!;
+    if (fence.kind === 'text') return line;
+    return fence.kind === 'open' ? fence.fence.char.repeat(fence.fence.length) : '';
   }).join('\n');
 }
 
@@ -465,13 +463,15 @@ async function main(): Promise<void> {
     let pending = false;
     let exemptFence = false;
     let exemptParagraph = false;
+    const fences = fenceLines(source);
     for (const [index, line] of source.split('\n').entries()) {
       const trimmed = line.trim();
-      const isFence = trimmed.startsWith('```');
+      const fenceKind = fences[index]!.kind;
+      const isFence = fenceKind === 'open' || fenceKind === 'close';
       const isMarker = trimmed === '<!-- guidance-claims: ignore -->';
 
       if (exemptFence) {
-        if (isFence) exemptFence = false;
+        if (fenceKind === 'close') exemptFence = false;
         continue;
       }
       if (isMarker) { pending = true; continue; }

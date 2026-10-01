@@ -1,8 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { copyFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { githubSlug, headingText, markdownAnchors, pinnedRepositoryPath, shippedLinkProblem } from '../scripts/check-local-links.ts';
+import { githubSlug, headingText, markdownAnchors, markdownLinkTargets, pinnedRepositoryPath, shippedLinkProblem } from '../scripts/check-local-links.ts';
+import { headingsOf } from '../packages/core/src/docs-search.ts';
+import { fenceLines } from '../packages/core/src/markdown-fences.ts';
+import { demoteHeadings, pinDocsMentions } from '../scripts/build-llms-full.ts';
 import { asProject, checkBlock, yamlBlocks } from '../scripts/check-doc-yaml.ts';
 import { proseFailures, withoutFences } from '../scripts/check-guidance-claims.ts';
 
@@ -42,6 +48,81 @@ test('the local-link check passes on this checkout, fragments included (#781)', 
   const result = run('check-local-links.ts');
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /\d+ fragment\(s\)/);
+});
+
+test('link discovery reads titles, angle brackets, balanced parentheses and reference definitions (#1118)', () => {
+  assert.deepEqual(markdownLinkTargets('[Broken](./__nonexistent__.md "a title")'), ['./__nonexistent__.md']);
+  assert.deepEqual(markdownLinkTargets(`[a](one.md 'single') and [b](two.md (paren)) and ![c](three.png  "t"  )`), ['one.md', 'two.md', 'three.png']);
+  assert.deepEqual(markdownLinkTargets('[spaced](<docs/a file.md> "t") [bare](<docs/b.md>)'), ['docs/a file.md', 'docs/b.md']);
+  assert.deepEqual(markdownLinkTargets('[wiki](https://en.wikipedia.org/wiki/Foo_(bar)) [nested](a(b(c)).md#x)'), ['https://en.wikipedia.org/wiki/Foo_(bar)', 'a(b(c)).md#x']);
+  assert.deepEqual(markdownLinkTargets('[escaped](a\\(b.md) [unbalanced](a(b.md) [plain](c.md)'), ['a(b.md', 'c.md'], 'an escaped parenthesis is literal; an unbalanced one is no link');
+  assert.deepEqual(markdownLinkTargets('[![badge](badge.svg)](target.md)'), ['badge.svg', 'target.md'], 'a link around an image is read too');
+  assert.deepEqual(markdownLinkTargets('[x](a.md"no space") [y](b.md "unclosed) [z](<c d.md)'), [], 'no title without a space, no unclosed title, no unclosed angle bracket');
+  assert.deepEqual(markdownLinkTargets('[label]: ./ref.md "Title"'), ['./ref.md']);
+  assert.deepEqual(markdownLinkTargets("   [label]: <./with space.md> 'Title'"), ['./with space.md']);
+  assert.deepEqual(markdownLinkTargets('[label]:./tight.md'), ['./tight.md']);
+  assert.deepEqual(markdownLinkTargets('[^1]: A footnote, not a definition.'), []);
+  assert.deepEqual(markdownLinkTargets('    [label]: ./code.md'), [], 'four spaces is an indented code block');
+});
+
+test('a dead link with a title or angle brackets fails the local-link check; a link in a fence is code (#1118)', () => {
+  // The real path: the script runs its check only when argv[1] is its own module path, which a symlinked tmpdir is not.
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'local-links-')));
+  try {
+    mkdirSync(join(dir, 'scripts'));
+    mkdirSync(join(dir, 'packages/core/src'), { recursive: true });
+    copyFileSync(script('check-local-links.ts'), join(dir, 'scripts/check-local-links.ts'));
+    copyFileSync(fileURLToPath(new URL('../packages/core/src/markdown-fences.ts', import.meta.url)), join(dir, 'packages/core/src/markdown-fences.ts'));
+    writeFileSync(join(dir, 'package.json'), '{"version":"0.0.0"}');
+    writeFileSync(join(dir, 'present.md'), '# Here\n');
+    const check = (markdown: string) => {
+      writeFileSync(join(dir, 'README.md'), markdown);
+      return spawnSync(process.execPath, [join(dir, 'scripts/check-local-links.ts')], { encoding: 'utf8', timeout: 60000 });
+    };
+    const titled = check('[Broken](./__nonexistent_bespoke_audit__.md "a title")\n');
+    assert.equal(titled.status, 1, titled.stdout);
+    assert.match(titled.stderr, /README\.md:1 {2}dead-relative-link: links `\.\/__nonexistent_bespoke_audit__\.md`/);
+    const angled = check(`[Broken](<./no such file.md>)\n[Bad](present.md#gone 't')\n`);
+    assert.equal(angled.status, 1, angled.stdout);
+    assert.match(angled.stderr, /README\.md:1 {2}dead-relative-link/);
+    assert.match(angled.stderr, /README\.md:2 {2}dead-fragment/);
+    const fine = check('[Ok](present.md#here "t") [Ok](<present.md>)\n\n```md\n[In code](./not-a-link.md)\n```\n');
+    assert.equal(fine.status, 0, fine.stderr);
+    assert.match(fine.stdout, /2 relative link\(s\), 1 fragment\(s\)/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// One fixture, read by every Markdown reader in the repository: each must agree on which lines are fenced (#1118).
+// `headings` are the headings outside any fence; `yaml` the bodies of the yaml fences.
+const FENCE_CASES: { name: string; source: string; headings: string[]; yaml: string[] }[] = [
+  { name: 'a four-space run does not close (the #1118 probe)', source: '```text\n    ```\n# still inside code\n```\n# Real', headings: ['Real'], yaml: [] },
+  { name: 'a closing fence may be indented up to three spaces', source: '```yaml\na: 1\n   ```\n# Real', headings: ['Real'], yaml: ['a: 1'] },
+  { name: 'an opening fence indented four spaces is no fence', source: '    ```yaml\n# Real', headings: ['Real'], yaml: [] },
+  { name: 'a shorter run does not close', source: '````yaml\na: 1\n```\n# inside\n````\n# Real', headings: ['Real'], yaml: ['a: 1\n```\n# inside'] },
+  { name: 'the other character does not close', source: '~~~yml\n```\n# inside\n~~~~\n# Real', headings: ['Real'], yaml: ['```\n# inside'] },
+  { name: 'text after a run does not close', source: '```yaml\na: 1\n``` nope\n# inside\n```  \n# Real', headings: ['Real'], yaml: ['a: 1\n``` nope\n# inside'] },
+  { name: 'a backtick in a backtick info string opens nothing', source: '``` a`b\n# Real', headings: ['Real'], yaml: [] },
+  { name: 'a tilde info string may hold a backtick', source: '~~~ yaml `x`\na: 1\n~~~\n# Real', headings: ['Real'], yaml: ['a: 1'] },
+  { name: 'an info string with attributes keeps its language', source: '# Top\n```yaml title="x"\nb: 2\n```\n# Real', headings: ['Top', 'Real'], yaml: ['b: 2'] },
+  { name: 'an unclosed fence runs to the end', source: '# Top\n```yaml\nc: 3\n# inside', headings: ['Top'], yaml: ['c: 3\n# inside'] },
+  { name: 'CRLF fence lines open and close', source: '```yaml\r\nd: 4\r\n```\r\n# Real', headings: ['Real'], yaml: ['d: 4\r'] },
+];
+
+test('every Markdown reader agrees on fences: local links, doc YAML, guidance claims, llms-full and docs search (#1118)', () => {
+  for (const { name, source, headings, yaml } of FENCE_CASES) {
+    const fences = fenceLines(source);
+    const outside = (text: string, keep: (index: number) => boolean) => text.split('\n').filter((line, index) => keep(index) && /^# /.test(line)).map(line => line.slice(2));
+    assert.deepEqual(outside(source, index => fences[index]!.kind === 'text'), headings, `shared fence reader: ${name}`);
+    assert.deepEqual(headingsOf(source).map(heading => heading.title), headings, `docs search: ${name}`);
+    assert.deepEqual([...markdownAnchors(source)], headings.map(githubSlug), `local links: ${name}`);
+    assert.deepEqual(yamlBlocks(source).map(block => block.text), yaml, `doc YAML: ${name}`);
+    assert.deepEqual(outside(withoutFences(source), () => true), headings, `guidance claims: ${name}`);
+    assert.deepEqual(demoteHeadings(source).split('\n').filter(line => /^## /.test(line)).map(line => line.slice(3)), headings, `llms-full headings: ${name}`);
+    const pinned = pinDocsMentions(source.replaceAll('# ', '# docs/X.md '), 'https://example.test/', new Set());
+    assert.deepEqual(pinned.split('\n').filter(line => line.includes('](https://example.test/docs/X.md)')).map(line => line.replace(/^# \[docs\/X\.md\]\(\S+\) /, '')), headings, `llms-full doc mentions: ${name}`);
+  }
 });
 
 test('a shipped package README links pinned, never outside the package or at main (#916)', () => {
