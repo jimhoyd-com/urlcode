@@ -34,11 +34,11 @@ than that subset are listed at the end.
 | Maintenance switch | `maintenance.mjs` | Next.js and Netlify Edge maintenance examples | 503 with `retry-after`, bypass header, flipping behavior from a binding |
 | Error boundary | `errors.mjs` | Koa `onerror`, Express error handlers | Catching a downstream throw, JSON 500 instead of a bare 502 |
 | JSON envelope | `envelope.mjs` | Response transformers | Reading a JSON response body once, passing everything else through untouched |
-| Content negotiation | `negotiate.mjs` | Express `res.format` | Parsing `accept` with q-values, 406, `vary: accept` |
+| Content negotiation | `negotiate.mjs` | Express `res.format` | Parsing `accept` with q-values, 406, `accept` merged into the downstream `vary` |
 | Method override | `methods.mjs` `override` | Express `method-override` | Bounded tunneling through POST, 405 with `allow` |
 | ETag and 304 | `etag.mjs` | Express `etag`, Fastify `@fastify/etag` | FNV-1a weak tag, `if-none-match`, null-body 304 |
-| A/B bucket | `bucket.mjs` | Vercel and Cloudflare A/B examples | Cookie parsing, `set-cookie`, replacing a native redirect |
-| Locale redirect | `locale.mjs` | Next.js i18n middleware | `accept-language` ranking, allowlisted languages, `vary` |
+| A/B bucket | `bucket.mjs` | Vercel and Cloudflare A/B examples | Cookie parsing, `set-cookie`, `cookie` merged into the downstream `vary`, replacing a native redirect |
+| Locale redirect | `locale.mjs` | Next.js i18n middleware | `accept-language` ranking, allowlisted languages, `accept-language` merged into the downstream `vary` |
 | Referer allowlist | `referer.mjs` | Hotlink protection rules | Gating a native download without reading it |
 | Body handoff | `body.mjs` | `express-validator`, Fastify schemas | Checks declared in `request.body.<METHOD>.schema` (422 before the chain runs), single-use body, handoff through `state` |
 | Debug echo | `debug.mjs` | Request loggers | Inspecting inputs, args and redacted headers when the console is silent |

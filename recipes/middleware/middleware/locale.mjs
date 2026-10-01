@@ -3,6 +3,27 @@
 // `Response.redirect()`'s headers are immutable (a trusted route's real
 // `Response` enforces the Fetch standard here, unlike the sandbox's guest
 // API), so that branch builds its own `Response` with headers up front.
+// Adds a request header name to the downstream vary instead of replacing it: a
+// handler that already varies by another header keeps that, and `vary: *`
+// stays `*`.
+function addVary(vary, name) {
+  const names = (vary ?? '').split(',').map(item => item.trim()).filter(Boolean);
+  if (names.includes('*')) return '*';
+  if (names.some(item => item.toLowerCase() === name)) return names.join(', ');
+  return [...names, name].join(', ');
+}
+// Edits the downstream response's headers, copying it first when they are
+// immutable (for example a Response returned by fetch or Response.redirect).
+function withHeaders(response, edit) {
+  try {
+    edit(response.headers);
+    return response;
+  } catch {
+    const copy = new Response(response.body, response);
+    edit(copy.headers);
+    return copy;
+  }
+}
 export default async function locale(request, context, next) {
   const supported = (context.env.LOCALES || '').split(/\s+/).filter(Boolean);
   const ranked = (request.headers.get('accept-language') || '').split(',').map((part, index) => {
@@ -14,7 +35,5 @@ export default async function locale(request, context, next) {
   if (chosen && chosen !== supported[0]) {
     return new Response(null, { status: 302, headers: { location: context.env.SITE + '/' + chosen + '/welcome', vary: 'accept-language' } });
   }
-  const response = await next();
-  response.headers.set('vary', 'accept-language');
-  return response;
+  return withHeaders(await next(), headers => headers.set('vary', addVary(headers.get('vary'), 'accept-language')));
 }
