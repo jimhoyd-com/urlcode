@@ -11,6 +11,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { DatabaseSync } from 'node:sqlite';
+import { setTimeout as delay } from 'node:timers/promises';
 import type { CollectionSpec } from '../src/index.ts';
 import { addMember, listMembers, reassignOwner, removeMember } from '../src/index.ts';
 import { cleanup } from './cleanup.ts';
@@ -45,17 +47,31 @@ test('the operator commands take the write lock between the slow commits of a bu
   // 25 ms of every commit under the write lock (a slow flush), then a 1 ms idle gap before the next: the lock is free
   // about 4% of the time. On main about one call in five failed with "database is locked" after 2 seconds.
   const { database, app, stop } = await busyStore(t, 25, 1);
-  const started = Date.now();
+  const observer = new DatabaseSync(database, { readOnly: true });
+  cleanup(t, () => observer.close());
+  const count = () => Number(observer.prepare('SELECT count(*) AS n FROM slow_commits').get()!.n);
+  let observed = count();
+  // Require fresh committed work across every round, not a minimum disk/CPU throughput.
+  // Fast operator calls can finish within one writer turn; allow that turn to commit.
+  const progress = async () => {
+    const deadline = Date.now() + 10000;
+    let current = count();
+    while (current <= observed && Date.now() < deadline) { await delay(10); current = count(); }
+    assert.ok(current > observed, `the writer stopped making progress after ${observed} commits`);
+    observed = current;
+  };
   for (let round = 0; round < 15; round++) {
     const principal = `rev-${round}`;
     assert.equal((await addMember(database, { collections, collection: 'reviewers', principal })).changed, true);
     assert.equal((await reassignOwner(database, { collections, from: principal, to: `moved-${round}` })).memberships.length, 1);
     assert.equal((await removeMember(database, { collections, collection: 'reviewers', principal: `moved-${round}` })).changed, true);
+    await progress();
   }
   const cli = await promisify(execFile)(process.execPath, ['--conditions=development', cliPath, 'members', 'add', '--database', database, '--project', app, '--collection', 'reviewers', '--principal', 'rita'])
     .then(result => ({ code: 0, stderr: result.stderr }), (error: { code: number; stderr: string }) => ({ code: error.code, stderr: error.stderr }));
   assert.equal(cli.code, 0, cli.stderr);
-  const elapsed = Date.now() - started, commits = await stop();
-  assert.ok(commits > elapsed / 100, `the writer committed throughout (${commits} commits in ${elapsed} ms)`);
+  await progress();
+  const commits = await stop();
+  assert.ok(commits >= observed, 'the writer reports every observed commit on shutdown');
   assert.deepEqual((await listMembers(database, { collections, collection: 'reviewers' })).members, ['seed', 'rita']);
 });
