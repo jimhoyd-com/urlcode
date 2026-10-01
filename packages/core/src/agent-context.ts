@@ -5,6 +5,7 @@ import {listExamples,exampleAddCommand} from './examples.ts';
 import {shippedSkillFiles as skills} from './shipped-skills.ts';
 import {readAddonCatalog,readAddonManifest} from './addon-manifest.ts';
 import {errorRules} from './explain-error-rules.ts';
+import {legacyRequestBodyHintIn} from './legacy-request-body.ts';
 import {suggestFixtures} from './fixture-suggestions.ts';
 import {summarizeYamlChange} from './yaml-change.ts';
 import {coreDocs,searchDocs} from './docs-search.ts';
@@ -128,7 +129,9 @@ export function explainError(error:string) {
   const pointer=/invalid (?:extension )?configuration at (\/\S*)/i.exec(error)?.[1];
   const location=pointer===undefined?{}:{location:pointer.split('/').slice(1).map(part=>part.replaceAll('~1','/').replaceAll('~0','~'))};
   if(!rule)return {matched:null,guidance:'No known URLCode error family matches this text. Search it with search_docs; for YAML use validate_yaml, and for a project use validate, which prints the exact failing field or file.',nextTools:['search_docs','validate_yaml','validate']};
-  return {matched:rule.id,guidance:rule.guidance,...location,nextTools:[...rule.nextTools]};
+  // The legacy request.body error carries its own route-by-route hint; hand back that same text (#1132).
+  const guidance=(rule.id==='legacy-request-body'?legacyRequestBodyHintIn(error):undefined)??rule.guidance;
+  return {matched:rule.id,guidance,...location,nextTools:[...rule.nextTools]};
 }
 
 /**

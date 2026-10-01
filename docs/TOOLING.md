@@ -1174,7 +1174,10 @@ families (schema location, extension configuration, route handler, function
 load and execution, operator grants and revision pins, bindings, inputs, route
 paths and conflicts) and returns `matched` (the family, or `null`), `guidance`,
 `nextTools` and, for a schema or extension configuration error, the decoded
-`location`. `plan_feature` lists `get_extensions` in
+`location`. For the route-wide `request.body` shape (`legacy-request-body`)
+the guidance is the error's own route-by-route migration hint, the same text
+`validate` prints, which links the HTTP page's upgrade notes.
+`plan_feature` lists `get_extensions` in
 `next` only when a host file is loaded. Tools named in `nextTools` and `next`
 are always tool names this server lists.
 

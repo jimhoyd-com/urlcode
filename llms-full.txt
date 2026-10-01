@@ -3572,6 +3572,57 @@ method. That is the specified way to serve several methods on one path, because
 a path has one handler. `urlcode review` does not suggest splitting the path
 into one route per method.
 
+#### Moving from the route-wide body shape
+
+`request.body` used to hold one policy for every method the route
+answered. Each policy key now sits under the method it applies to, and the old
+shape is refused; there is no alias and nothing rewrites the YAML for you.
+
+Before, one policy for the whole route (the refused shape, so the docs check
+skips this block):
+
+```yaml
+routes:
+  # snippet: partial (the refused route-wide shape)
+  /contact:
+    methods: [POST]
+    request:
+      body:
+        required: true
+        format: json
+    function: functions/contact.mjs
+```
+
+After, the same policy under the `POST` method key:
+
+```yaml
+routes:
+  /contact:
+    methods: [POST]
+    request:
+      body:
+        POST:
+          required: true
+          format: json
+    function: functions/contact.mjs
+```
+
+When `required`, `maxBytes`, `contentTypes`, `format` or `schema` sits
+directly under `request.body` in a route or a shared block, `urlcode validate`,
+MCP `validate` and `explain_error` give the same hint. It names every route and
+shared block still in the old shape, with the file, line and column of the
+first key. It lists the keys to move and the method keys to move them under,
+with a one-line before and after:
+
+- A route that declares `methods` moves every key under each method that takes
+  a body (POST, PUT, PATCH, OPTIONS). Its GET, HEAD or DELETE methods get
+  `maxBytes` alone, because the old policy bounded those too.
+- A route without `methods` answers GET and HEAD, so only `maxBytes` can move
+  (under both). Any other key means the route accepts a body. The hint then
+  suggests declaring `methods: [POST]` and moving the keys under `POST`.
+- A shared block uses the methods every route that uses it answers, because the
+  block is copied whole into each of them.
+
 
 ### Responses
 
