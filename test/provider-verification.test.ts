@@ -41,8 +41,11 @@ test('the versioned fixture passes self-hosted, AWS, Vercel and built Cloudflare
     cloudflare:async probe=>{const result=await cloudflare(new Request(`https://example.test${probe.path}`,{method:probe.method,headers:probe.headers,...(probe.body===undefined?{}:{body:probe.body})}));return{status:result.status,headers:Object.fromEntries(result.headers),body:await result.text()};}
   };
   for(const target of ['self-hosted','aws','vercel','cloudflare']as const){
+    // AWS and Vercel activate lazily. Check startup separately from the replay's per-request deadline.
+    const warmup=await transports[target](providerConformanceCases()[0]!,AbortSignal.timeout(10000));
+    assert.equal(warmup.status,302,`${target}: startup request`);
     const report=await runProviderConformance(target,transports[target],{release:'synthetic-test'});
-    assert.equal(report.pass,true,JSON.stringify(report.findings.filter(f=>!f.pass)));assert.equal(report.requests,12);assert.equal(report.evidence,'local-adapter');assert.equal(report.providerVerification,'unverified');assert.equal(report.origin,null);assert.match(report.fixtureSha256,/^[a-f0-9]{64}$/);
+    assert.equal(report.pass,true,`${target}: ${JSON.stringify(report.findings.filter(f=>!f.pass))}`);assert.equal(report.requests,12);assert.equal(report.evidence,'local-adapter');assert.equal(report.providerVerification,'unverified');assert.equal(report.origin,null);assert.match(report.fixtureSha256,/^[a-f0-9]{64}$/);
   }
 });
 test('evidence failures do not expose arbitrary response body or header data',async()=>{
