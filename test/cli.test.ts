@@ -6,7 +6,7 @@ import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { initProject, addRedirect, stampStarterText } from '../packages/core/src/authoring.ts';
+import { initProject, addRedirect, stampStarterText, planInit, agentClientStateDirectories } from '../packages/core/src/authoring.ts';
 import { loadDocument } from '../packages/core/src/config.ts';
 import { runProjectTests } from '../packages/core/src/project-tests.ts';
 import { project,redirect } from './helpers.ts';
@@ -202,6 +202,40 @@ test('init in place refuses user files and preserves existing package metadata',
   assert.equal(await readFile(join(manifest,'package.json'),'utf8'),'{}','a refused init changes nothing');
   const broken = join(root,'broken'); await mkdir(broken); await writeFile(join(broken,'package.json'),'{oops');
   assert.equal(run(broken).status,1);
+});
+test('init in place accepts and never touches coding-agent client state, but still refuses user files and collisions (#1114)', async t => {
+  const root = await project(t,{});
+  const run = (target: string) => spawnSync(process.execPath,[cli,'init',target],{ encoding:'utf8',timeout:20000 });
+  const tree = async (directory: string): Promise<Record<string,string>> => {
+    const out: Record<string,string> = {};
+    for (const entry of await readdir(directory,{ recursive:true,withFileTypes:true })) if (entry.isFile()) { const path = join(entry.parentPath,entry.name); out[path] = await readFile(path,'utf8'); }
+    return out;
+  };
+  // Only the client's own state, as Claude Code leaves it at session start before the agent runs a command.
+  const claude = join(root,'claude'); await mkdir(join(claude,'.claude'),{ recursive:true });
+  await writeFile(join(claude,'.claude','.cc-writes'),'session'); await writeFile(join(claude,'.claude','settings.local.json'),'{"mine":true}\n');
+  const before = await tree(join(claude,'.claude'));
+  const created = run(claude); assert.equal(created.status,0,created.stdout+created.stderr);
+  assert.deepEqual(await tree(join(claude,'.claude')),before,'.claude/ is left exactly as it was: nothing added, changed or removed');
+  assert.ok((await readdir(claude)).includes('app') && (await readdir(claude)).includes('AGENTS.md'));
+  // npm's entries plus Codex's project configuration are still in place.
+  const codex = join(root,'codex'); await mkdir(join(codex,'node_modules'),{ recursive:true }); await mkdir(join(codex,'.codex'));
+  await writeFile(join(codex,'.codex','config.toml'),'[mcp_servers.urlcode]\n'); await writeFile(join(codex,'package.json'),'{"name":"c"}\n');
+  assert.equal(run(codex).status,0);
+  assert.equal(await readFile(join(codex,'.codex','config.toml'),'utf8'),'[mcp_servers.urlcode]\n');
+  assert.equal(JSON.parse(await readFile(join(codex,'package.json'),'utf8')).name,'c');
+  // Client state does not excuse anything else: an unrelated file is user work.
+  const mixed = join(root,'mixed'); await mkdir(join(mixed,'.claude'),{ recursive:true }); await writeFile(join(mixed,'notes.txt'),'mine');
+  const refused = run(mixed); assert.equal(refused.status,1); assert.match(refused.stdout+refused.stderr,/already contains notes\.txt/);
+  assert.deepEqual((await readdir(mixed)).sort(),['.claude','notes.txt'],'nothing was added');
+  // A file init writes that is already there is refused by name, never written over.
+  const conflict = join(root,'conflict'); await mkdir(join(conflict,'.claude'),{ recursive:true }); await writeFile(join(conflict,'AGENTS.md'),'my guide');
+  const collided = run(conflict); assert.equal(collided.status,1); assert.match(collided.stdout+collided.stderr,/init writes AGENTS\.md, which is already there/);
+  assert.equal(await readFile(join(conflict,'AGENTS.md'),'utf8'),'my guide');
+  assert.deepEqual((await readdir(conflict)).sort(),['.claude','AGENTS.md']);
+  // Init plans no file inside a client's state directory, so in place it can never merge into one.
+  const plan = await planInit(join(root,'unused'));
+  assert.deepEqual(plan.files.filter(file => agentClientStateDirectories.some(directory => file.path === directory || file.path.startsWith(`${directory}/`))),[]);
 });
 test('CLI errors use nonzero status and do not echo secret arguments', async t => {
   const root = await project(t,{});

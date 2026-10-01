@@ -1350,6 +1350,11 @@ portable `npx --no --package` form, which works whether or not
 `@jimhoyd/urlcode` ends up pinned in a `package.json`; pass `--global` for the
 bare `urlcode` command instead, if the runtime is installed globally. This path
 covers `urlcode init <existing-or-empty-dir>`, with or without `--with`.
+The state directory a client creates in its working directory at session start
+(Claude Code's `.claude/`, Codex's project `.codex/`) does not count as user
+work either: `init .` proceeds in place beside it and never writes into or
+changes it (#1114). Any other file still makes the directory user work, and a
+file init would write that is already there is refused by name.
 
 `print-config` emits Claude Code's `.mcp.json` only. For Codex the equivalent
 step is its own registration: add the TOML entry above, with `cwd` set to that

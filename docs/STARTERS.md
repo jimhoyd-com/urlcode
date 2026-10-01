@@ -77,9 +77,13 @@ site, with the npm scripts `dev`, `start`, `validate`, `test`, `routes` and
 install` yourself after `init`.
 
 Initialization refuses an existing destination except for a directory containing
-only `package.json`, `package-lock.json`, `node_modules`, or `.git` (or, with
-`--adopt`, one whose files do not collide with the site; see
-[below](#adopting-a-directory-that-already-holds-files)). Existing
+only `package.json`, `package-lock.json`, `node_modules`, `.git`, a
+pre-registered `.mcp.json`, or a coding-agent client's own state directory,
+`.claude/` or `.codex/` (or, with `--adopt`, one whose files do not collide
+with the site; see [below](#adopting-a-directory-that-already-holds-files)).
+A client creates its state directory before the agent runs a command, so it is
+not user work; init never writes into or changes it, and a file init would
+write that is already there is refused by name rather than overwritten. Existing
 package metadata is preserved: when that `package.json` already depends on
 `@jimhoyd/urlcode`, init only adds whichever of those scripts are missing (and
 replaces the placeholder `test` script `npm init` writes), because a bare
