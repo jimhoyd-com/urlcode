@@ -1,6 +1,7 @@
 import {readFile,writeFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {dirname,posix,resolve} from 'node:path';
+import {fenceLines} from '../packages/core/src/markdown-fences.ts';
 // The authoring documents in reading order. Missing files are skipped with a
 // note in the output so the build works on branches that lack one.
 export const DOCUMENTS: readonly string[]=['docs/FRAMEWORK.md','docs/CONCEPTS.md','docs/AI-AUTHORING.md','docs/YAML-GUIDE.md','docs/YAML-REFERENCE.md','docs/SPECIFICATION.md','docs/ROUTING.md','docs/HTTP.md','docs/MIDDLEWARE.md','docs/ASSETS.md','docs/POLICIES.md','docs/SITE.md','docs/CONDITIONS.md','docs/EGRESS.md','docs/EXTENSIONS.md','docs/EXTENSION-REFERENCE.md','docs/FUNCTION-SECURITY.md'];
@@ -26,12 +27,10 @@ export function absolutizeLinks(markdown: string,relPath: string,base: string): 
 // path is not there, so it becomes a link to this release's copy. Links, reference labels, longer code spans, fenced
 // code and pages in `shipped` are left alone; the package audit reports any mention that is still unshipped.
 export function pinDocsMentions(markdown: string,base: string,shipped: ReadonlySet<string>): string {
-  let fence: string|null=null;
+  const fences=fenceLines(markdown);
   const pin=(page: string): string|null=>shipped.has(page.replace(/#.*$/,''))?null:`[${page}](${base}${page})`;
-  return markdown.split('\n').map(line=>{
-    const open=/^\s*(`{3,}|~{3,})/.exec(line);
-    if(open){const marker=open[1]!;if(fence===null)fence=marker;else if(marker[0]===fence[0] && marker.length>=fence.length)fence=null;return line;}
-    if(fence!==null)return line;
+  return markdown.split('\n').map((line,index)=>{
+    if(fences[index]!.kind!=='text')return line;
     return line.replace(/(`+)([^`]*?)\1|\[[^\]]*\]\([^)]*\)|\[[^\]]*\]\[[^\]]*\]|(?<![\w/.\-[])docs\/[\w./-]+?\.md(?:#[\w-]+)?\b/g,(whole,ticks: string|undefined,code: string|undefined)=>{
       if(ticks!==undefined)return /^docs\/[\w./-]+?\.md(?:#[\w-]+)?$/.test(code!.trim())?pin(code!.trim()) ?? whole:whole;
       if(whole.startsWith('['))return whole;
@@ -44,14 +43,12 @@ async function shippedDocs(root: string): Promise<Set<string>> {
   const files=(JSON.parse(await readFile(resolve(root,'package.json'),'utf8')) as {files?: string[]}).files ?? [];
   return new Set(files.filter(file=>/^docs\/.+\.md$/.test(file)));
 }
-// Demotes every ATX heading outside fenced code blocks by one level so each
+// Demotes every ATX heading outside fenced code blocks (packages/core/src/markdown-fences.ts) by one level so each
 // document nests under its level-1 section heading.
 export function demoteHeadings(markdown: string): string {
-  let fence: string|null=null;
-  return markdown.split('\n').map(line=>{
-    const open=/^\s*(`{3,}|~{3,})/.exec(line);
-    if(open){const marker=open[1]!;if(fence===null)fence=marker;else if(marker[0]===fence[0] && marker.length>=fence.length)fence=null;return line;}
-    if(fence!==null)return line;
+  const fences=fenceLines(markdown);
+  return markdown.split('\n').map((line,index)=>{
+    if(fences[index]!.kind!=='text')return line;
     return /^#{1,5} /.test(line)?`#${line}`:line;
   }).join('\n');
 }
