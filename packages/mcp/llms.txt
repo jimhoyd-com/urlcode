@@ -3,9 +3,10 @@
 > Operator-installed declarative MCP (Model Context Protocol) tool server for
 > URLCode. Declares bounded tools (name, description, request.body.<METHOD>.schema-shaped
 > input/output schema, trusted project handler), plus optional bounded
-> resources and prompts; the extension owns JSON-RPC 2.0 framing, protocol
-> version negotiation, request-id handling, cursor pagination, error codes and
-> initialize/ping/tools-*/resources-*/prompts-* dispatch. Installed with
+> resources and prompts. The official MCP SDK (`@modelcontextprotocol/server`)
+> serves the protocol (JSON-RPC 2.0 framing, version negotiation, request ids,
+> error codes); the extension maps the declarations onto it and owns argument
+> and output checks, admission and the caller-facing failures. Installed with
 > `urlcode extensions add mcp`; not an independent security assessment. Apache-2.0.
 
 Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
@@ -17,7 +18,8 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   subpath answers 404 (`/*` is required route syntax, not extra endpoints)
 - `auth: true` on a mount to require a session before any tool call runs
 - Optional route `env` on the mount, granted by the operator policy like a function route's;
-  handlers are called as `handler(input, { env, requestId, server, tool, kind })`
+  handlers are called as `handler(input, { env, requestId, server, tool, kind, signal })`, plus
+  `progress` on a tool
 - The operator activates it with `mcp()` (optionally `mcp({ onToolError, onToolCall, streaming })`) in the site's
   `host.mjs` `composeHost` list; `urlcode extensions add mcp` writes that line and an empty config
 
@@ -35,16 +37,17 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   shown to the MCP caller verbatim (they are not). To return a caller-facing
   tool error, a tool handler throws `McpToolError` from `@jimhoyd/urlcode-mcp`
   (`isError: true` with that message; `onToolCall` outcome `'tool_error'`).
-- A present `Origin` that is not exactly the site's `--origin` answers 403 before parsing; no
-  `Origin` is admitted; there is no allowlist of other origins. After `initialize`, an
+- A present `Origin` that is not one of the site's origins (the canonical `--origin` or an
+  operator `--alias-origin`, core's same-origin rule) answers 403 before parsing; no
+  `Origin` is admitted. After `initialize`, an
   unsupported `MCP-Protocol-Version` answers 400 (missing means `2025-03-26`).
 - Supported revisions: `2025-11-25` (preferred), `2025-06-18`, `2025-03-26`, `2024-11-05`.
-  Under `2025-11-25`, tool arguments failing `inputSchema` answer an `isError: true` result, not `-32602`.
+  Under every revision, tool arguments failing `inputSchema` answer an `isError: true` result, not `-32602`.
 - A tool or prompt argument holding an unpaired surrogate escape (`\ud800` alone) is `-32602` naming the argument, `data.code: "invalid_unicode"`; the handler never runs.
-- The streaming transport (`Mcp-Session-Id` sessions, SSE progress for a `tools/call` with
-  `_meta.progressToken`, cancellation, the GET stream with keep-alive and bounded `Last-Event-ID`
-  replay) is operator opt-in only: `mcp({ streaming: true })` in `host.mjs`, plus `GET` and `DELETE`
-  on the mount; never YAML. Off by default (GET answers 405). On, it needs the self-hosted server
-  (aws and vercel are refused), and sessions live in memory: a restart answers 404 and the client
-  re-initializes. JSON-RPC batching is refused by design, not deferred; see README "What this does
-  not implement".
+- The server is stateless: no `Mcp-Session-Id` sessions, no server-initiated GET stream and no
+  `Last-Event-ID` replay (`GET` and `DELETE` answer 405). Streamed progress replies (SSE
+  `notifications/progress` for a `tools/call` with `_meta.progressToken`) are operator opt-in
+  only: `mcp({ streaming: true })` in `host.mjs`, never YAML. Off by default (replies are
+  buffered on every target). On, the registration declares `streams: true`: served natively on the
+  self-hosted server, delegated on Vercel (adapter support, not a verified provider deployment),
+  refused on AWS before activation. See README "What this does not implement".

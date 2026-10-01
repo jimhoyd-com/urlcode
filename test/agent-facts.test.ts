@@ -5,6 +5,7 @@ import {getCapability} from '../packages/core/src/capability-query.ts';
 import {getSchemaFragment} from '../packages/core/src/schema-query.ts';
 import {mcpToolInventory} from '../packages/core/src/mcp.ts';
 import {storeAuthoring} from '../packages/store/src/authoring.ts';
+import {streamingTargets} from '../packages/core/src/extensions.ts';
 import {mkdir,mkdtemp,rm,writeFile} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';
 const script=fileURLToPath(new URL('../scripts/check-agent-facts.ts',import.meta.url));
 const starter=fileURLToPath(new URL('../starters/default/app/',import.meta.url));
@@ -145,5 +146,35 @@ test('prose cannot limit documentation search to core-pinned add-ons once it rea
   assert.ok(result.stderr.includes('[docsSearch.independentAddonGuides'),result.stderr);
  }
  const clean=await scan('`search_docs` reads verified installed add-ons, core-pinned or independent, and lists an unverified one as not searched.\n');
+ assert.equal(clean.status,0,clean.stderr);
+});
+
+test('package contributor guidance follows workspace packages, streaming targets and the MCP SDK boundary (#1121)',async t=>{
+ const inventory=await inventoryOnce();
+ assert.equal(inventory.status,0,inventory.stderr);
+ const facts=JSON.parse(inventory.stdout) as {workspacePackages:string[];streaming:{targets:string[]};mcpExtension:{protocolFromSdk:boolean;pagination:boolean}};
+ assert.deepEqual(facts.streaming.targets,[...streamingTargets]);
+ assert.ok(facts.workspacePackages.includes('core')&&facts.workspacePackages.includes('mcp')&&!facts.workspacePackages.includes('ui'));
+ assert.deepEqual(facts.mcpExtension,{protocolFromSdk:true,pagination:false});
+ // A contributor file lives under packages/<name>/, which is how a claim knows its subject without the name.
+ const dir=await mkdtemp(join(tmpdir(),'urlcode-agent-facts-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ let next=0;
+ const scan=async(name:string,text:string)=>{const own=join(dir,String(next++),'packages',name);await mkdir(own,{recursive:true});const file=join(own,'AGENTS.md');await writeFile(file,text);return checkFacts('--files',file);};
+ // The exact sentences packages/mcp/AGENTS.md, packages/mcp/llms.txt, packages/mcp/README.md and packages/store/AGENTS.md shipped before this guard.
+ await Promise.all(([
+  ['mcp','Core owns the generic extension contract (`@jimhoyd/urlcode/extensions`); this package owns JSON-RPC 2.0 framing, protocol version negotiation, request-id handling, cursor pagination and dispatch.\n','mcpExtension.protocolFromSdk'],
+  ['mcp','The extension owns JSON-RPC 2.0 framing, protocol version negotiation, request-id handling, cursor pagination and initialize/ping dispatch.\n','mcpExtension.pagination = false'],
+  ['mcp','This extension\'s known remaining gaps (streaming on AWS/Vercel, persisted sessions, resumable POST streams, resource templates/subscriptions) are documented in README.md, not silently implied.\n','streaming.targets includes vercel'],
+  ['mcp','- The streaming transport is operator opt-in only: `mcp({ streaming: true })` in `host.mjs`; never YAML. Off by default (GET answers 405). On, it needs the self-hosted server (aws and vercel are refused), and sessions live in memory: a restart answers 404 and the client re-initializes.\n','streaming.targets includes vercel'],
+  ['mcp','The MCP extension\'s opt-in streaming transport is self-hosted only.\n','streaming.targets = '],
+  ['store','Runtime, CLI and schema, accounts and protected routes, users and audit, extension page styling and copy, and this extension\'s own data contract all live in this one repository now.\n','workspacePackages excludes ui'],
+  ['store','Extension page styling and copy live in `packages/ui`.\n','workspacePackages = '],
+ ] as const).map(async([name,text,fact])=>{
+  const result=await scan(name,text);
+  assert.equal(result.status,1,`${fact} should reject: ${text}`);
+  assert.ok(result.stderr.includes(`[${fact}`),result.stderr);
+ }));
+ // The current wording stays clean: the SDK owns the protocol, Vercel is delegated, AWS refused, function streaming self-hosted.
+ const clean=await scan('mcp','The official MCP TypeScript SDK owns the protocol: JSON-RPC 2.0 framing and version negotiation are the SDK\'s. This package owns the declarative mapping; lists return every declared entry, with no pagination.\n\nStreamed progress replies are served natively on the self-hosted server, delegated to the provider on Vercel, and refused on AWS before activation. Known gaps: sessions and resumable streams, streaming on AWS.\n\n`stream: true` on a trusted `function` route (self-hosted only) sends the body as it is produced.\n\nCompression settings are refused on Vercel, AWS and Cloudflare. The former ui, auth and admin repositories are retired.\n');
  assert.equal(clean.status,0,clean.stderr);
 });

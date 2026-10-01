@@ -32,6 +32,7 @@ import { addons } from './workspaces.ts';
 import { storeAuthoring } from '../packages/store/src/authoring.ts';
 import { capabilityNames } from '../packages/core/src/capabilities.ts';
 import { mcpConfigFile } from '../packages/core/src/agents-guide.ts';
+import { streamingTargets } from '../packages/core/src/extensions.ts';
 
 const root = new URL('../', import.meta.url);
 const read = (path: string) => readFile(new URL(path, root), 'utf8');
@@ -94,6 +95,27 @@ const signalsRecordedInTests = /signalRecorder: signals/.test(await read('packag
   && /command==='audit'\?new SignalRecorder\(\)/.test(await read('packages/core/src/cli.ts'));
 if (!signalsRecordedInTests) sourceProblems.push('packages/core/src/project-tests.ts / cli.ts: test and audit signal recorder not found; update this check with the new rule');
 
+// Workspace packages (#1121): the directories under packages/. A removed package (ui, admin, forms, ...) has none,
+// so contributor guidance naming `packages/<name>` for it, or routing work to its role, is stale.
+const workspacePackages = (await readdir(new URL('packages/', root), { withFileTypes: true })).filter(entry => entry.isDirectory()).map(entry => entry.name).sort();
+if (!workspacePackages.includes('core')) sourceProblems.push('packages/: core not found; update this check with the new layout');
+
+// Streamed responses (#1091, #1121): core's `streamingTargets` is where a `streams: true` registration is served.
+// node is the self-hosted server; any other listed target is delegated to its provider (adapter support, not
+// deployment proof), and a target not listed refuses streaming before serving.
+const streaming = { targets: [...streamingTargets] };
+
+// The MCP extension's protocol (#846, #1121): packages/mcp/src/mcp.ts serves each request through the official SDK's
+// `Server` and `createMcpHandler`, so JSON-RPC framing and version negotiation are the SDK's, not the package's, and
+// its list handlers return every declared entry (no `nextCursor`).
+const mcpExtensionSource = await read('packages/mcp/src/mcp.ts');
+const mcpSdkImport = /import\s*\{([^}]*)\}\s*from\s*'@modelcontextprotocol\/server'/.exec(mcpExtensionSource)?.[1] ?? '';
+const mcpExtension = {
+  protocolFromSdk: /\bServer\b/.test(mcpSdkImport) && /\bcreateMcpHandler\b/.test(mcpSdkImport) && /new Server\(/.test(mcpExtensionSource) && /createMcpHandler\(/.test(mcpExtensionSource),
+  pagination: /\bnextCursor\b/.test(mcpExtensionSource),
+};
+if (!mcpExtension.protocolFromSdk) sourceProblems.push('packages/mcp/src/mcp.ts: the SDK Server/createMcpHandler serving path not found; update this check with the new protocol owner');
+
 const inventory = {
   signalsSkipOnlyHeadAndProbes,
   signalsRecordedInTests,
@@ -105,6 +127,9 @@ const inventory = {
   linkHandler,
   mcpRegistration,
   hostedAi,
+  workspacePackages,
+  streaming,
+  mcpExtension,
 };
 
 if (process.argv.includes('--inventory')) {
@@ -277,6 +302,75 @@ claims.push({
   test: sentence => HOSTED.test(sentence) && /\bLLM[- ](?:tool(?:s|ing)?|assist(?:ance|ed)|work)\b|\bhosted\s+LLM\b|\bmodel\s+tools?\b/i.test(sentence)
     ? 'says the hosted URLCode AI MCP provides LLM tooling, but it runs no model: the caller\'s own model uses its reference and skill tools' : undefined,
 });
+
+// #1121: a path under packages/ names a workspace package that exists; a removed package leaves no directory.
+claims.push({
+  fact: `workspacePackages = ${workspacePackages.join(', ')}`,
+  test: sentence => {
+    for (const match of sentence.matchAll(/(?<![\w./-])packages\/([a-z][a-z0-9-]*)/g)) {
+      if (!workspacePackages.includes(match[1]!)) return `names packages/${match[1]}, which is not a workspace package (packages/ holds ${workspacePackages.join(', ')})`;
+    }
+    return undefined;
+  },
+});
+if (!workspacePackages.includes('ui')) {
+  claims.push({
+    fact: 'workspacePackages excludes ui',
+    test: sentence => /\bextension\s+page\s+styling\b|\bthe\s+`?ui`?\s+(?:extension|package)\b|@jimhoyd\/urlcode-ui\b/i.test(sentence)
+      ? 'routes work to the removed ui package (extension page styling); packages/ has no ui package' : undefined,
+  });
+}
+
+// A sentence is about streaming when it names streaming, a streamed reply or SSE. Trusted functions run only on the
+// self-hosted server, so `stream: true` on a function route is self-hosted only; an extension's `streams: true` is not.
+const EXTENSION_STREAMING = /\bextensions?\b|\bMCP\b|`streams:\s*true`|\bmcp\(/i;
+const FUNCTION_STREAMING = /\bfunctions?\b|`stream:\s*true`/i;
+const STREAMING = /\bstream(?:s|ing|ed)?\b|\bSSE\b|\bServer-Sent\s+Events\b/i;
+const TARGET_LIST = String.raw`(?:\`?[A-Za-z-]+\`?\s*(?:/|,|\band\b|\bor\b)\s*)*`;
+const STREAMING_GAP = /\b(?:gaps?|refus\w*|unsupported|not\s+(?:yet\s+)?(?:supported|implemented|delivered))\b/i;
+for (const target of streaming.targets.filter(name => name !== 'node')) {
+  const name = String.raw`\`?${target}\`?\b`;
+  // "streaming on AWS/Vercel" listed as a gap; "refused on ... Vercel" in a streaming sentence (other settings are
+  // refused there too, so the sentence itself must be about streaming); "aws and vercel are refused" in a streaming
+  // paragraph. A sentence about function routes is exempt: functions run only on the self-hosted server.
+  const streamingOn = new RegExp(String.raw`\bstream\w*\s+(?:on|for)\s+${TARGET_LIST}${name}`, 'i');
+  const refusedOn = new RegExp(String.raw`\brefus\w*${CLAUSE}{0,40}?\bon\s+${TARGET_LIST}${name}`, 'i');
+  const namedRefused = new RegExp(String.raw`${name}\s+(?:(?:are|is)\s+)?refused\b`, 'i');
+  claims.push({
+    fact: `streaming.targets includes ${target}`,
+    test: (sentence, context) => !FUNCTION_STREAMING.test(sentence) && (
+      (streamingOn.test(sentence) && STREAMING_GAP.test(sentence))
+      || (STREAMING.test(sentence) && refusedOn.test(sentence))
+      || ((STREAMING.test(sentence) || STREAMING.test(context)) && namedRefused.test(sentence)))
+      ? `says streaming is refused or a gap on ${target}, but core's streamingTargets (packages/core/src/extensions.ts) serves it there (delegated: adapter support, not provider deployment proof)` : undefined,
+  });
+}
+if (streaming.targets.some(target => target !== 'node')) {
+  claims.push({
+    fact: `streaming.targets = ${streaming.targets.join(', ')}`,
+    test: (sentence, context) => STREAMING.test(sentence) && (EXTENSION_STREAMING.test(sentence) || (EXTENSION_STREAMING.test(context) && !FUNCTION_STREAMING.test(context))) && !FUNCTION_STREAMING.test(sentence)
+      && /\bself-hosted\s+only\b|\bonly\s+(?:on\s+)?(?:the\s+)?self-hosted\b(?!\s+server\s+delivers\s+\w+\s+natively)|\bneeds\s+the\s+self-hosted\s+server\b/i.test(sentence)
+      ? `limits streaming to the self-hosted server, but core's streamingTargets is ${streaming.targets.join(', ')} (packages/core/src/extensions.ts)` : undefined,
+  });
+}
+
+// The MCP extension maps declarations onto the official SDK; it does not own the wire protocol or paginate.
+if (mcpExtension.protocolFromSdk) {
+  const OWNER = String.raw`\b(?:this\s+(?:package|extension)|the\s+(?:mcp\s+)?(?:extension|package)|(?:@jimhoyd\/)?urlcode-mcp)\s+owns\b`;
+  const PROTOCOL = new RegExp(String.raw`${OWNER}${CLAUSE}{0,120}?\b(?:JSON-RPC|protocol\s+(?:version\s+)?negotiation|request-id\s+handling)\b`, 'i');
+  claims.push({
+    fact: 'mcpExtension.protocolFromSdk',
+    test: (sentence, context, surface) => (surface.includes('packages/mcp/') || /\bMCP\b|\burlcode-mcp\b/i.test(context)) && PROTOCOL.test(sentence)
+      ? 'says the mcp extension owns JSON-RPC framing or version negotiation, but packages/mcp/src/mcp.ts serves the protocol through the official SDK (Server, createMcpHandler); the package owns the declarative mapping' : undefined,
+  });
+}
+if (!mcpExtension.pagination) {
+  claims.push({
+    fact: 'mcpExtension.pagination = false',
+    test: (sentence, context, surface) => (surface.includes('packages/mcp/') || /\burlcode-mcp\b|\bmcp\s+extension\b/i.test(context)) && /\bcursor\s+pagination\b/i.test(sentence)
+      ? 'says the mcp extension paginates its lists, but packages/mcp/src/mcp.ts returns every declared entry (no nextCursor)' : undefined,
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Surfaces: every authored Markdown file, the skill copies, and every llms.txt.
