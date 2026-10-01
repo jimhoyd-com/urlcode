@@ -17,8 +17,8 @@ import { initSite, addRedirect, boundedList, initListLimit, mcpSkippedNote } fro
 import { initSiteWith, parseWithNames } from './init-with.ts';
 import { declaredExtensionTargetsOf, validateDeclaredExtensions } from './addon-install.ts';
 import { planUpgrade, upgradeSite } from './upgrade.ts';
-import { runProjectTests, startRestartable } from './project-tests.ts';
-import { hostRevision, localReviewEvent, localReviewFor, reportedWithoutVerbose, type LocalReview } from './fixture-run.ts';
+import { startRestartable } from './project-tests.ts';
+import { hostRevision, localReviewEvent, localReviewFor, reportedWithoutVerbose, runFixturesOnHost, type LocalReview } from './fixture-run.ts';
 import { verifyDeployment, failLevels } from './verify-deployment.ts';
 import type { FailOn } from './verify-deployment.ts';
 import { loadOperatorPolicy, prepareFunctionSnapshot, requestedPermissions, type OperatorPolicy } from './policy.ts';
@@ -705,7 +705,9 @@ try {
           if (!arg) throw new ConfigError('Provide an HTTP(S) destination URL');
           print({ event:'added', path:await addRedirect(values.project,arg,values.alias) }); break;
         case 'test': {
-          const result = await runProjectTests(values.project, { ...hostOptions, log:values.verbose ? print : (event:object) => { if (reportedWithoutVerbose(event)) print(event); }, permissions, origin:values.origin, aliasOrigins:values['alias-origin'] });
+          // The shared fixture core (#1095, #1112): the host's extensions and plugins, the grants and the alias origins reach
+          // this run from the same place they reach MCP run_tests. The host was loaded hermetic above.
+          const result = await runFixturesOnHost(values.project, operatorHost, { policy:permissions, log:values.verbose ? print : (event:object) => { if (reportedWithoutVerbose(event)) print(event); }, origin:values.origin, aliasOrigins:values['alias-origin'] });
           print(result); if (result.failed) process.exitCode = 1; break;
         }
         case 'doctor':
