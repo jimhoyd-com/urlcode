@@ -114,6 +114,12 @@ whose diff touches one of these areas keeps the lane above and adds two things
 | Integration and cleanup | `test/{addons,private-requests,authjs-provider,native-storage,ecosystem}.integration.ts`, `proofs/**`, `scripts/test-addons*`, `packages/*/test/cleanup.ts` |
 | Shared inputs (fail closed) | anything under `.github/`, any root-level file that is not admitted prose, and an empty or unclassifiable diff |
 
+The root test commands limit execution to two test files at a time. Files can
+start several CLI children and configuration workers themselves; bounding the
+outer concurrency keeps that work from multiplying with the runner CPU count
+and consuming runtime deadlines under contention. CI uses the same limit in
+each shard.
+
 - **Windows/Node 24 tests.** `verify` gains Windows entries for all three
   shards: `node --test-shard` splits by file, so process- and
   filesystem-sensitive tests are spread across every shard. An extension-only
