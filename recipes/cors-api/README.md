@@ -7,7 +7,9 @@ Run `urlcode validate --local --project .`, `urlcode test --project .` and
 code runs. `middleware/cors.mjs` (trusted, the default) runs around it: it
 answers `OPTIONS` preflight itself with 204 and adds
 `Access-Control-Allow-Origin` to responses for origins in its allowlist. Other
-origins get `Vary: Origin` and no allow header, so browsers refuse them.
+origins get no allow header, so browsers refuse them. Every response varies by
+`Origin`, merged into any `Vary` the downstream response already set (a
+downstream `Vary: *` stays `*`).
 
 Edit `allowedOrigins` in the middleware and the `respond.json` value. Replace
 `respond` with a `function` only when the data must be computed per request;

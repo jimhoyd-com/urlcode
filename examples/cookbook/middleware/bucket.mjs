@@ -11,6 +11,27 @@ function cookie(request, name) {
   }
   return null;
 }
+// Adds a request header name to the downstream vary instead of replacing it: a
+// handler that already varies by another header keeps that, and `vary: *`
+// stays `*`.
+function addVary(vary, name) {
+  const names = (vary ?? '').split(',').map(item => item.trim()).filter(Boolean);
+  if (names.includes('*')) return '*';
+  if (names.some(item => item.toLowerCase() === name)) return names.join(', ');
+  return [...names, name].join(', ');
+}
+// Edits the downstream response's headers, copying it first when they are
+// immutable (for example a Response returned by fetch or Response.redirect).
+function withHeaders(response, edit) {
+  try {
+    edit(response.headers);
+    return response;
+  } catch {
+    const copy = new Response(response.body, response);
+    edit(copy.headers);
+    return copy;
+  }
+}
 export default async function bucket(request, context, next) {
   let assigned = cookie(request, 'bucket');
   const fresh = assigned !== 'a' && assigned !== 'b';
@@ -22,8 +43,8 @@ export default async function bucket(request, context, next) {
     if (fresh) headers.append('set-cookie', setCookie);
     return new Response(null, { status: 302, headers });
   }
-  const response = await next();
-  response.headers.set('vary', 'cookie');
-  if (fresh) response.headers.append('set-cookie', setCookie);
-  return response;
+  return withHeaders(await next(), headers => {
+    headers.set('vary', addVary(headers.get('vary'), 'cookie'));
+    if (fresh) headers.append('set-cookie', setCookie);
+  });
 }
