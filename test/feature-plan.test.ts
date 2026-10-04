@@ -219,3 +219,22 @@ test('a goal that writes several stored records at once names the missing capabi
  // Reading many records, or one record's write, is not a multi-record write.
  for(const goal of ['list all of my own todos newest first','let the owner mark a todo as done','durable persisted record'])assert.equal(gap(await planFeature(root,goal)),undefined,goal);
 });
+
+test('feature planning names the mcp extension for an MCP goal, and its mount states the authorization it does not provide (#1137)',async t=>{
+ const root=await project(t,{});
+ const plan=await planFeature(root,'remote MCP server over HTTP with OAuth bearer authorization for agent clients');
+ assert.deepEqual(plan.extensions.required.map(item=>item.name),['mcp']);
+ assert.deepEqual(plan.extensions.surfaces.map(item=>`${item.extension}/${item.surface}`),['mcp/servers','mcp/mount']);
+ const mount=plan.outline.find(item=>item.kind==='mcp mount')!.note;
+ assert.match(mount,/non-browser MCP client \(no Origin header, or a bearer token\) is refused 403/);
+ assert.match(mount,/\(OAuth, bearer tokens\) is not implemented and a handler is not told who called/);
+ assert.deepEqual((await planFeature(root,'expose MCP tools')).extensions.required.map(item=>item.name),['mcp']);
+ // "agents" and "server" are also words of a crawler policy goal: one shared word never requires the extension.
+ for(const goal of ['block AI agents and crawlers on the server','give the team a status page'])assert.deepEqual((await planFeature(root,goal)).extensions.required,[],goal);
+ // An accounts goal is told what the auth mount leaves out, and a storage goal what the bundled store is.
+ const accounts=await planFeature(root,'user accounts with password login, sessions and logout');
+ assert.match(accounts.outline.find(item=>item.kind==='auth mount')!.note,/owner's own Better Auth database, such as a Postgres pool.*No admin console, API keys, OAuth\/OIDC sign-in or email flows/);
+ assert.match(accounts.outline.find(item=>item.kind==='auth route protection')!.note,/no bearer-token or API-key mode/);
+ const storage=await planFeature(root,'durable database records');
+ assert.match(storage.outline.find(item=>item.kind==='durable collection')!.note,/flat scalar records in one SQLite database served by one process/);
+});

@@ -340,7 +340,10 @@ export async function searchDocs(query: string, options: DocsSearchOptions = {})
   });
 
   const catalogMatches: DocsCatalogMatch[] = (catalog?.addons ?? []).map(entry => {
-    const haystack = `${entry.name} ${entry.description} ${entry.agent?.description ?? ''} ${(entry.agent?.references ?? []).map(reference => `${reference.name} ${reference.description}`).join(' ')}`.toLowerCase();
+    // The authoring contract states what the add-on covers and where it stops, which is all a site that has not
+    // installed it can be told about its guide (#1137).
+    const authoring = entry.authoring ? `${entry.authoring.description} ${entry.authoring.surfaces.map(surface => surface.description).join(' ')}` : '';
+    const haystack = `${entry.name} ${entry.description} ${entry.agent?.description ?? ''} ${(entry.agent?.references ?? []).map(reference => `${reference.name} ${reference.description}`).join(' ')} ${authoring}`.toLowerCase();
     const matched = parsed.words.filter(word => haystack.includes(word));
     const named = parsed.tokens.some(token => token.toLowerCase() === entry.name);
     return { entry, matched, rank: (named ? 100 : 0) + matched.length };

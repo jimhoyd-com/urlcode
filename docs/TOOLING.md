@@ -413,7 +413,10 @@ this core's release catalog (`source` is `registered`, `installed` or
 publishes `collections`, `ownership` (their own records), `transitions`
 (submit, approve, reject, pending; `by: others` for a review step),
 `membership` and `readers` (reviewers); auth publishes `route protection`
-(signed-in, users, private, owners, reviewers) and its mount. A goal such as
+(signed-in, users, private, owners, reviewers) and its mount; mcp publishes
+`servers` (MCP server, tools) and its `mount` (remote clients, OAuth, bearer
+tokens), whose description states what the mount does not do: no MCP
+authorization flow, and no caller identity in a handler. A goal such as
 "owners submit requests; reviewers approve or reject pending requests"
 therefore plans auth, store ownership, transitions, membership and readers.
 When no recipe matches its own terms, the general recipe of the extension
@@ -481,10 +484,17 @@ is an opt-in, read-only static review of the
 compiled project plus its own `function`/`middleware` source, for the narrow,
 agent-facing question "which of this generated code looks like avoidable
 framework plumbing, and what is the supported alternative?" It scans only the
-project's own root-confined source graph (the same `function`/`middleware`
-file resolution `explain` and `manifest` use): no project code is executed, no
-environment variable or secret is read, and no network call is made. Findings
-are grouped:
+module each route names as its `function` or `middleware` `source` (the same
+file resolution `explain` and `manifest` use), inside the project root: no
+project code is executed, no environment variable or secret is read, and no
+network call is made. A module that source imports is not scanned, in the
+project or outside it. An application whose route sources only re-export a
+handler built elsewhere (a compiled `dist/` beside `app/`, say) therefore gets
+`observations: []`, which means the handler code was not read, not that
+nothing was found:
+`moduleCount` is the number of files scanned, and `trustedDependencies` lists
+the files those sources import and marks the ones outside the project
+`opaque`. Findings are grouped:
 
 - `native-alternative`: an already-supported declarative capability appears to
   cover the behavior (for example `request.body.<METHOD>.schema` in place of
@@ -660,6 +670,39 @@ the same text (or the same project files) always gives the same bytes. `maxFixtu
 refused with the validator's message. The cases assume the local
 `urlcode test` runner: an operator host's plugins or extensions registered for
 routes the YAML does not name are outside what the YAML says.
+
+### Verification gaps for stateful handlers
+
+When at least one route is an opaque stateful handler, the result also carries
+`verificationGaps`; otherwise the key is absent. A route qualifies from the YAML
+alone: it is active, has a `function` or `middleware` and no `extension`, and
+either accepts `POST`, `PUT`, `PATCH` or `DELETE` or declares `stream: true`.
+
+```json
+{"verificationGaps":{"status":"untested","note":"Untested application-supplied expectations, not coverage and not findings. ...",
+  "reference":"https://.../READINESS.md#stateful-handler-verification","example":"stateful-verification",
+  "rows":[{"id":"permission-change-while-waiting","expectation":"What a request that is still waiting ... does when its caller's permission is revoked or changed before it answers.","check":"ordinary-test"},
+          {"id":"capacity-exhaustion","expectation":"...","check":"fixture"}],
+  "routes":[{"route":"/channels/{id}/events","why":["function","write-method"],"file":"urlcode.yaml"}],
+  "truncatedRoutes":0}}
+```
+
+`rows` is always the same seven rows of the
+[stateful handler verification matrix][docs/READINESS.md#stateful-handler-verification],
+in fixed text, stated once for all listed routes. `check` says where a check for
+the row can live: `fixture` (ordered `steps`), `ordinary-test` (it needs
+requests in flight together, time, a fault or the operating system, which no
+fixture expresses) or `fixture-and-ordinary-test`. `routes` says why each route
+qualified (`function`, `middleware`, `write-method`, `stream`), holds at most
+200 entries, and `truncatedRoutes` counts the rest.
+
+`status` is always `untested`. The helper does not read handler source,
+`tests/requests.json`, a test file or a test result, so it cannot know whether
+a row applies to a handler or is already checked, and it never reports one as
+passed or covered. The rows carry no expected outcome: who may do what, and
+what must survive, are the application's to state. Nothing is derived from a
+route's path, name or description, and no rule is specific to a service. The
+CLI and MCP `suggest_fixtures` return the same object.
 
 ## YAML change summaries
 
@@ -1209,7 +1252,12 @@ deterministic, local text matching; it reads these sources and nothing else:
 - **catalog**: this release's add-on catalog (`dist/addon-catalog.json`). A
   catalog match says the add-on exists in the release, never that the project
   has it: catalog matches are returned apart from results, each with
-  `installedInProject` (`null` when no project was given).
+  `installedInProject` (`null` when no project was given). An entry matches
+  on its name, description, agent references and authoring contract (the
+  surface descriptions that say what the add-on covers and where it stops), so
+  a question its uninstalled guide would answer, such as `oauth` or
+  `postgres`, still names the add-on to read about; `plan_feature` prints
+  those surface descriptions.
 
 The answer has at most three `results` (each with at most 1800 characters of
 `excerpt`), at most five `catalog` matches, `coverage` and at most four `next`
@@ -1578,6 +1626,7 @@ and [MCP tools](https://modelcontextprotocol.io/specification/2025-11-25/server/
 [docs/ORGANIZATION.md#mix-inline-and-included-routes]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/ORGANIZATION.md#mix-inline-and-included-routes
 [docs/READINESS.md#authenticated-routes-auth-true]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/READINESS.md#authenticated-routes-auth-true
 [docs/READINESS.md#coverage-rules]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/READINESS.md#coverage-rules
+[docs/READINESS.md#stateful-handler-verification]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/READINESS.md#stateful-handler-verification
 [docs/CAPABILITIES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/CAPABILITIES.md
 [docs/HTTP.md#named-schemas]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/HTTP.md#named-schemas
 [docs/HTTP.md#error-format]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/HTTP.md#error-format

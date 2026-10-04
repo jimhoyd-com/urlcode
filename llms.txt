@@ -111,7 +111,9 @@ installed and verified in the site (core-pinned, or independent with lock integr
 config path to read next; no match means no match in those sources, not an unsupported feature.
 Draft `tests/requests.json` from `urlcode fixtures suggest --json` (MCP `suggest_fixtures`): it reads urlcode.yaml and its
 includes, covers only routes the YAML alone determines and lists function, middleware, proxy, extension, pattern and
-binding routes as `gaps` to test by hand. An `auth: true` route is covered by a `steps` fixture that signs in through
+binding routes as `gaps` to test by hand. For write-capable or streaming function/middleware routes it adds
+`verificationGaps`: the stateful handler verification matrix (`urlcode docs search "stateful handler verification"`) as untested application-supplied
+expectations, never coverage; rows a fixture cannot express need an ordinary test. An `auth: true` route is covered by a `steps` fixture that signs in through
 the provider's own endpoint, with `"origin": "{{origin}}"` on unsafe requests, and its accounts and memberships are
 declared in `tests/seed.json` (each test and audit run starts from a fresh database holding exactly that seed); the auth
 mount is a route too, covered by an `expectJson` on each sign-in (`/user/id`) and a `GET /api/auth/get-session` case, as

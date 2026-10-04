@@ -137,10 +137,12 @@ export function explainError(error:string) {
 /**
  * Deterministic authoring helpers over supplied YAML text (#722; docs/TOOLING.md#fixture-suggestions and
  * #yaml-change-summaries). `suggestFixtures(yaml, {maxFixtures?})` returns `tests/requests.json` candidates only for
- * routes whose answer the YAML alone determines, with every other route under `gaps` or `review`;
+ * routes whose answer the YAML alone determines, with every other route under `gaps` or `review`, and, when a
+ * function or middleware route accepts a write method or streams, `verificationGaps`: the stateful handler
+ * verification matrix as untested application-supplied expectations, never as coverage (#1136);
  * `summarizeYamlChange(before, after)` reports route, capability, code-seam and operator-grant changes by name.
  * Neither reads includes, source files, bindings or a project directory, and neither executes anything.
  */
 export {suggestFixtures,summarizeYamlChange};
-export type {FixtureSuggestions,FixtureSuggestionOptions,SuggestedFixture,FixtureKind,FixtureGap,FixtureGapCode,FixtureReview,FixtureReviewCode} from './fixture-suggestions.ts';
+export type {FixtureSuggestions,FixtureSuggestionOptions,SuggestedFixture,FixtureKind,FixtureGap,FixtureGapCode,FixtureReview,FixtureReviewCode,VerificationGaps,VerificationRow} from './fixture-suggestions.ts';
 export type {YamlChangeSummary,RouteChangeEntry,ChangedRoute,CodeSeam,GrantSet,ExecutionMode} from './yaml-change.ts';

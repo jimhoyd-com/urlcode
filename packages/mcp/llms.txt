@@ -16,7 +16,9 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
 - A mount for each server, e.g. `/mcp/*: { extension: mcp, methods: [POST, HEAD] }`; the
   client endpoint is the `mount` exactly (`POST https://site.example/mcp`), and `/mcp/` or any
   subpath answers 404 (`/*` is required route syntax, not extra endpoints)
-- `auth: true` on a mount to require a session before any tool call runs
+- `auth: true` on a mount to require a session before any tool call runs; with the bundled auth
+  that is a session cookie from the site's own origin, so a non-browser client is refused `403`,
+  and a handler is not told who called (no OAuth or bearer authorization; README "Protecting a mount")
 - Optional route `env` on the mount, granted by the operator policy like a function route's;
   handlers are called as `handler(input, { env, requestId, server, tool, kind, signal })`, plus
   `progress` on a tool

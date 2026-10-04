@@ -51,9 +51,12 @@ export const budgets: Record<string, Budget> = {
     // (legacy-request-body.ts and its HTTP.md section) and shared env/secrets with the
     // examples/shared-bindings example (5 files). Measured on the merged branch (Node 26):
     // 1120281 packed, 4396305 unpacked, 565 entries.
-    packed: 1098 * 1024,
-    unpacked: 4300 * 1024,
-    entries: 570,
+    // Raised for #1136/#1137: fixtures-suggest verification gaps, the examples/stateful-verification
+    // example (6 files), and the auth/mcp authoring surfaces and TOOLING text from the composition-fit
+    // assessment. Measured on the merged branch (Node 26): 1133642 packed, 4444006 unpacked, 571 entries.
+    packed: 1111 * 1024,
+    unpacked: 4348 * 1024,
+    entries: 576,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },

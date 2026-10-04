@@ -76,9 +76,9 @@ interface AuthSeed { users: { id: string; email: string; password: string; name?
 export const authAuthoring: ExtensionAuthoringContract = {
   description: 'Accounts and sessions served by Better Auth on one extension mount. Protect a route with `auth: true`; its function reads the signed-in user id from context.capabilities.auth.identity.userId. Permissions are data keyed by that id, never roles in auth: per-user records and membership lists are store declarations (ownership: owner, membership).',
   surfaces: [
-    { kind: 'extension', name: 'mount', description: 'Mount Better Auth at one path, for example /api/auth/* with extension: auth and methods [GET, POST]. Only the operator-enabled Better Auth endpoints answer; everything else under it is 404.', path: 'urlcode.yaml#routes',
+    { kind: 'extension', name: 'mount', description: 'Mount Better Auth at one path, for example /api/auth/* with extension: auth and methods [GET, POST]. Only the operator-enabled Better Auth endpoints answer; everything else under it is 404. Sign-in, sign-out, sessions and their revocation are Better Auth\'s own endpoints and wire format. Its database is the bundled SQLite file (one serving process) or the owner\'s own Better Auth database, such as a Postgres pool, given as auth({database}) in host.mjs. No admin console, API keys, OAuth/OIDC sign-in or email flows: the operator adds a Better Auth plugin (betterAuth, paths) for one.', path: 'urlcode.yaml#routes',
       goals: ['account', 'accounts', 'login', 'logout', 'signin', 'sign-in', 'password', 'passwords', 'session', 'sessions'] },
-    { kind: 'configuration', name: 'route protection', description: '`auth: true` on a route requires a verified Better Auth session and refuses cross-origin unsafe methods; the route receives no cookie or Authorization header. It is the principal-providing policy a store `ownership: owner` mount, `readers` mount or `by: others` transition mount needs.', path: 'urlcode.yaml#routes',
+    { kind: 'configuration', name: 'route protection', description: '`auth: true` on a route requires a verified Better Auth session and refuses an unsafe method that does not come from the site\'s own origin (an absent Origin included); the route receives no cookie or Authorization header. That session cookie is the only credential: there is no bearer-token or API-key mode, and a route without `auth: true` is given no identity, so an operation that also admits another credential keeps its own route and check. It is the principal-providing policy a store `ownership: owner` mount, `readers` mount or `by: others` transition mount needs.', path: 'urlcode.yaml#routes',
       goals: ['auth', 'authenticated', 'authentication', 'signed-in', 'logged-in', 'user', 'users', 'private', 'protected', 'own', 'owner', 'owners', 'their', 'mine', 'per-user', 'member', 'members', 'reviewer', 'reviewers', 'approver', 'approvers'] },
   ],
   fastChecks: ['urlcode validate --project app', 'urlcode validate --local --project app --host-file host.mjs --local-review'],
@@ -370,7 +370,9 @@ export function createAuthExtension(settings: AuthSettings & { projectSha256: st
           // A hermetic run starts from an empty database, so it creates the tables an operator creates with migrate.
           if (settings.hermetic === true) await migrate(options);
           const pending = await pendingMigrations(options);
-          if (pending.length) throw new Error(`auth: Better Auth's tables are not initialized (${pending.join(', ')}); run npx urlcode-auth migrate`);
+          // `urlcode-auth migrate` cannot read host.mjs, so it creates Better Auth's own schema and never a plugin's (#1137).
+          const plugins = settings.betterAuth?.plugins?.length ? '. If the tables are already migrated, a plugin in betterAuth.plugins adds tables or columns that urlcode-auth migrate does not create: give Better Auth your own database (auth({database})) and migrate it with Better Auth\'s own tooling' : '';
+          if (pending.length) throw new Error(`auth: Better Auth's tables are not initialized (${pending.join(', ')}); run npx urlcode-auth migrate${plugins}`);
         }
         auth = betterAuth(options);
         // Better Auth starts a schema check on construction without awaiting it (#1013). Awaited here, it has finished
