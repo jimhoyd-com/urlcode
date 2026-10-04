@@ -661,6 +661,39 @@ refused with the validator's message. The cases assume the local
 `urlcode test` runner: an operator host's plugins or extensions registered for
 routes the YAML does not name are outside what the YAML says.
 
+### Verification gaps for stateful handlers
+
+When at least one route is an opaque stateful handler, the result also carries
+`verificationGaps`; otherwise the key is absent. A route qualifies from the YAML
+alone: it is active, has a `function` or `middleware` and no `extension`, and
+either accepts `POST`, `PUT`, `PATCH` or `DELETE` or declares `stream: true`.
+
+```json
+{"verificationGaps":{"status":"untested","note":"Untested application-supplied expectations, not coverage and not findings. ...",
+  "reference":"https://.../READINESS.md#stateful-handler-verification","example":"stateful-verification",
+  "rows":[{"id":"permission-change-while-waiting","expectation":"What a request that is still waiting ... does when its caller's permission is revoked or changed before it answers.","check":"ordinary-test"},
+          {"id":"capacity-exhaustion","expectation":"...","check":"fixture"}],
+  "routes":[{"route":"/channels/{id}/events","why":["function","write-method"],"file":"urlcode.yaml"}],
+  "truncatedRoutes":0}}
+```
+
+`rows` is always the same seven rows of the
+[stateful handler verification matrix][docs/READINESS.md#stateful-handler-verification],
+in fixed text, stated once for all listed routes. `check` says where a check for
+the row can live: `fixture` (ordered `steps`), `ordinary-test` (it needs
+requests in flight together, time, a fault or the operating system, which no
+fixture expresses) or `fixture-and-ordinary-test`. `routes` says why each route
+qualified (`function`, `middleware`, `write-method`, `stream`), holds at most
+200 entries, and `truncatedRoutes` counts the rest.
+
+`status` is always `untested`. The helper does not read handler source,
+`tests/requests.json`, a test file or a test result, so it cannot know whether
+a row applies to a handler or is already checked, and it never reports one as
+passed or covered. The rows carry no expected outcome: who may do what, and
+what must survive, are the application's to state. Nothing is derived from a
+route's path, name or description, and no rule is specific to a service. The
+CLI and MCP `suggest_fixtures` return the same object.
+
 ## YAML change summaries
 
 `urlcode diff BEFORE [AFTER] [--project DIR] [--json]` (MCP
@@ -1578,6 +1611,7 @@ and [MCP tools](https://modelcontextprotocol.io/specification/2025-11-25/server/
 [docs/ORGANIZATION.md#mix-inline-and-included-routes]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/ORGANIZATION.md#mix-inline-and-included-routes
 [docs/READINESS.md#authenticated-routes-auth-true]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/READINESS.md#authenticated-routes-auth-true
 [docs/READINESS.md#coverage-rules]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/READINESS.md#coverage-rules
+[docs/READINESS.md#stateful-handler-verification]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/READINESS.md#stateful-handler-verification
 [docs/CAPABILITIES.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/CAPABILITIES.md
 [docs/HTTP.md#named-schemas]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/HTTP.md#named-schemas
 [docs/HTTP.md#error-format]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/HTTP.md#error-format

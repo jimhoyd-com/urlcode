@@ -243,7 +243,7 @@ const helpEntries: HelpEntry[] = [
 ` },
   { name:'fixtures', group:'Agent tooling', text:
 `  urlcode fixtures suggest [--project directory] [--json]
-    # tests/requests.json candidates only for routes the project's YAML alone determines (redirect, respond, page/download, 405, 404, simple input refusals); function, middleware, proxy, extension, pattern and binding routes are listed as gaps, never as covered. Reads urlcode.yaml and its includes (each entry names its file) only; writes nothing
+    # tests/requests.json candidates only for routes the project's YAML alone determines (redirect, respond, page/download, 405, 404, simple input refusals); function, middleware, proxy, extension, pattern and binding routes are listed as gaps, never as covered; write-capable or streaming function/middleware routes also get verificationGaps, the stateful handler verification matrix as untested application-supplied expectations. Reads urlcode.yaml and its includes (each entry names its file) only; writes nothing
 ` },
   { name:'diff', group:'Agent tooling', text:
 `  urlcode diff <before.yaml|directory> [after.yaml|directory] [--project directory] [--json]  # after defaults to the project

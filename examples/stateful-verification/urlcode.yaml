@@ -1,0 +1,76 @@
+version: "1"
+# A trusted function that holds state: a channel with an owner, derived credentials,
+# a bounded event log, pending reads and processes it starts. The YAML says which
+# requests reach it; what it must guarantee is in tests/ and nowhere else.
+shared:
+  state:
+    env:
+      DATA_DIR: {env: URLCODE_DATA_DIR}
+      # Deliberate defects for showing that the checks in tests/ can fail. Leave it as none.
+      DEFECTS: {value: none}
+routes:
+  /channels:
+    description: Create a channel; the answer carries its id and the owner credential
+    use: state
+    methods: [POST]
+    function: {source: functions/channel.mjs, export: create}
+  /channels/{id}:
+    description: Delete a channel (owner only); its stored object is removed after the answer
+    use: state
+    methods: [DELETE]
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, minLength: 8, maxLength: 8}}
+    function: {source: functions/channel.mjs, export: remove, args: {id: {from: path, name: id}}}
+  /channels/{id}/tokens:
+    description: Issue a credential derived from the caller's own
+    use: state
+    methods: [POST]
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, minLength: 8, maxLength: 8}}
+    function: {source: functions/channel.mjs, export: issue, args: {id: {from: path, name: id}}}
+  /channels/{id}/tokens/{tokenId}:
+    description: Revoke a credential the caller issued, and every credential derived from it
+    use: state
+    methods: [DELETE]
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, minLength: 8, maxLength: 8}}
+      - {name: tokenId, in: path, required: true, schema: {type: string, minLength: 8, maxLength: 8}}
+    function:
+      source: functions/channel.mjs
+      export: revoke
+      args: {id: {from: path, name: id}, tokenId: {from: path, name: tokenId}}
+  /channels/{id}/events:
+    description: Publish an event (bounded by count and bytes), or read events and wait for the next one
+    sandboxReason: Reviewed first-party code; it writes to the data directory, so it is trusted deliberately.
+    use: state
+    methods: [GET, POST]
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, minLength: 8, maxLength: 8}}
+      - {name: after, in: query, schema: {type: integer, minimum: 0, default: 0}}
+      - {name: wait, in: query, schema: {type: integer, minimum: 0, maximum: 2000, default: 0}}
+    request:
+      body:
+        GET: {maxBytes: 0}
+        POST: {required: true, maxBytes: 256, contentTypes: [application/json]}
+    function:
+      source: functions/channel.mjs
+      export: events
+      args: {id: {from: path, name: id}, after: {from: query, name: after}, wait: {from: query, name: wait}}
+  /channels/{id}/jobs:
+    description: Start a job, a process that starts a tool process of its own
+    use: state
+    methods: [POST]
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, minLength: 8, maxLength: 8}}
+    function: {source: functions/channel.mjs, export: start, args: {id: {from: path, name: id}}}
+  /channels/{id}/jobs/{job}:
+    description: Cancel a job and end every process it started
+    use: state
+    methods: [DELETE]
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, minLength: 8, maxLength: 8}}
+      - {name: job, in: path, required: true, schema: {type: string, minLength: 8, maxLength: 8}}
+    function:
+      source: functions/channel.mjs
+      export: cancel
+      args: {id: {from: path, name: id}, job: {from: path, name: job}}

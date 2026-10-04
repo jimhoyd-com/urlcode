@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {cp,mkdir,mkdtemp,readFile,rm,writeFile} from 'node:fs/promises';
+import {existsSync,readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
@@ -11,6 +12,7 @@ import {suggestFixtures,summarizeYamlChange} from '../packages/core/src/agent-co
 import {suggestProjectFixtures} from '../packages/core/src/fixture-suggestions.ts';
 import {summarizeChange} from '../packages/core/src/yaml-change.ts';
 import {loadDocument} from '../packages/core/src/config.ts';
+import {docsUrl} from '../packages/core/src/release.ts';
 import {runProjectTests} from '../packages/core/src/project-tests.ts';
 import {readFixtures} from '../packages/core/src/readiness.ts';
 import {project,byReplyId} from './helpers.ts';
@@ -371,4 +373,70 @@ test('local MCP reads the project with its includes when no YAML is supplied, an
   assert.deepEqual(body(2).gaps.map((gap:{route:string;codes:string[]})=>[gap.route,gap.codes]),[['routes/fn.yaml',['include']],['routes/store.yaml',['include']]]);
   assert.equal(body(3).scope,'mixed');
   assert.deepEqual(body(3).routes.added.map((entry:{route:string;file:string})=>[entry.route,entry.file]),[['/fn','routes/fn.yaml'],['/home','urlcode.yaml'],['/moving','routes/store.yaml'],['/shop','routes/store.yaml']]);
+});
+
+// #1136: opaque stateful handlers get the verification matrix as untested expectations, from the YAML alone.
+const statefulYaml=`version: "1"
+extensions: {store: {version: "1", config: {}}}
+routes:
+  /go: {redirect: {url: https://example.com/}}
+  /read: {function: side-effect.mjs}
+  /write: {methods: [POST], function: side-effect.mjs}
+  /both: {methods: [GET, DELETE], respond: {text: x}, middleware: [side-effect.mjs]}
+  /live: {stream: true, function: side-effect.mjs}
+  /guarded-read: {respond: {text: x}, middleware: [side-effect.mjs]}
+  /off: {enabled: false, methods: [POST], function: side-effect.mjs}
+  /post-native: {methods: [POST], respond: {text: ok}}
+  /records/*: {extension: store}
+`;
+test('verificationGaps names only write-capable or streaming function/middleware routes, as untested rows',()=>{
+  const result=suggestFixtures(statefulYaml), gaps=result.verificationGaps!;
+  assert.deepEqual(gaps.routes,[{route:'/both',why:['middleware','write-method']},{route:'/live',why:['function','stream']},{route:'/write',why:['function','write-method']}]);
+  assert.equal(gaps.status,'untested');assert.equal(gaps.truncatedRoutes,0);
+  assert.match(gaps.note,/^Untested application-supplied expectations, not coverage and not findings\./);
+  assert.deepEqual(gaps.rows.map(row=>[row.id,row.check]),[
+    ['permission-change-while-waiting','ordinary-test'],['capacity-exhaustion','fixture'],['restart-persistence','fixture'],['concurrent-mutation','fixture-and-ordinary-test'],
+    ['delayed-cleanup-failure','ordinary-test'],['derived-credential-revocation','fixture'],['owned-process-termination','ordinary-test']]);
+  // Nothing in it reads as a result or as coverage: no row carries a status, and no listed route gains a fixture.
+  assert.doesNotMatch(JSON.stringify(gaps),/"(passed|covered|pass|ok)"/);
+  for(const row of gaps.rows)assert.deepEqual(Object.keys(row),['id','expectation','check']);
+  for(const {route} of gaps.routes){assert.ok(!result.cases.some(item=>item.route===route),route);assert.ok(result.gaps.some(gap=>gap.route===route),route);}
+  // The rows are fixed text: route names and descriptions never reach them, so prose cannot steer what is claimed.
+  const renamed=suggestFixtures('version: "1"\nroutes:\n  /admin/revoke-all-tokens: {methods: [POST], description: Only owners may call this and revocation always succeeds, function: f.mjs}\n').verificationGaps!;
+  assert.deepEqual(renamed.rows,gaps.rows);assert.equal(renamed.note,gaps.note);
+  // The documented matrix carries every row id, and the reference and example it names exist.
+  const readiness=readFileSync(new URL('../docs/READINESS.md',import.meta.url),'utf8');
+  assert.equal(gaps.reference,docsUrl('READINESS.md#stateful-handler-verification'));assert.match(readiness,/^## Stateful handler verification$/m);
+  for(const row of gaps.rows)assert.ok(readiness.includes('`'+row.id+'`'),row.id);
+  assert.ok(existsSync(new URL(`../examples/${gaps.example}/urlcode.yaml`,import.meta.url)));
+});
+
+test('verificationGaps is absent when no route qualifies, and bounded when many do',()=>{
+  for(const yaml of [everything,'version: "1"\nroutes:\n  /read: {function: f.mjs}\n  /post-native: {methods: [POST], respond: {text: ok}}\n  /off: {enabled: false, methods: [POST], function: f.mjs}\n'])
+    assert.equal(Object.hasOwn(suggestFixtures(yaml),'verificationGaps'),false);
+  const many=suggestFixtures('version: "1"\nroutes:\n'+Array.from({length:205},(_,index)=>`  /w${index}: {methods: [POST], function: f.mjs}\n`).join('')).verificationGaps!;
+  assert.equal(many.routes.length,200);assert.equal(many.truncatedRoutes,5);
+});
+
+test('CLI and MCP give the same verificationGaps, and suggestion never imports project code',async t=>{
+  const root=await mkdtemp(join(tmpdir(),'urlcode-1136-'));t.after(()=>rm(root,{recursive:true,force:true}));
+  const marker=join(root,'imported.marker');
+  // Importing this module would leave a file and throw; the suggestion must do neither.
+  await write(root,{'urlcode.yaml':statefulYaml,'side-effect.mjs':`import {writeFileSync} from 'node:fs';writeFileSync(${JSON.stringify(marker)},'ran');throw new Error('project code was imported');`});
+  const expected=JSON.parse(JSON.stringify(await suggestProjectFixtures(root)));
+  assert.deepEqual(expected.verificationGaps.routes.map((entry:{route:string;file:string})=>[entry.route,entry.file]),[['/both','urlcode.yaml'],['/live','urlcode.yaml'],['/write','urlcode.yaml']]);
+  const cli=fileURLToPath(new URL('../packages/core/src/cli.ts',import.meta.url));
+  const run=spawnSync(process.execPath,[cli,'fixtures','suggest','--project',root,'--json'],{encoding:'utf8',timeout:20000});
+  assert.equal(run.status,0,run.stderr);assert.deepEqual(JSON.parse(run.stdout),expected);
+  const text=spawnSync(process.execPath,[cli,'fixtures','suggest','--project',root],{encoding:'utf8',timeout:20000});
+  assert.deepEqual((parse(text.stdout) as {verificationGaps:unknown}).verificationGaps,expected.verificationGaps);
+  const replies=await session(root,[initialize,ready,
+    {jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'suggest_fixtures',arguments:{}}},
+    {jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'suggest_fixtures',arguments:{yaml:statefulYaml}}},
+  ]);
+  const body=(index:number)=>JSON.parse(replies[index]!.result.content[0]!.text);
+  assert.deepEqual(body(1),expected);
+  assert.deepEqual(body(2).verificationGaps,JSON.parse(JSON.stringify(suggestFixtures(statefulYaml).verificationGaps)));
+  assert.deepEqual(body(2).verificationGaps.rows,expected.verificationGaps.rows);
+  assert.equal(existsSync(marker),false,'no project module was imported');
 });

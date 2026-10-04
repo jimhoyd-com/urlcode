@@ -1,0 +1,22 @@
+id: stateful-verification
+description: Reference checks for a trusted function that holds state - revocation at event and byte capacity, derived credentials, restart, idempotency as ordered fixtures, and pending reads, concurrent writes, failed cleanup and owned processes as an ordinary Node test.
+tags: [stateful, verification, fixtures, steps, restart, revocation, credentials, capacity, idempotency, concurrency, in-flight, cleanup, process, testing, function]
+complexity: advanced
+capabilities: [bindings, enabled, function, methods, parameters, request.body]
+targets: {self-hosted: compatible, aws: refused, vercel: refused, cloudflare: refused, static: refused}
+routes: 7
+grants:
+  - kind: env
+    description: URLCODE_DATA_DIR, the data directory. `urlcode test`, `urlcode audit` and startServer's dataDir option grant it themselves for a test directory; a real deployment needs an operator policy grant and a directory that outlives the process.
+files: [urlcode.yaml, functions/channel.mjs, tests/requests.json, tests/in-flight.test.mjs, README.md]
+tests:
+  fixtures: tests/requests.json
+  commands:
+    - urlcode test --project .
+    - urlcode audit --project . --expect-routes 7
+    - node --test tests/in-flight.test.mjs
+behavior:
+  - an owner can still revoke a credential when the event log is full by count or by bytes, and the revoked credential is refused afterwards
+  - revoking a credential ends every credential derived from it; channels, revocations and idempotency keys survive a restart
+  - a read that is pending when its credential is revoked ends refused and delivers nothing published afterwards (ordinary test, not a fixture)
+  - concurrent publishes never pass capacity, a failed cleanup is reported as failed, and cancelling a job ends every process it started (ordinary test)

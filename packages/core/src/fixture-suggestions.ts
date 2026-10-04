@@ -15,6 +15,7 @@
 import {Ajv} from 'ajv';
 import {loadDocument,parseYaml,validateDocument,normalizeRouteAuth} from './config.ts';
 import {ConfigError} from './errors.ts';
+import {docsUrl} from './release.ts';
 import {releasePrincipalProviders} from './addon-manifest.ts';
 import {bodyPolicy} from './http-policy.ts';
 import {contextFor,matchRoute,parameterName,parseTarget,redirectLocation} from './match.ts';
@@ -35,6 +36,32 @@ export type FixtureReviewCode = 'conditional'|'expires'|'static-directory'|'poli
 export interface FixtureReview { route: string; code: FixtureReviewCode; reason: string; /** Project mode: the YAML file that declares the route. */ file?: string }
 /** A route (or include) whose answer depends on something the YAML text cannot determine. Never covered by a suggestion. */
 export interface FixtureGap { route: string; codes: FixtureGapCode[]; reason: string; /** Project mode: the YAML file that declares the route. */ file?: string }
+/** One row of the stateful handler verification matrix (the READINESS page, #stateful-handler-verification). */
+export interface VerificationRow {
+  id: 'permission-change-while-waiting'|'capacity-exhaustion'|'restart-persistence'|'concurrent-mutation'|'delayed-cleanup-failure'|'derived-credential-revocation'|'owned-process-termination';
+  /** The question the application answers. The expected outcome is the application's own; nothing here states it. */
+  expectation: string;
+  /** Where a check for it can live: an ordered `steps` fixture, or an ordinary test against a started server when it needs concurrency, a held-open request, time, a fault or the operating system. */
+  check: 'fixture'|'ordinary-test'|'fixture-and-ordinary-test';
+}
+/**
+ * Present only when a route is an opaque stateful handler: project code (function or middleware) with no extension
+ * in front, that accepts a write method or streams. Every row is an application-supplied expectation this helper
+ * has not tested and cannot derive; it reads no handler source, no fixture file and no test result.
+ */
+export interface VerificationGaps {
+  /** Never `passed`: this helper runs nothing and reads no test or fixture. */
+  status: 'untested';
+  note: string;
+  /** The matrix and the fixture-versus-ordinary-test boundary. */
+  reference: string;
+  /** A runnable example with each row as a check that fails on a defect (`urlcode examples add`). */
+  example: string;
+  rows: VerificationRow[];
+  routes: { route: string; why: ('function'|'middleware'|'write-method'|'stream')[]; /** Project mode: the YAML file that declares the route. */ file?: string }[];
+  /** Routes dropped by the 200-entry limit. */
+  truncatedRoutes: number;
+}
 export interface FixtureSuggestions {
   format: 1;
   /**
@@ -51,6 +78,8 @@ export interface FixtureSuggestions {
   cases: { route: string|null; kind: FixtureKind; /** Project mode: the YAML file that declares the route. */ file?: string }[];
   review: FixtureReview[];
   gaps: FixtureGap[];
+  /** Absent when no route is an opaque stateful handler. Not coverage, and not a list of defects. */
+  verificationGaps?: VerificationGaps;
   limits: { maxFixtures: number; maxEntries: number; maxBodyBytes: number; maxFixtureBytes: number };
   /** Counts dropped by a limit; all zero when nothing was cut. */
   truncated: { fixtures: number; review: number; gaps: number };
@@ -95,6 +124,19 @@ export async function readProjectDirectory(project:string):Promise<YamlProject> 
   return {document,routes,sources:sources!};
 }
 const projectFiles=(project:YamlProject)=>['urlcode.yaml',...(project.document.includes??[])];
+
+const writeMethods=new Set(['POST','PUT','PATCH','DELETE']);
+// Fixed text: no row depends on a route's name, description or source, and none is specific to a service.
+const verificationRows:VerificationRow[]=[
+  {id:'permission-change-while-waiting',expectation:'What a request that is still waiting (a long poll, a stream, a queued job) does when its caller\'s permission is revoked or changed before it answers.',check:'ordinary-test'},
+  {id:'capacity-exhaustion',expectation:'Whether control operations (owner revocation, permission changes, delete) still work once a count or byte limit the handler enforces is reached.',check:'fixture'},
+  {id:'restart-persistence',expectation:'Which state survives a restart (records, revocations, idempotency keys) and which may be lost (pending waits, memory).',check:'fixture'},
+  {id:'concurrent-mutation',expectation:'What a repeated request, and requests that arrive together, do to the same state: whether an update can be lost, a limit passed, or one idempotency key take effect twice.',check:'fixture-and-ordinary-test'},
+  {id:'delayed-cleanup-failure',expectation:'What is reported, and what can be retried, when cleanup done after the answer (deleting stored objects) fails.',check:'ordinary-test'},
+  {id:'derived-credential-revocation',expectation:'Whether revoking a credential also ends every credential, token or session issued from it.',check:'fixture'},
+  {id:'owned-process-termination',expectation:'Whether cancelling ends every process the handler started, including their children. URLCode does not supervise processes that project code starts.',check:'ordinary-test'},
+];
+const verificationNote='Untested application-supplied expectations, not coverage and not findings. The YAML shows only that these routes run project code that can hold state: no handler source, fixture or test result was read, so this cannot tell whether a row applies or already passes. For each row that applies, write the expected outcome yourself, then its check. "fixture" is an ordered steps fixture (capture, cookies, restart). "ordinary-test" needs a held-open request, concurrency, time, a fault or the operating system, which no fixture expresses: write an ordinary test against a started server. A row is passed only when its own check ran and passed.';
 
 interface Probe extends MatchableRoute { config: RouteConfig }
 /** The same precedence router.ts compiles (exact, then parameterized by specificity, then mounts by prefix length), over the supplied routes only. */
@@ -188,6 +230,7 @@ function suggestFor(project:YamlProject, options:FixtureSuggestionOptions):Fixtu
   const at=(route:string|null):{file?:string}=>route!==null&&sources&&Object.hasOwn(sources,route)?{file:sources[route]!}:{};
   const fixtures:SuggestedFixture[]=[], cases:FixtureSuggestions['cases']=[], review:FixtureReview[]=[], gaps:FixtureGap[]=[];
   const truncated={fixtures:0,review:0,gaps:0};
+  const stateful:VerificationGaps['routes']=[];let statefulDropped=0;
   let bytes=0;
   const add=(route:string|null,kind:FixtureKind,fixture:SuggestedFixture)=>{
     const size=Buffer.byteLength(JSON.stringify(fixture));
@@ -218,6 +261,16 @@ function suggestFor(project:YamlProject, options:FixtureSuggestionOptions):Fixtu
     if(route.signals?.length)codes.push('signals');
     if(route.extension)codes.push('extension');
     if(Object.keys(effectiveExtensionPolicies(document,route)).length)codes.push('extension-policy');
+    // An opaque stateful handler, from the YAML alone: project code answers (no extension owns the route), and it
+    // can be asked to change something or holds its response open. A disabled route serves nothing.
+    if(!route.extension&&route.enabled!==false&&(route.function||route.middleware?.length)){
+      const why:VerificationGaps['routes'][number]['why']=[];
+      if(route.function)why.push('function');
+      if(route.middleware?.length)why.push('middleware');
+      if((route.methods??[]).some(method=>writeMethods.has(method)))why.push('write-method');
+      if(route.stream)why.push('stream');
+      if(why.includes('write-method')||why.includes('stream')){if(stateful.length>=MAX_ENTRIES)statefulDropped++;else stateful.push({route:pattern,why,...at(pattern)});}
+    }
     if(Object.values(route.env??{}).some(ref=>ref.env!==undefined)||Object.keys(route.secrets??{}).length)codes.push('external-binding');
     if((route.parameters??[]).some(parameter=>constrained(parameter.schema)||(parameter.schema.items!==undefined&&constrained(parameter.schema.items as ParameterSchema))))codes.push('pattern-constrained');
     if(codes.length){gap(pattern,codes,`Not suggested: ${codes.map(code=>gapReasons[code]).join('; ')}. Write its cases against the behavior you implement and run urlcode test.`);continue;}
@@ -288,7 +341,9 @@ function suggestFor(project:YamlProject, options:FixtureSuggestionOptions):Fixtu
   const unmatched=hasIncludes?undefined:unmatchedCandidates.find(candidate=>resolves(table,candidate)===null);
   if(unmatched)add(null,'unknown-path',{path:unmatched,status:404});
   else note('(unmatched path)','unknown-path',hasIncludes?'Included routes are not read, so no path is certain to match nothing.':'Every candidate unmatched path reaches a route (a root mount or parameter); write a 404 case by hand.');
-  return {format:1,...(sources?{scope:'project-yaml' as const,files:projectFiles(project)}:{scope:'supplied-yaml-only' as const}),routeCount:Object.keys(routes).length,fixtures,cases,review,gaps,limits:{maxFixtures,maxEntries:MAX_ENTRIES,maxBodyBytes:MAX_BODY_BYTES,maxFixtureBytes:MAX_FIXTURE_BYTES},truncated};
+  return {format:1,...(sources?{scope:'project-yaml' as const,files:projectFiles(project)}:{scope:'supplied-yaml-only' as const}),routeCount:Object.keys(routes).length,fixtures,cases,review,gaps,
+    ...(stateful.length?{verificationGaps:{status:'untested' as const,note:verificationNote,reference:docsUrl('READINESS.md#stateful-handler-verification'),example:'stateful-verification',rows:verificationRows,routes:stateful,truncatedRoutes:statefulDropped}}:{}),
+    limits:{maxFixtures,maxEntries:MAX_ENTRIES,maxBodyBytes:MAX_BODY_BYTES,maxFixtureBytes:MAX_FIXTURE_BYTES},truncated};
 }
 
 type Expected={kind:FixtureKind;fixture:Pick<SuggestedFixture,'status'|'expectHeaders'|'expectBody'>}|{review:string};
