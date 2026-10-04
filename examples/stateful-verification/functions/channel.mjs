@@ -143,9 +143,12 @@ export async function remove(request, { args, env }) {
 
 // Processes started for a job, by job id. The job process starts a tool process and prints its pid;
 // both end by themselves after 20 seconds, so a failed test leaves nothing running for long.
+// The tool is started detached, as runners that launch tools commonly do: it then outlives the job
+// process on every platform unless something ends it. Without `detached`, Windows ends a Node
+// process's children with it, and the orphan this example checks for could not appear there.
 const jobs = new Map();
 const idle = 'setTimeout(() => {}, 20000)';
-const jobSource = `const tool = require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(idle)}], { stdio: 'ignore' }); console.log(tool.pid); ${idle}`;
+const jobSource = `const tool = require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(idle)}], { stdio: 'ignore', detached: true, windowsHide: true }); console.log(tool.pid); ${idle}`;
 
 export async function start(request, { args, env }) {
   const { channel, refusal } = enter(request, env, args.id);

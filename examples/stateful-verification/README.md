@@ -23,6 +23,11 @@ node --test tests/in-flight.test.mjs   # an ordinary test; needs @jimhoyd/urlcod
 | Cleanup that fails after the delete answer is reported `failed`, never `done`, and can be repeated | `in-flight.test.mjs` |
 | Cancelling a job ends the process it started and that process's own child | `in-flight.test.mjs` |
 
+The job starts its tool process detached, as runners that launch tools commonly
+do, so the tool outlives the job on every platform unless the handler ends it.
+Without `detached`, Windows ends a Node process's children together with it and
+the orphan would never appear there.
+
 A fixture sends one request, waits for the answer and sends the next, so it
 cannot hold a request open, send two at once, wait for work done after an
 answer, break the data directory or look at a process. Those checks are an
