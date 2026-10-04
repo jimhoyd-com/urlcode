@@ -339,7 +339,21 @@ cannot reach a call another request is running.
 ## Protecting a mount
 
 Add `auth: true` to the route like any other extension mount, when tool calls require a signed-in caller. The
-extension has no identity or authorization model of its own.
+extension has no identity or authorization model of its own, which sets two limits:
+
+- **Who gets in is the provider's rule.** With the bundled auth extension the gate admits a Better Auth session
+  cookie, and a `POST` only from the site's own origin
+  ([the `auth` short form][extensions-auth-short-form]). The extension's own `Origin` check admits a request with
+  no `Origin`; that gate does not, so a non-browser MCP client is answered `403 cross_origin_refused`, with a valid session
+  cookie or a bearer token alike. A signed-in page on the site's own origin can call the mount; a remote client
+  that authorizes with OAuth or a bearer token cannot.
+- **A handler is not told who called.** Its `context` carries `env`, `requestId`, `server`, `tool`, `kind`,
+  `signal` and `progress`: no principal and no request-bound capability. A tool can require a signed-in caller,
+  but it cannot read or scope data by that caller.
+
+A server whose tools act for the calling account from a remote MCP client is therefore not declared here. That is
+the owner's choice of implementation: a trusted `function` route that calls an MCP library directly and checks its
+own credential ([using npm libraries directly][framework-npm-libraries]).
 
 ## What this implements
 
@@ -413,7 +427,8 @@ extension has no identity or authorization model of its own.
   schema in YAML and have the handler check `context.env` at call time.
 - OAuth/bearer authorization flows defined by the MCP authorization spec;
   protect a mount with a principal-providing extension instead, the same as
-  any other extension route.
+  any other extension route, within the limits under
+  [protecting a mount](#protecting-a-mount).
 - Server-initiated requests (elicitation, sampling) and the `tasks` utility.
 
 These are deliberate scope choices for a first, minimal, declarative surface
@@ -432,6 +447,8 @@ version it describes; `npm run release:bump` moves them and scripts/check-local-
 [operations-streamed-responses]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/OPERATIONS.md#streamed-responses
 [extensions-site-origins-and-same-origin-checks]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/EXTENSIONS.md#site-origins-and-same-origin-checks
 [http-named-schemas]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/HTTP.md#named-schemas
+[extensions-auth-short-form]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/EXTENSIONS.md#protecting-a-route-the-auth-short-form
+[framework-npm-libraries]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/FRAMEWORK.md#using-npm-libraries-directly
 <!-- urlcode-current-version:end -->
 
 <!-- extension-reference:start -->
@@ -501,7 +518,7 @@ Declare a bounded MCP (Model Context Protocol) tool/resource/prompt server: name
 - **tool handler** (hook, `urlcode.yaml#extensions.mcp.config.servers.<name>.tools.<name>.handler`): Each tool declares a trusted project module/export handler (source, optional export), loaded and run the same way as other extension hooks: not sandboxed, receives the schema-validated arguments object and a context carrying the granted env of the mount route, the request id and the server/tool names. It returns the result value, or throws McpToolError (exported by @jimhoyd/urlcode-mcp) with a caller-facing message (and optional data returned as structuredContent when it conforms to the declared outputSchema) to answer isError: true; any other thrown error answers a fixed generic message.
 - **resource handler** (hook, `urlcode.yaml#extensions.mcp.config.servers.<name>.resources.<name>.handler`): Each resource declares a trusted project module/export handler returning that resource’s content (a string, or {text\|blob, mimeType}), served over resources/read.
 - **prompt handler** (hook, `urlcode.yaml#extensions.mcp.config.servers.<name>.prompts.<name>.handler`): Each prompt declares a trusted project module/export handler receiving the schema-validated string arguments and returning prompt message content, served over prompts/get.
-- **mount** (extension, `urlcode.yaml`): Mount each server at its declared path with POST (and HEAD); the protocol is stateless, so GET and DELETE are answered 405. The operator may enable streamed progress replies in host.mjs. Add `auth: true` when tool calls require a signed-in caller.
+- **mount** (extension, `urlcode.yaml`): Mount each server at its declared path with POST (and HEAD); the protocol is stateless, so GET and DELETE are answered 405. The operator may enable streamed progress replies in host.mjs. Add `auth: true` when tool calls require a signed-in caller: with the bundled auth extension that admits a session cookie sent from the site's own origin only, so a non-browser MCP client (no Origin header, or a bearer token) is refused 403. The MCP authorization flow (OAuth, bearer tokens) is not implemented and a handler is not told who called, so per-user tools for remote clients are the owner's choice: a trusted function route that calls an MCP library directly.
 
 Fast checks: `urlcode validate --local --project app --host-file host.mjs --local-review`, `urlcode test --project app --host-file host.mjs --local-review`.
 <!-- extension-reference:end -->

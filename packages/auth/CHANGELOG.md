@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **A plugin's missing schema is named as such (#1137).** With a plugin in `betterAuth.plugins` that adds tables or
+  columns (Better Auth's `admin` adds `user.role` and `user.banned`), the bundled SQLite file refused to activate
+  with `run npx urlcode-auth migrate`, which cannot help: that command does not read `host.mjs` and creates only
+  Better Auth's own schema. The refusal now also says so and names the owner database as where such a plugin
+  serves. The README states the same, that a session cookie from the site's own origin is the only credential the
+  gate admits, and that a route without `auth: true` is given no identity; the authoring surfaces say what the
+  mount does not include. `test/account-composition.test.ts` at the repository root pins each, with sign-out
+  revocation and an `admin` plugin suspension refused to non-administrators.
+
 - **Better Auth's origin and CSRF checks stay on under `NODE_ENV=test` or `TEST`.** Better Auth skips its origin
   check, and with it its CSRF check and `callbackURL`/`redirectTo` validation, whenever `NODE_ENV=test` or `TEST` is
   truthy and `advanced.disableOriginCheck` is unset, so a server started in such an environment accepted a cross-origin

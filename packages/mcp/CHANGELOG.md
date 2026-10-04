@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- The authoring contract's `servers` and `mount` surfaces carry planner goal words, so `urlcode plan-feature` names
+  this extension for an MCP goal (it named nothing before), and the `mount` surface and the README's "Protecting a
+  mount" state what an `auth: true` mount does not do (#1137): with the bundled auth extension a request without the
+  site's own `Origin` is refused `403`, there is no OAuth or bearer authorization, and a handler is not told who
+  called. No behavior changed; `test/account-composition.test.ts` at the repository root pins each.
+
 The definition declares its deployment targets (node, aws, vercel), which `npm run build:addons` writes into `urlcode.json` as `targets` (#859); core refuses a registration whose targets differ, and the capability preflight refuses a recipe or plan that uses this extension on any other target.
 
 - A tool, resource or prompt result that cannot be serialized to JSON (a BigInt, a cycle, a throwing `toJSON`, or a

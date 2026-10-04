@@ -413,7 +413,10 @@ this core's release catalog (`source` is `registered`, `installed` or
 publishes `collections`, `ownership` (their own records), `transitions`
 (submit, approve, reject, pending; `by: others` for a review step),
 `membership` and `readers` (reviewers); auth publishes `route protection`
-(signed-in, users, private, owners, reviewers) and its mount. A goal such as
+(signed-in, users, private, owners, reviewers) and its mount; mcp publishes
+`servers` (MCP server, tools) and its `mount` (remote clients, OAuth, bearer
+tokens), whose description states what the mount does not do: no MCP
+authorization flow, and no caller identity in a handler. A goal such as
 "owners submit requests; reviewers approve or reject pending requests"
 therefore plans auth, store ownership, transitions, membership and readers.
 When no recipe matches its own terms, the general recipe of the extension
@@ -481,10 +484,17 @@ is an opt-in, read-only static review of the
 compiled project plus its own `function`/`middleware` source, for the narrow,
 agent-facing question "which of this generated code looks like avoidable
 framework plumbing, and what is the supported alternative?" It scans only the
-project's own root-confined source graph (the same `function`/`middleware`
-file resolution `explain` and `manifest` use): no project code is executed, no
-environment variable or secret is read, and no network call is made. Findings
-are grouped:
+module each route names as its `function` or `middleware` `source` (the same
+file resolution `explain` and `manifest` use), inside the project root: no
+project code is executed, no environment variable or secret is read, and no
+network call is made. A module that source imports is not scanned, in the
+project or outside it. An application whose route sources only re-export a
+handler built elsewhere (a compiled `dist/` beside `app/`, say) therefore gets
+`observations: []`, which means the handler code was not read, not that
+nothing was found:
+`moduleCount` is the number of files scanned, and `trustedDependencies` lists
+the files those sources import and marks the ones outside the project
+`opaque`. Findings are grouped:
 
 - `native-alternative`: an already-supported declarative capability appears to
   cover the behavior (for example `request.body.<METHOD>.schema` in place of
@@ -1209,7 +1219,12 @@ deterministic, local text matching; it reads these sources and nothing else:
 - **catalog**: this release's add-on catalog (`dist/addon-catalog.json`). A
   catalog match says the add-on exists in the release, never that the project
   has it: catalog matches are returned apart from results, each with
-  `installedInProject` (`null` when no project was given).
+  `installedInProject` (`null` when no project was given). An entry matches
+  on its name, description, agent references and authoring contract (the
+  surface descriptions that say what the add-on covers and where it stops), so
+  a question its uninstalled guide would answer, such as `oauth` or
+  `postgres`, still names the add-on to read about; `plan_feature` prints
+  those surface descriptions.
 
 The answer has at most three `results` (each with at most 1800 characters of
 `excerpt`), at most five `catalog` matches, `coverage` and at most four `next`

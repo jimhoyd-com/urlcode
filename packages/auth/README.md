@@ -63,7 +63,13 @@ routes:
 session Better Auth verifies from the request's own cookie. Without one the
 route answers `401 {"error":"authentication_required"}`. A `POST`, `PUT`,
 `PATCH` or `DELETE` must also come from the site's own origin (`Origin`,
-`Sec-Fetch-Site` or `Referer`), or it answers `403 {"error":"cross_origin_refused"}`.
+`Sec-Fetch-Site` or `Referer`), or it answers `403 {"error":"cross_origin_refused"}`;
+a request carrying none of those headers, as a non-browser client sends, is
+refused the same way. The session cookie is the only credential: there is no
+bearer-token or API-key mode, and a route without `auth: true` (or with
+`auth: {required: false}`) is given no identity. An operation that also admits
+another credential, such as a share link or an agent's key, keeps its own
+route and its own check.
 When the session cannot be checked because the auth database is unavailable
 (another process held its write lock past the 2-second busy timeout, or an I/O
 error), the route answers `503 {"error":"auth_unavailable"}` with
@@ -298,7 +304,16 @@ operator's `--origin` and its base path is the mount.
 - No account pages, admin console, audit events, email flows,
   two-factor, social or OIDC sign-in, API keys or account recovery. Add a
   Better Auth plugin through `betterAuth` and its paths through `paths` when an
-  application needs one.
+  application needs one: with its `admin` plugin and the paths
+  `/admin/ban-user` and `/admin/unban-user`, an administrator suspends an
+  account, its live sessions end at once, and every other caller is refused.
+  A plugin that adds tables or columns (`admin` adds `user.role` and
+  `user.banned`) needs [your own database](#your-own-database), migrated with
+  Better Auth's own tooling: `urlcode-auth migrate` cannot read `host.mjs`, so
+  it creates only Better Auth's own schema and the bundled file then refuses
+  to activate, naming the tables. `urlcode test` and `audit` create a plugin's
+  schema on their throwaway file, so they pass where serving the bundled file
+  refuses.
 - No role or permission model: keep permissions in the application.
 - Node only; aws and vercel refuse it.
 
@@ -333,8 +348,8 @@ Whole-policy rules: unknown keys rejected.
 
 Accounts and sessions served by Better Auth on one extension mount. Protect a route with `auth: true`; its function reads the signed-in user id from context.capabilities.auth.identity.userId. Permissions are data keyed by that id, never roles in auth: per-user records and membership lists are store declarations (ownership: owner, membership).
 
-- **mount** (extension, `urlcode.yaml#routes`): Mount Better Auth at one path, for example /api/auth/* with extension: auth and methods [GET, POST]. Only the operator-enabled Better Auth endpoints answer; everything else under it is 404.
-- **route protection** (configuration, `urlcode.yaml#routes`): `auth: true` on a route requires a verified Better Auth session and refuses cross-origin unsafe methods; the route receives no cookie or Authorization header. It is the principal-providing policy a store `ownership: owner` mount, `readers` mount or `by: others` transition mount needs.
+- **mount** (extension, `urlcode.yaml#routes`): Mount Better Auth at one path, for example /api/auth/* with extension: auth and methods [GET, POST]. Only the operator-enabled Better Auth endpoints answer; everything else under it is 404. Sign-in, sign-out, sessions and their revocation are Better Auth's own endpoints and wire format. Its database is the bundled SQLite file (one serving process) or the owner's own Better Auth database, such as a Postgres pool, given as auth({database}) in host.mjs. No admin console, API keys, OAuth/OIDC sign-in or email flows: the operator adds a Better Auth plugin (betterAuth, paths) for one.
+- **route protection** (configuration, `urlcode.yaml#routes`): `auth: true` on a route requires a verified Better Auth session and refuses an unsafe method that does not come from the site's own origin (an absent Origin included); the route receives no cookie or Authorization header. That session cookie is the only credential: there is no bearer-token or API-key mode, and a route without `auth: true` is given no identity, so an operation that also admits another credential keeps its own route and check. It is the principal-providing policy a store `ownership: owner` mount, `readers` mount or `by: others` transition mount needs.
 
 Fast checks: `urlcode validate --project app`, `urlcode validate --local --project app --host-file host.mjs --local-review`.
 <!-- extension-reference:end -->

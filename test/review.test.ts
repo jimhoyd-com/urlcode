@@ -442,3 +442,15 @@ test('review is deterministic and bounded: same project yields the same observat
   assert.deepEqual(first,second);
   assert.deepEqual(first.observations.map(item=>item.source),['/a.mjs','/b.mjs']);
 });
+
+test('review reads only the module a route names: a handler re-exported from another module is not scanned (#1137)',async t=>{
+  const routes={'/login':{methods:['POST'],function:{source:'f.mjs'}}};
+  // The same session code, in the route's own module and behind a re-export.
+  const direct=await reviewProject(await project(t,routes,{'f.mjs':cookieSource}));
+  assert.equal(direct.observations.filter(item=>item.signal==='manual-cookie-session').length,1);
+  const indirect=await reviewProject(await project(t,routes,{'f.mjs':"export { default } from './lib/session.mjs';\n",'lib/session.mjs':cookieSource}));
+  assert.deepEqual(indirect.observations,[]);
+  assert.equal(indirect.moduleCount,1);
+  // The imported file is still inventoried for the operator pin; it is just not reviewed for plumbing.
+  assert.ok(indirect.trustedDependencies.files.some(file=>file.path==='lib/session.mjs'));
+});
