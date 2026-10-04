@@ -1,0 +1,57 @@
+[
+  {"path":"/channels/deadbeef/events","status":404},
+  {"steps":[
+    {"path":"/channels","method":"POST","status":201,"expectHeaders":{"content-type":"application/json"},"capture":{"id":{"json":"id"},"owner":{"json":"owner","secret":true}}},
+    {"path":"/channels/{{id}}/tokens","method":"POST","headers":{"authorization":"Bearer {{owner}}"},"status":201,"expectHeaders":{"content-type":"application/json"},
+     "capture":{"memberId":{"json":"tokenId"},"member":{"json":"token","secret":true}}},
+    {"path":"/channels/{{id}}/events","method":"POST","headers":{"authorization":"Bearer {{member}}","content-type":"application/json"},"body":"{\"text\":\"one\"}","status":201,"expectJson":{"/seq":1}},
+    {"path":"/channels/{{id}}/events","method":"POST","headers":{"authorization":"Bearer {{member}}","content-type":"application/json"},"body":"{\"text\":\"two\"}","status":201,"expectJson":{"/seq":2}},
+    {"path":"/channels/{{id}}/events","method":"POST","headers":{"authorization":"Bearer {{member}}","content-type":"application/json"},"body":"{\"text\":\"three\"}","status":201,"expectJson":{"/seq":3}},
+    {"path":"/channels/{{id}}/events","method":"POST","headers":{"authorization":"Bearer {{member}}","content-type":"application/json"},"body":"{\"text\":\"four\"}","status":507,"expectJson":{"/error":"event-capacity"}},
+    {"path":"/channels/{{id}}/tokens/{{memberId}}","method":"DELETE","headers":{"authorization":"Bearer {{owner}}"},"status":200,"expectJson":{"/revoked":true}},
+    {"path":"/channels/{{id}}/events","headers":{"authorization":"Bearer {{member}}"},"status":401},
+    {"path":"/channels/{{id}}/events","headers":{"authorization":"Bearer {{owner}}"},"status":200,"expectJson":{"/next":3,"/events/2/text":"three"}}
+  ]},
+  {"steps":[
+    {"path":"/channels","method":"POST","status":201,"expectHeaders":{"content-type":"application/json"},"capture":{"id":{"json":"id"},"owner":{"json":"owner","secret":true}}},
+    {"path":"/channels/{{id}}/tokens","method":"POST","headers":{"authorization":"Bearer {{owner}}"},"status":201,"expectHeaders":{"content-type":"application/json"},
+     "capture":{"memberId":{"json":"tokenId"},"member":{"json":"token","secret":true}}},
+    {"path":"/channels/{{id}}/events","method":"POST","headers":{"authorization":"Bearer {{member}}","content-type":"application/json"},"body":"{\"text\":\"sixty bytes of text fill almost all of this channel's bytes..\"}","status":201,"expectJson":{"/seq":1}},
+    {"path":"/channels/{{id}}/events","method":"POST","headers":{"authorization":"Bearer {{member}}","content-type":"application/json"},"body":"{\"text\":\"five more\"}","status":507,"expectJson":{"/error":"byte-capacity"}},
+    {"path":"/channels/{{id}}/tokens/{{memberId}}","method":"DELETE","headers":{"authorization":"Bearer {{owner}}"},"status":200,"expectJson":{"/revoked":true}},
+    {"path":"/channels/{{id}}/events","method":"POST","headers":{"authorization":"Bearer {{member}}","content-type":"application/json"},"body":"{\"text\":\"x\"}","status":401}
+  ]},
+  {"steps":[
+    {"path":"/channels","method":"POST","status":201,"expectHeaders":{"content-type":"application/json"},"capture":{"id":{"json":"id"},"owner":{"json":"owner","secret":true}}},
+    {"path":"/channels/{{id}}/tokens","method":"POST","headers":{"authorization":"Bearer {{owner}}"},"status":201,"expectHeaders":{"content-type":"application/json"},
+     "capture":{"parentId":{"json":"tokenId"},"parent":{"json":"token","secret":true}}},
+    {"path":"/channels/{{id}}/tokens","method":"POST","headers":{"authorization":"Bearer {{parent}}"},"status":201,"expectHeaders":{"content-type":"application/json"},
+     "capture":{"derived":{"json":"token","secret":true}}},
+    {"path":"/channels/{{id}}/tokens/{{parentId}}","method":"DELETE","headers":{"authorization":"Bearer {{derived}}"},"status":404},
+    {"path":"/channels/{{id}}/events","headers":{"authorization":"Bearer {{derived}}"},"status":200,"expectJson":{"/next":0}},
+    {"path":"/channels/{{id}}/tokens/{{parentId}}","method":"DELETE","headers":{"authorization":"Bearer {{owner}}"},"status":200,"expectJson":{"/revoked":true}},
+    {"path":"/channels/{{id}}/events","headers":{"authorization":"Bearer {{parent}}"},"status":401},
+    {"path":"/channels/{{id}}/events","headers":{"authorization":"Bearer {{derived}}"},"status":401},
+    {"path":"/channels/{{id}}/tokens","method":"POST","headers":{"authorization":"Bearer {{derived}}"},"status":401}
+  ]},
+  {"steps":[
+    {"path":"/channels","method":"POST","status":201,"expectHeaders":{"content-type":"application/json"},"capture":{"id":{"json":"id"},"owner":{"json":"owner","secret":true}}},
+    {"path":"/channels/{{id}}/tokens","method":"POST","headers":{"authorization":"Bearer {{owner}}"},"status":201,"expectHeaders":{"content-type":"application/json"},
+     "capture":{"memberId":{"json":"tokenId"},"member":{"json":"token","secret":true}}},
+    {"path":"/channels/{{id}}/events","method":"POST","headers":{"authorization":"Bearer {{member}}","content-type":"application/json","idempotency-key":"k1"},"body":"{\"text\":\"kept\"}","status":201,"expectJson":{"/seq":1}},
+    {"path":"/channels/{{id}}/events","method":"POST","headers":{"authorization":"Bearer {{member}}","content-type":"application/json","idempotency-key":"k1"},"body":"{\"text\":\"kept\"}","status":201,"expectJson":{"/seq":1}},
+    {"path":"/channels/{{id}}/tokens/{{memberId}}","method":"DELETE","headers":{"authorization":"Bearer {{owner}}"},"status":200,"expectJson":{"/revoked":true}},
+    {"restart":true},
+    {"path":"/channels/{{id}}/events","headers":{"authorization":"Bearer {{member}}"},"status":401},
+    {"path":"/channels/{{id}}/events","method":"POST","headers":{"authorization":"Bearer {{owner}}","content-type":"application/json","idempotency-key":"k1"},"body":"{\"text\":\"kept\"}","status":201,"expectJson":{"/seq":1}},
+    {"path":"/channels/{{id}}/events","headers":{"authorization":"Bearer {{owner}}"},"status":200,"expectJson":{"":{"events":[{"seq":1,"text":"kept"}],"next":1}}}
+  ]},
+  {"steps":[
+    {"path":"/channels","method":"POST","status":201,"expectHeaders":{"content-type":"application/json"},"capture":{"id":{"json":"id"},"owner":{"json":"owner","secret":true}}},
+    {"path":"/channels/{{id}}/jobs","method":"POST","headers":{"authorization":"Bearer {{owner}}"},"status":201,"expectHeaders":{"content-type":"application/json"},"capture":{"job":{"json":"job"}}},
+    {"path":"/channels/{{id}}/jobs/{{job}}","method":"DELETE","headers":{"authorization":"Bearer {{owner}}"},"status":200,"expectJson":{"/state":"cancelled"}},
+    {"path":"/channels/{{id}}/jobs/{{job}}","method":"DELETE","headers":{"authorization":"Bearer {{owner}}"},"status":404},
+    {"path":"/channels/{{id}}","method":"DELETE","headers":{"authorization":"Bearer {{owner}}"},"status":202,"expectJson":{"/cleanup":"pending"}},
+    {"path":"/channels/{{id}}/events","headers":{"authorization":"Bearer {{owner}}"},"status":410,"expectJson":{"/error":"deleted"}}
+  ]}
+]

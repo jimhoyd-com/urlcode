@@ -296,6 +296,25 @@ includes are gaps too.
 Start from its `fixtures`, then write the cases it names under `gaps` and
 `review` yourself; see [fixture suggestions](TOOLING.md#fixture-suggestions).
 
+When a function or middleware route accepts a write method or streams, the
+result also carries `verificationGaps`: the
+[stateful handler verification matrix][docs/READINESS.md#stateful-handler-verification]
+with `status: "untested"`. Its seven rows (a permission change while a request
+waits, capacity exhaustion, restart, concurrent mutation, delayed cleanup
+failure, derived-credential revocation, owned-process termination) are
+application-supplied expectations, not findings and not coverage: the tool read
+no handler, fixture or test result. For each row, ask the user (or read the
+application's own specification) whether it applies and what the expected
+outcome is; do not derive an authorization rule from a route name or
+description, and do not open the function body to guess one unless the user
+asks for a source review. Write `check: "fixture"` rows as `steps` fixtures.
+Write `ordinary-test` rows (anything with two requests in flight, elapsed time,
+an injected fault or an operating-system process) as an ordinary test against
+`startServer`, never as sequential steps that would pass without testing it.
+Report each applicable row as passed only when its own check ran and passed,
+and the rest as untested. `urlcode examples add stateful-verification` copies a
+project that does all of this.
+
 A failing case prints its method, path and each failed assertion with the
 expected and actual value, shortened to about 200 characters around the first
 difference. `urlcode test` exits nonzero when the project has an active route
@@ -812,6 +831,7 @@ programmatic compatibility analysis and provider verification limits.
 [docs/READINESS.md#authenticated-routes-auth-true]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/READINESS.md#authenticated-routes-auth-true
 [docs/READINESS.md#coverage-rules]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/READINESS.md#coverage-rules
 [docs/READINESS.md#test-data-and-seeds]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/READINESS.md#test-data-and-seeds
+[docs/READINESS.md#stateful-handler-verification]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/READINESS.md#stateful-handler-verification
 [docs/LOCAL-DEVELOPMENT.md]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/LOCAL-DEVELOPMENT.md
 [docs/EXTENSIONS.md#activation-warnings]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/EXTENSIONS.md#activation-warnings
 [docs/HTTP.md#body-schema-and-input-patterns]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/HTTP.md#body-schema-and-input-patterns

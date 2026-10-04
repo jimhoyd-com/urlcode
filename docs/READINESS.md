@@ -428,6 +428,54 @@ reads and writes, a permission the user lacks refused, sign-out and the old
 session cookie replayed and refused, and another user refused the first
 user's record.
 
+## Stateful handler verification
+
+A `function` or `middleware` route that keeps state (credentials, a bounded log,
+pending requests, stored objects, processes it starts) has guarantees the YAML
+does not state. `audit` counts route methods, not guarantees: a project can be
+`ready` with every row below unchecked, and an application can pass its build
+and its happy-path tests with a defect in any of them. The rows are
+**application-supplied expectations**. URLCode does not know the expected
+outcome, does not read handler source to guess it, and never infers who may do
+what from a route's name or description. You write the expected outcome, then
+the check.
+
+| Row | The question your application answers | Fixture | Ordinary test |
+|---|---|---|---|
+| `permission-change-while-waiting` | What a request that is still waiting (a long poll, a stream, a queued job) does when its caller's permission is revoked or changed before it answers | No. A step is sent only after the previous step's answer, so no request is ever held open while another runs | Yes |
+| `capacity-exhaustion` | Whether control operations (owner revocation, permission changes, delete) still work once a count or byte limit the handler enforces is reached | Yes. Steps fill the limit, assert the refusal, make the control change and assert its effect (at most 50 steps, so test against a small limit) | Not needed |
+| `restart-persistence` | Which state survives a restart, and which may be lost | Yes. `{"restart": true}` on the same [data directory](#multi-step-fixtures); `verify-deployment` skips such a fixture | Not needed |
+| `concurrent-mutation` | What a repeated request, and requests that arrive together, do to the same state | Partly. A replayed idempotency key is two steps. Requests sent at the same time are not expressible | Yes, for simultaneous requests |
+| `delayed-cleanup-failure` | What is reported, and what can be retried, when cleanup done after the answer fails | No. There is no wait, poll or retry step, no clock control and no way to make storage fail; a step can assert the immediate answer only | Yes |
+| `derived-credential-revocation` | Whether revoking a credential also ends every credential, token or session issued from it | Yes. `capture` each credential (`"secret": true`), revoke the parent, assert the derived one is refused | Not needed |
+| `owned-process-termination` | Whether cancelling ends every process the handler started, including their children | No. A step can assert only what the application says about itself, never the operating-system process | Yes |
+
+**Untested is not passed.** A row is passed only when a check written for it ran
+and passed. No URLCode command reports a row as passed:
+`urlcode fixtures suggest` (MCP `suggest_fixtures`) lists the rows under
+`verificationGaps` with `status: "untested"` for every write-capable or
+streaming function or middleware route, from the YAML alone, without reading a
+handler, a fixture or a test result
+([fixture suggestions](TOOLING.md#fixture-suggestions)); it cannot tell which
+rows apply to your handler or which you already check. Record which rows apply
+and where each is checked next to your tests.
+
+**The boundary.** A fixture is one client sending one request at a time, with
+captures, a cookie jar and restarts. Anything that needs two requests in flight,
+elapsed time, an injected fault or a look outside the HTTP answer is an ordinary
+test against `startServer` (the [in-process helper](#multi-step-fixtures)), in
+whatever test runner the project uses. There is no fixture syntax for these; do not
+approximate one with sequential steps, which would pass without testing it.
+URLCode does not supervise processes that project code starts, on any target.
+
+[`examples/stateful-verification`](../examples/stateful-verification/README.md)
+runs every row against one synthetic handler: the fixture rows as `steps`
+fixtures and the others in
+[`tests/in-flight.test.mjs`](../examples/stateful-verification/tests/in-flight.test.mjs),
+an ordinary `node:test` file. It also carries six deliberate defects; each one
+fails the checks written for it while the others keep passing, and four of the
+six fail no fixture at all.
+
 ## Test data and seeds
 
 `urlcode test` and `audit` (and the MCP server's `run_tests`)
