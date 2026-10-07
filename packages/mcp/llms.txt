@@ -18,10 +18,11 @@ Part of the URLCode framework, in the same repository: docs/FRAMEWORK.md
   subpath answers 404 (`/*` is required route syntax, not extra endpoints)
 - `auth: true` on a mount to require a session before any tool call runs; with the bundled auth
   that is a session cookie from the site's own origin, so a non-browser client is refused `403`,
-  and a handler is not told who called (no OAuth or bearer authorization; README "Protecting a mount")
+  and every handler there receives the caller as `context.principal` (`{id, provider}`; no OAuth or
+  bearer authorization; README "Protecting a mount")
 - Optional route `env` on the mount, granted by the operator policy like a function route's;
   handlers are called as `handler(input, { env, requestId, server, tool, kind, signal })`, plus
-  `progress` on a tool
+  `progress` on a tool and `principal` on an `auth: true` mount
 - The operator activates it with `mcp()` (optionally `mcp({ onToolError, onToolCall, streaming })`) in the site's
   `host.mjs` `composeHost` list; `urlcode extensions add mcp` writes that line and an empty config
 

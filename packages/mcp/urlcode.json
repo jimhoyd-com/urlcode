@@ -168,7 +168,7 @@
                         }
                       }
                     ],
-                    "description": "Called with the validated arguments and a context (granted env, request id, server and tool names); returns the result or throws McpToolError for an isError answer. Trusted project module ({source, export} or a bare path), run in-process like other extension hooks; sandbox: true is refused."
+                    "description": "Called with the validated arguments and a context (granted env, request id, server and tool names); on an auth: true mount the context also carries the caller's verified principal; returns the result or throws McpToolError for an isError answer. Trusted project module ({source, export} or a bare path), run in-process like other extension hooks; sandbox: true is refused."
                   }
                 }
               },
@@ -389,7 +389,7 @@
       {
         "kind": "hook",
         "name": "tool handler",
-        "description": "Each tool declares a trusted project module/export handler (source, optional export), loaded and run the same way as other extension hooks: not sandboxed, receives the schema-validated arguments object and a context carrying the granted env of the mount route, the request id and the server/tool names. It returns the result value, or throws McpToolError (exported by @jimhoyd/urlcode-mcp) with a caller-facing message (and optional data returned as structuredContent when it conforms to the declared outputSchema) to answer isError: true; any other thrown error answers a fixed generic message.",
+        "description": "Each tool declares a trusted project module/export handler (source, optional export), loaded and run the same way as other extension hooks: not sandboxed, receives the schema-validated arguments object and a context carrying the granted env of the mount route, the request id and the server/tool names, plus, on a mount whose route has `auth: true`, the caller's verified principal as `context.principal` ({id, provider}; with the bundled auth extension `id` is the signed-in user id). It returns the result value, or throws McpToolError (exported by @jimhoyd/urlcode-mcp) with a caller-facing message (and optional data returned as structuredContent when it conforms to the declared outputSchema) to answer isError: true; any other thrown error answers a fixed generic message.",
         "path": "urlcode.yaml#extensions.mcp.config.servers.<name>.tools.<name>.handler"
       },
       {
@@ -407,7 +407,7 @@
       {
         "kind": "extension",
         "name": "mount",
-        "description": "Mount each server at its declared path with POST (and HEAD); the protocol is stateless, so GET and DELETE are answered 405. The operator may enable streamed progress replies in host.mjs. Add `auth: true` when tool calls require a signed-in caller: with the bundled auth extension that admits a session cookie sent from the site's own origin only, so a non-browser MCP client (no Origin header, or a bearer token) is refused 403. The MCP authorization flow (OAuth, bearer tokens) is not implemented and a handler is not told who called, so per-user tools for remote clients are the owner's choice: a trusted function route that calls an MCP library directly.",
+        "description": "Mount each server at its declared path with POST (and HEAD); the protocol is stateless, so GET and DELETE are answered 405. The operator may enable streamed progress replies in host.mjs. Add `auth: true` when tool calls require a signed-in caller: with the bundled auth extension that admits a session cookie sent from the site's own origin only, so a non-browser MCP client (no Origin header, or a bearer token) is refused 403. Each handler then receives the caller's verified principal as `context.principal`, so a tool can scope its work to that user. The MCP authorization flow (OAuth, bearer tokens) is not implemented, so per-user tools for remote, non-browser clients are the owner's choice: a trusted function route that calls an MCP library directly.",
         "path": "urlcode.yaml",
         "goals": [
           "mcp",

@@ -1,5 +1,5 @@
 import { extensionHookContext, extensionHookReferenceSchema, isSameOriginRequest, loadExtensionHooks } from '@jimhoyd/urlcode/extensions';
-import type { ExtensionAuthoringContract, ExtensionHookContext, ExtensionHookContract, ExtensionHookConfig, ExtensionInstance, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
+import type { ExtensionAuthoringContract, ExtensionHookContext, ExtensionHookContract, ExtensionHookConfig, ExtensionInstance, ExtensionPrincipal, ExtensionRequest, HandlerResult, RuntimeExtension } from '@jimhoyd/urlcode/extensions';
 import { bodySchemaIssues, bodySchemaLine, compileBodySchema, illFormedMember } from '@jimhoyd/urlcode/body-schema';
 import type { BodySchema } from '@jimhoyd/urlcode/body-schema';
 import { createMcpHandler, ProtocolError, ProtocolErrorCode, Server } from '@modelcontextprotocol/server';
@@ -133,6 +133,14 @@ export interface McpToolCallInfo { server: string; tool: string; kind: McpHandle
  */
 export interface McpHandlerContext extends ExtensionHookContext {
   server: string; tool: string; kind: McpHandlerKind;
+  /**
+   * The caller's verified principal (core's RIM-EXT-PRINCIPAL-001): the same frozen `{id, provider}` the mount's
+   * request carries, present only on a mount whose route names a principal-providing policy (`auth: true`) and only
+   * when that policy set one for this request. With the bundled auth extension `id` is the signed-in user id, the
+   * value a function route reads as `context.capabilities.auth.identity.userId`. Absent everywhere else: a handler
+   * that scopes by user must refuse a call without it.
+   */
+  principal?: ExtensionPrincipal;
   /** Aborted when the client disconnects or the SDK cancels this request. A long-running handler should stop when it fires. */
   signal: AbortSignal;
   /**
@@ -153,6 +161,8 @@ interface ActiveServer {
   tools: Map<string, ActiveTool>;
   resources: Map<string, ActiveResource>; resourcesByUri: Map<string, string>;
   prompts: Map<string, ActivePrompt>;
+  /** Whether the mount's route names a principal-providing policy (the activation's `principalMounts`). */
+  principalMount: boolean;
 }
 
 const stringSchema = (description: string) => ({ type: 'string', minLength: 1, maxLength: 512, description });
@@ -183,7 +193,7 @@ const toolConfigSchema = {
     // the same rule a native route's `request.body.<METHOD>.schema` is held to.
     inputSchema: { anyOf: [{ type: 'object' }, schemaNameSchema], description: 'Schema of the arguments object, in the bounded request.body.<METHOD>.schema JSON Schema 2020-12 profile (checked and compiled at activation), or the name of one of the project\'s named schemas (top-level schemas:), which a route\'s request.body.<METHOD>.schema can name too; a call whose arguments fail it never reaches the handler.' },
     outputSchema: { anyOf: [{ type: 'object' }, schemaNameSchema], description: 'Optional schema, in the same profile or named the same way, of the object the handler returns; the result is then sent as structuredContent and a result that fails it is an error.' },
-    handler: handlerSchema('Called with the validated arguments and a context (granted env, request id, server and tool names); returns the result or throws McpToolError for an isError answer.'),
+    handler: handlerSchema('Called with the validated arguments and a context (granted env, request id, server and tool names); on an auth: true mount the context also carries the caller\'s verified principal; returns the result or throws McpToolError for an isError answer.'),
   },
 };
 const resourceConfigSchema = {
@@ -245,10 +255,10 @@ export const mcpAuthoring: ExtensionAuthoringContract = {
   surfaces: [
     { kind: 'configuration', name: 'servers', description: 'Declare one or more MCP servers, each with a mount, serverName, serverVersion, optional instructions and bounded tools/resources/prompts maps.', path: 'urlcode.yaml#extensions.mcp.config.servers',
       goals: ['mcp', 'model-context-protocol', 'server', 'servers', 'tool', 'tools', 'connector', 'connectors', 'assistant', 'assistants'] },
-    { kind: 'hook', name: 'tool handler', description: 'Each tool declares a trusted project module/export handler (source, optional export), loaded and run the same way as other extension hooks: not sandboxed, receives the schema-validated arguments object and a context carrying the granted env of the mount route, the request id and the server/tool names. It returns the result value, or throws McpToolError (exported by @jimhoyd/urlcode-mcp) with a caller-facing message (and optional data returned as structuredContent when it conforms to the declared outputSchema) to answer isError: true; any other thrown error answers a fixed generic message.', path: 'urlcode.yaml#extensions.mcp.config.servers.<name>.tools.<name>.handler' },
+    { kind: 'hook', name: 'tool handler', description: 'Each tool declares a trusted project module/export handler (source, optional export), loaded and run the same way as other extension hooks: not sandboxed, receives the schema-validated arguments object and a context carrying the granted env of the mount route, the request id and the server/tool names, plus, on a mount whose route has `auth: true`, the caller\'s verified principal as `context.principal` ({id, provider}; with the bundled auth extension `id` is the signed-in user id). It returns the result value, or throws McpToolError (exported by @jimhoyd/urlcode-mcp) with a caller-facing message (and optional data returned as structuredContent when it conforms to the declared outputSchema) to answer isError: true; any other thrown error answers a fixed generic message.', path: 'urlcode.yaml#extensions.mcp.config.servers.<name>.tools.<name>.handler' },
     { kind: 'hook', name: 'resource handler', description: 'Each resource declares a trusted project module/export handler returning that resource’s content (a string, or {text|blob, mimeType}), served over resources/read.', path: 'urlcode.yaml#extensions.mcp.config.servers.<name>.resources.<name>.handler' },
     { kind: 'hook', name: 'prompt handler', description: 'Each prompt declares a trusted project module/export handler receiving the schema-validated string arguments and returning prompt message content, served over prompts/get.', path: 'urlcode.yaml#extensions.mcp.config.servers.<name>.prompts.<name>.handler' },
-    { kind: 'extension', name: 'mount', description: 'Mount each server at its declared path with POST (and HEAD); the protocol is stateless, so GET and DELETE are answered 405. The operator may enable streamed progress replies in host.mjs. Add `auth: true` when tool calls require a signed-in caller: with the bundled auth extension that admits a session cookie sent from the site\'s own origin only, so a non-browser MCP client (no Origin header, or a bearer token) is refused 403. The MCP authorization flow (OAuth, bearer tokens) is not implemented and a handler is not told who called, so per-user tools for remote clients are the owner\'s choice: a trusted function route that calls an MCP library directly.', path: 'urlcode.yaml',
+    { kind: 'extension', name: 'mount', description: 'Mount each server at its declared path with POST (and HEAD); the protocol is stateless, so GET and DELETE are answered 405. The operator may enable streamed progress replies in host.mjs. Add `auth: true` when tool calls require a signed-in caller: with the bundled auth extension that admits a session cookie sent from the site\'s own origin only, so a non-browser MCP client (no Origin header, or a bearer token) is refused 403. Each handler then receives the caller\'s verified principal as `context.principal`, so a tool can scope its work to that user. The MCP authorization flow (OAuth, bearer tokens) is not implemented, so per-user tools for remote, non-browser clients are the owner\'s choice: a trusted function route that calls an MCP library directly.', path: 'urlcode.yaml',
       goals: ['mcp', 'remote', 'oauth', 'bearer', 'authorization', 'token', 'tokens', 'client', 'clients', 'connector', 'connectors'] },
   ],
   fastChecks: ['urlcode validate --local --project app --host-file host.mjs --local-review', 'urlcode test --project app --host-file host.mjs --local-review'],
@@ -340,6 +350,7 @@ function serverFor(server: ActiveServer, options: McpExtensionOptions, request: 
     const started = performance.now();
     const context: McpHandlerContext = {
       ...extensionHookContext(request), server: server.name, tool, kind,
+      ...(server.principalMount && request.principal ? { principal: request.principal } : {}),
       signal: request.signal ? AbortSignal.any([signal, request.signal]) : signal,
       ...(kind === 'tool' ? { progress: progress ?? (() => {}) } : {}),
     };
@@ -527,7 +538,7 @@ export function createMcpExtension(options: McpExtensionOptions): RuntimeExtensi
         const tools = new Map<string, ActiveTool>(Object.entries(spec.tools).map(([toolName, tool]) => [toolName, { spec: tool, call: handlers[`tool:${toolName}`]!, ...schemasOf.get(toolName)! }]));
         const resources = new Map<string, ActiveResource>(Object.entries(spec.resources ?? {}).map(([resourceId, resource]) => [resourceId, { spec: resource, call: handlers[`resource:${resourceId}`]! }]));
         const prompts = new Map<string, ActivePrompt>(Object.entries(spec.prompts ?? {}).map(([promptId, prompt]) => [promptId, { spec: prompt, call: handlers[`prompt:${promptId}`]!, argumentsSchema: promptArgumentsSchema(prompt.arguments) }]));
-        byMount.set(spec.mount, { name, spec, tools, resources, resourcesByUri, prompts });
+        byMount.set(spec.mount, { name, spec, tools, resources, resourcesByUri, prompts, principalMount: (context.principalMounts ?? []).includes(spec.mount) });
       }
       for (const mount of context.mounts) if (!byMount.has(mount)) throw new Error(`MCP mount ${mount} has no server declared`);
       return {
