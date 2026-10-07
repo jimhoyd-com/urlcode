@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { ConfigError, assert, extensionError } from './errors.ts';
 import type { ExtensionEntry, HostContext, HostedExtension } from './extensions.ts';
 import { contractProblem } from './addon-manifest.ts';
-import { hermeticConfirmedKey, hermeticDataKey, hostRevisionPin, revisionPinGuidance, type OperatorHost } from './operator-host.ts';
+import { hermeticConfirmedKey, hermeticDataKey, hostRevisionPin, loadOperatorHost, revisionPinGuidance, type OperatorHost } from './operator-host.ts';
 import type { RuntimeOptions } from './runtime.ts';
 
 /**
@@ -99,4 +99,15 @@ export async function composeHost(hostUrl: string | URL, entries: readonly Exten
   } catch (error) { await close().catch(() => undefined); throw error; }
   for (const { result } of hosted) confirmed?.add(result.registration);
   return { extensions: hosted.map(({ result }) => result.registration), ...(plugins ? { plugins } : {}), close };
+}
+
+/**
+ * Loads the site's host file for an extension's own operator command (`urlcode-auth migrate --host-file host.mjs`,
+ * #1140), so the command sees the options host.mjs passes the extension (a plugin, a database path) instead of
+ * guessing them. It is the read-only inspection load `urlcode explain --host-file` uses, with the same checks (an ES
+ * module outside `project`, at most 1 MiB): without a revision pin the registrations are unpinned and cannot activate,
+ * and nothing is served. The caller closes the returned host.
+ */
+export function inspectOperatorHost(hostFile: string, project: string): Promise<OperatorHost> {
+  return loadOperatorHost(hostFile, project, { inspection: true });
 }

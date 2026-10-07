@@ -15,7 +15,7 @@ not do is listed [below](#not-included).
 
 ```sh
 urlcode extensions add auth
-npx urlcode-auth migrate
+npx urlcode-auth migrate   # add --host-file host.mjs once host.mjs passes auth() a plugin
 echo '{"email":"you@example.com","password":"a long local password","name":"You"}' | npx urlcode-auth create-user
 ```
 
@@ -308,12 +308,19 @@ operator's `--origin` and its base path is the mount.
   `/admin/ban-user` and `/admin/unban-user`, an administrator suspends an
   account, its live sessions end at once, and every other caller is refused.
   A plugin that adds tables or columns (`admin` adds `user.role` and
-  `user.banned`) needs [your own database](#your-own-database), migrated with
-  Better Auth's own tooling: `urlcode-auth migrate` cannot read `host.mjs`, so
-  it creates only Better Auth's own schema and the bundled file then refuses
-  to activate, naming the tables. `urlcode test` and `audit` create a plugin's
-  schema on their throwaway file, so they pass where serving the bundled file
-  refuses.
+  `user.banned`) serves from the bundled file once
+  `npx urlcode-auth migrate --host-file host.mjs` has created them: with the
+  host file the command reads the options `host.mjs` passes `auth({...})`
+  (its plugins, a `database` path, a `secretFile`), as `create-user` and
+  `find-user` do with it too. Without `--host-file` it creates only Better
+  Auth's own schema, and the bundled file then refuses to activate, naming
+  the tables and that flag. `urlcode test`, `audit` and a `--local-review`
+  validate create a plugin's schema on their throwaway file, so they pass
+  either way; each logs one `extension_warning` naming the tables the plugins
+  add and the command that creates them before serving (#1140). The host file
+  is loaded as `urlcode explain` loads it, with no revision pin, and nothing
+  is served; `--project` names the route project it must stay outside
+  (default `<site>/app`).
 - No role or permission model: keep permissions in the application.
 - Node only; aws and vercel refuse it.
 

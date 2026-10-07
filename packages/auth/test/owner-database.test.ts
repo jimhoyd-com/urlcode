@@ -151,7 +151,7 @@ test('with an owner database the urlcode-auth commands refuse; going back to the
   for (const args of [['migrate'], ['create-user'], ['find-user', '--email', 'ann@example.test']]) {
     const refused = run(args);
     assert.equal(refused.status, 2, args.join(' '));
-    assert.match(refused.stderr, /manages only the bundled data\/auth\.sqlite, and this site's host\.mjs gives Better Auth the owner's own database/);
+    assert.match(refused.stderr, /manages only the bundled SQLite file, and this site's host\.mjs gives Better Auth the owner's own database/);
   }
   assert.equal(await stat(join(at.root, 'data', 'auth.sqlite')).then(() => true, () => false), false, 'nothing created the bundled file');
   await host({});

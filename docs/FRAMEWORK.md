@@ -330,6 +330,8 @@ and rolling everything back when two fragments collide (the contract is
 documented under [add-ons](EXTENSIONS.md#add-ons-extensions-and-artifacts)).
 For auth, `npx urlcode-auth migrate` then creates Better Auth's tables and
 `npx urlcode-auth create-user` creates an account from JSON on stdin (`npx urlcode-auth find-user --email <email>` prints an existing one's id).
+With `--host-file host.mjs` each reads the options `host.mjs` passes
+`auth({...})`, so `migrate` also creates the tables a Better Auth plugin adds.
 Neither is needed for tests: `urlcode test` and `audit` compose the
 host on a fresh data directory every run (`HostContext.data` and `hermetic`) and
 seed accounts and memberships from `app/tests/seed.json`
