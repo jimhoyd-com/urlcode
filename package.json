@@ -196,7 +196,7 @@
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@hey-api/openapi-ts": "0.99.0",
-    "@modelcontextprotocol/client": "2.1.0",
+    "@modelcontextprotocol/client": "2.3.0",
     "@types/mime-types": "3.0.1",
     "@types/node": "26.6.4",
     "@types/semver": "7.8.0",
