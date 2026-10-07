@@ -54,34 +54,40 @@ export const budgets: Record<string, Budget> = {
     // Raised for #1136/#1137: fixtures-suggest verification gaps, the examples/stateful-verification
     // example (6 files), and the auth/mcp authoring surfaces and TOOLING text from the composition-fit
     // assessment. Measured on the merged branch (Node 26): 1133642 packed, 4444006 unpacked, 571 entries.
-    packed: 1111 * 1024,
-    unpacked: 4348 * 1024,
-    entries: 576,
+    // Reset by the policy above for #1139 (handler principal docs in the mcp/auth READMEs and the
+    // RIM-EXT-PRINCIPAL-001 card): 1137219 packed, 4453214 unpacked, 571 entries (Node 26).
+    packed: 1135 * 1024,
+    unpacked: 4436 * 1024,
+    entries: 583,
     roots: ['.claude', 'LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'data', 'dist', 'docs', 'examples', 'llms-full.txt', 'llms.txt', 'package.json', 'recipes', 'schemas', 'skills', 'starters'],
     optionalPeers: ['typescript'],
   },
   '@jimhoyd/urlcode-auth': {
     // S5 on top of #1054: 28462 packed / 91743 unpacked bytes, 14 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
     // #1058 on top of #1055: 29782 packed / 96154 unpacked bytes, 14 entries (Node 26); +800 bytes for Node 24, ~3 KiB headroom.
-    packed: 33 * 1024,
-    unpacked: 100 * 1024,
+    // #1139 reset by the policy above: 33059 packed / 107069 unpacked bytes, 14 entries (Node 26).
+    packed: 39 * 1024,
+    unpacked: 129 * 1024,
     entries: 16,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
   '@jimhoyd/urlcode-store': {
-    packed: 175 * 1024,
-    unpacked: 682 * 1024,
+    // #1139 reset by the policy above: 161504 packed / 626654 unpacked bytes, 36 entries (Node 26).
+    packed: 174 * 1024,
+    unpacked: 674 * 1024,
     entries: 38,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
   '@jimhoyd/urlcode-mcp': {
-    packed: 40 * 1024,
-    unpacked: 161 * 1024,
+    // #1139 reset by the policy above: 36888 packed / 147709 unpacked bytes, 12 entries (Node 26).
+    packed: 43 * 1024,
+    unpacked: 169 * 1024,
     entries: 14,
     roots: ['LICENSE', 'NOTICE', 'README.md', 'SECURITY.md', 'dist', 'package.json', 'urlcode.json'],
   },
   // Artifacts are inert JSON: a few KiB, and the exact file shape below.
   '@jimhoyd/urlcode-store-schema': {
+    // #1139 re-measured: 12845 packed / 51053 unpacked bytes, 7 entries (Node 26); the policy leaves it unchanged.
     packed: 19 * 1024,
     unpacked: 74 * 1024,
     entries: 9,
