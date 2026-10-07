@@ -3,7 +3,8 @@
 // --runs times, --concurrency at a time, with --burn worker threads spinning the CPU, and records for every run when
 // the child exited and when its pipes closed. Each child gets npm-trace.mjs preloaded. A run that does not finish within
 // --timeout-ms gets its trace, the tail of npm's own debug log and (on Windows) the child's process tree printed.
-// --mode sync uses spawnSync as the test does; --mode async uses spawn, which tells exit and pipe close apart.
+// --mode sync uses spawnSync as the test does; --mode legacy as it did before #1135; --mode async uses spawn, which
+// tells exit and pipe close apart.
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -25,7 +26,7 @@ const concurrency = Number(values.concurrency);
 const timeoutMs = Number(values['timeout-ms']);
 const slowMs = Number(values['slow-ms']);
 const mode = values.mode;
-if (mode !== 'async' && mode !== 'sync') throw new Error('--mode is async or sync');
+if (mode !== 'async' && mode !== 'sync' && mode !== 'legacy') throw new Error('--mode is async, sync or legacy');
 
 const burners = Array.from({ length: Number(values.burn) }, () => new Worker('for (;;) Math.sqrt(Math.random());', { eval: true }));
 const trace = new URL('./npm-trace.mjs', import.meta.url).href;
@@ -67,11 +68,15 @@ const once = async (run: number, dir: string): Promise<Outcome> => {
   const traceFile = join(dir, `trace-${run}.txt`);
   rmSync(join(dir, 'cache', '_logs'), { recursive: true, force: true });
   const command = npmCommand(['pack', '--ignore-scripts', '--json']);
-  const env = { ...process.env, npm_config_cache: join(dir, 'cache'), ...quietNpmEnv, NPM_HANG_TRACE: traceFile, NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --import ${trace}`.trim() };
+  // legacy is the spawn prepare.test.ts used when #1130 failed: default stdio (a stdin pipe too), no quiet settings.
+  const quiet = mode === 'legacy' ? {} : quietNpmEnv;
+  const env = { ...process.env, npm_config_cache: join(dir, 'cache'), ...quiet, NPM_HANG_TRACE: traceFile, NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --import ${trace}`.trim() };
   const started = performance.now();
   const elapsed = () => Math.round(performance.now() - started);
-  if (mode === 'sync') {
-    const result = spawnSync(command.command, command.args, { cwd: dir, env, encoding: 'utf8', timeout: timeoutMs, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 });
+  if (mode !== 'async') {
+    const result = mode === 'legacy'
+      ? spawnSync(command.command, command.args, { cwd: dir, env, encoding: 'utf8', timeout: timeoutMs })
+      : spawnSync(command.command, command.args, { cwd: dir, env, encoding: 'utf8', timeout: timeoutMs, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 });
     const outcome: Outcome = { run, status: result.status, signal: result.signal, totalMs: elapsed(), timedOut: (result.error as NodeJS.ErrnoException | undefined)?.code === 'ETIMEDOUT', stdoutBytes: result.stdout?.length ?? 0, jsonComplete: /\]\s*$/.test(result.stdout ?? '') };
     if (outcome.timedOut || outcome.status !== 0 || outcome.totalMs > slowMs) evidence(dir, traceFile, '', outcome, result.stdout ?? '', result.stderr ?? '');
     return outcome;

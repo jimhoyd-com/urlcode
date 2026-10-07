@@ -19,7 +19,7 @@ jobs:
       matrix:
         os: [windows-latest]
         node: ['24']
-        mode: [sync, async]
+        mode: [legacy, sync]
         load: ['--concurrency 2 --burn 0', '--concurrency 4 --burn 4']
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
@@ -40,4 +40,32 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: node -p "process.version + ' npm ' + require('child_process').execSync('npm -v').toString()"
       # shellcheck disable=SC2086
-      - run: node scripts/repro/npm-pack-hang.ts --mode "$MODE" --runs 400 $LOAD
+      - run: node scripts/repro/npm-pack-hang.ts --mode "$MODE" --runs 1000 $LOAD
+  # The test shard that failed in #1130, as CI ran it then (before #1135), several times over.
+  shard:
+    strategy:
+      fail-fast: false
+      matrix:
+        copy: [1, 2, 3]
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: 1f75521d551a8afedba0d0f4c133b78f0662bbf0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: |
+          for i in 1 2 3 4 5; do
+            echo "::group::shard 3/3 pass $i"
+            npm run test:shard -- --test-shard=3/3 test/*.test.ts 2>&1 | grep -E 'prepare|✖|^ℹ (pass|fail)' || true
+            echo "::endgroup::"
+          done
