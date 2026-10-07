@@ -90,6 +90,12 @@ export default function me(request, context) {
 }
 ```
 
+An `extension: mcp` mount with `auth: true` gets the same id another way: each
+tool, resource and prompt handler there reads it as `context.principal.id`
+(see the [MCP extension's protecting a mount][mcp-protecting-a-mount]). The
+same-origin rule above still applies to its `POST`, so a non-browser MCP client
+is refused.
+
 Test a protected route with a request fixture that signs in through
 `POST /api/auth/sign-in/email` inside a `steps` fixture, as a browser does; the
 fixture's cookie jar keeps the session, and `"origin":"{{origin}}"` passes the
@@ -364,6 +370,7 @@ Fast checks: `urlcode validate --project app`, `urlcode validate --local --proje
 <!-- urlcode-current-version:start -->
 [extensions-owner-choice]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/EXTENSIONS.md#native-independent-integration-or-bundled-default
 [extensions-request-helpers]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/EXTENSIONS.md#request-helpers
+[mcp-protecting-a-mount]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/packages/mcp/README.md#protecting-a-mount
 [readiness-authenticated-routes]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/READINESS.md#authenticated-routes-auth-true
 [readiness-seeds]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/READINESS.md#test-data-and-seeds
 [store-one-process]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/STORE.md#one-serving-process-per-database

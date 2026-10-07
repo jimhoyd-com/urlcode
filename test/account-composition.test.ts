@@ -39,18 +39,20 @@ async function site(t: test.TestContext) {
   await mkdir(join(app, 'functions'), { recursive: true });
   await writeFile(join(app, 'functions', 'me.mjs'), 'export default (request, context) => Response.json({ userId: context.capabilities.auth.identity.userId, authorization: request.headers.get("authorization"), cookie: request.headers.get("cookie") });\n');
   await writeFile(join(app, 'functions', 'open.mjs'), 'export default (request, context) => Response.json({ auth: context.capabilities?.auth ?? null, cookie: request.headers.get("cookie"), authorization: request.headers.get("authorization") });\n');
-  await writeFile(join(app, 'whoami.mjs'),'export default (_input, context) => ({ keys: Object.keys(context).sort() });\n');
+  await writeFile(join(app, 'whoami.mjs'),'export default (_input, context) => ({ keys: Object.keys(context).sort(), principal: context.principal ?? null, frozen: Object.isFrozen(context.principal) });\n');
   await writeFile(join(app, 'urlcode.yaml'), JSON.stringify({
     version: '1',
     extensions: {
       auth: { version: '1', config: {} },
-      mcp: { version: '1', config: { servers: { default: { mount: '/mcp', serverName: 'accounts', serverVersion: '1.0.0', tools: { whoami: { description: 'Reports the handler context keys.', inputSchema: { type: 'object', additionalProperties: false }, handler: './whoami.mjs' } } } } } },
+      mcp: { version: '1', config: { servers: { default: { mount: '/mcp', serverName: 'accounts', serverVersion: '1.0.0', tools: { whoami: { description: 'Reports the handler context keys.', inputSchema: { type: 'object', additionalProperties: false }, handler: './whoami.mjs' } } },
+        open: { mount: '/open-mcp', serverName: 'open', serverVersion: '1.0.0', tools: { whoami: { description: 'Reports the handler context keys.', inputSchema: { type: 'object', additionalProperties: false }, handler: './whoami.mjs' } } } } } },
     },
     routes: {
       '/api/auth/*': { extension: 'auth', methods: ['GET', 'POST'] },
       '/api/me': { methods: ['GET', 'POST'], auth: true, function: { source: 'functions/me.mjs' } },
       '/api/open': { methods: ['GET'], auth: { required: false }, function: { source: 'functions/open.mjs' } },
       '/mcp/*': { extension: 'mcp', methods: ['POST', 'HEAD'], auth: true },
+      '/open-mcp/*': { extension: 'mcp', methods: ['POST', 'HEAD'] },
     },
   }));
   const projectSha256 = await inspectExtensionRevision(app);
@@ -159,12 +161,12 @@ test('suspension is an operator-selected Better Auth plugin on the same mount, r
   assert.equal((await bob.call('/api/me')).status, 200);
 });
 
-test('an auth: true MCP mount admits a signed-in browser on the site origin only, and its tool handler is not told who called', async t => {
+test('an auth: true MCP mount admits a signed-in browser on the site origin only, and its tool handler is told who called (#1139)', async t => {
   const { client } = await site(t);
-  const alice = client(), anonymous = client();
-  await alice.signUp('alice');
-  const post = (who: ReturnType<typeof client>, body: unknown, init: { origin?: string | null; headers?: Record<string, string>; cookies?: boolean } = {}) =>
-    who.call('/mcp', { method: 'POST', body, ...init, headers: { ...mcpHeaders, ...init.headers } });
+  const alice = client(), bob = client(), anonymous = client();
+  const aliceId = await alice.signUp('alice'), bobId = await bob.signUp('bob');
+  const post = (who: ReturnType<typeof client>, body: unknown, { mount = '/mcp', ...init }: { origin?: string | null; headers?: Record<string, string>; cookies?: boolean; mount?: string } = {}) =>
+    who.call(mount, { method: 'POST', body, ...init, headers: { ...mcpHeaders, ...init.headers } });
 
   assert.equal((await post(anonymous, initialize)).status, 401);
   assert.equal((await post(alice, initialize)).status, 200);
@@ -183,10 +185,17 @@ test('an auth: true MCP mount admits a signed-in browser on the site origin only
   assert.equal(read.status, 200);
   assert.equal((await post(anonymous, initialize, { origin: null, headers: { authorization: `Bearer ${token}` } })).status, 403);
 
-  // The tool handler's context carries no principal or capability: a per-user tool has nothing to scope by.
-  const called = await rpc(await post(alice, { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'whoami', arguments: {} } }));
-  const { keys } = JSON.parse(called.result!.content![0]!.text) as { keys: string[] };
-  assert.deepEqual(keys, ['env', 'kind', 'progress', 'requestId', 'server', 'signal', 'tool']);
+  // The tool handler's context carries the caller's verified principal (RIM-EXT-PRINCIPAL-001), frozen, and its id is
+  // the user id a function route reads from the identity capability: each caller is told who they are.
+  type Whoami = { keys: string[]; principal: { id: string; provider: string } | null; frozen: boolean };
+  const whoami = { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'whoami', arguments: {} } };
+  const called = async (who: ReturnType<typeof client>, mount?: string) => JSON.parse((await rpc(await post(who, whoami, mount ? { mount } : {}))).result!.content![0]!.text) as Whoami;
+  assert.deepEqual(await called(alice), { keys: ['env', 'kind', 'principal', 'progress', 'requestId', 'server', 'signal', 'tool'], principal: { id: aliceId, provider: 'auth' }, frozen: true });
+  assert.deepEqual((await called(bob)).principal, { id: bobId, provider: 'auth' });
+  assert.equal(((await (await alice.call('/api/me')).json()) as { userId: string }).userId, aliceId);
+
+  // A mount without auth: true is given no principal, even when the caller sends a valid session cookie.
+  for (const who of [alice, anonymous]) assert.deepEqual(await called(who, '/open-mcp'), { keys: ['env', 'kind', 'progress', 'requestId', 'server', 'signal', 'tool'], principal: null, frozen: true });
 });
 
 test('a Better Auth plugin that adds columns serves from the bundled SQLite file once urlcode-auth migrate reads host.mjs (#1140)', { timeout: 120000 }, async t => {

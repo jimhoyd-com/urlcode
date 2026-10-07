@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- A handler on a mount whose route has `auth: true` receives the caller's verified principal as `context.principal`,
+  the same frozen `{id, provider}` core carries on the request (RIM-EXT-PRINCIPAL-001; #1139). With the bundled auth
+  extension `id` is the signed-in user id a function route reads as `context.capabilities.auth.identity.userId`, so a
+  tool can scope its work to the caller. Tool, resource and prompt handlers get it alike; an unprotected mount, or a
+  protected one whose provider set no principal, gets no `principal` key. Who is admitted is unchanged: a non-browser
+  client is still refused `403` without the site's own `Origin`, and there is still no bearer admission (#1138).
 - The authoring contract's `servers` and `mount` surfaces carry planner goal words, so `urlcode plan-feature` names
   this extension for an MCP goal (it named nothing before), and the `mount` surface and the README's "Protecting a
   mount" state what an `auth: true` mount does not do (#1137): with the bundled auth extension a request without the

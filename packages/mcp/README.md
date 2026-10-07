@@ -144,6 +144,8 @@ carries:
 - `requestId`: the id the HTTP response carries in `X-Request-Id`.
 - `server`, `tool` and `kind`: the server key, the tool/resource/prompt key
   and `'tool'`, `'resource'` or `'prompt'`.
+- `principal`: only on a mount protected with `auth: true` (see
+  [protecting a mount](#protecting-a-mount)), the caller's verified principal.
 
 ```yaml
 routes:
@@ -338,8 +340,26 @@ cannot reach a call another request is running.
 
 ## Protecting a mount
 
-Add `auth: true` to the route like any other extension mount, when tool calls require a signed-in caller. The
-extension has no identity or authorization model of its own, which sets two limits:
+Add `auth: true` to the route like any other extension mount, when tool calls require a signed-in caller. Every
+handler on that mount then receives the caller as `context.principal`: the same frozen `{id, provider}` core carries
+on the request ([the request principal][extensions-request-principal]). With the bundled auth extension `id` is the
+signed-in user id, the value a function route reads as `context.capabilities.auth.identity.userId`, so a tool can
+scope what it reads or writes to that user:
+
+```js
+// app/mcp-tools/my-notes.mjs
+import { McpToolError } from '@jimhoyd/urlcode-mcp';
+export default async function (_input, context) {
+  if (!context.principal) throw new McpToolError('Sign in to list your notes');
+  return { owner: context.principal.id };
+}
+```
+
+`principal` is absent on a mount without a principal-providing policy, and on a protected mount whose provider
+allowed a request without setting one; a handler that scopes by user refuses a call without it. It is never taken
+from a header, cookie or tool argument. Resource and prompt handlers on the mount receive it the same way.
+
+The extension has no identity or authorization model of its own, which sets one limit:
 
 - **Who gets in is the provider's rule.** With the bundled auth extension the gate admits a Better Auth session
   cookie, and a `POST` only from the site's own origin
@@ -347,11 +367,9 @@ extension has no identity or authorization model of its own, which sets two limi
   no `Origin`; that gate does not, so a non-browser MCP client is answered `403 cross_origin_refused`, with a valid session
   cookie or a bearer token alike. A signed-in page on the site's own origin can call the mount; a remote client
   that authorizes with OAuth or a bearer token cannot.
-- **A handler is not told who called.** Its `context` carries `env`, `requestId`, `server`, `tool`, `kind`,
-  `signal` and `progress`: no principal and no request-bound capability. A tool can require a signed-in caller,
-  but it cannot read or scope data by that caller.
 
-A server whose tools act for the calling account from a remote MCP client is therefore not declared here. That is
+A handler gets the principal only, not a request-bound capability such as the store's: it reaches its own data by
+that id. A server whose tools act for the calling account from a remote MCP client is therefore not declared here. That is
 the owner's choice of implementation: a trusted `function` route that calls an MCP library directly and checks its
 own credential ([using npm libraries directly][framework-npm-libraries]).
 
@@ -408,8 +426,9 @@ own credential ([using npm libraries directly][framework-npm-libraries]).
 - Host-owned usage observation: `onToolCall` reports every handler
   invocation's outcome, duration and request id, success or failure.
 - Handler request context: `handler(input, { env, requestId, server, tool, kind, signal })`,
-  with `env` from the mount route's operator-granted `env` block, and
-  `progress` on a tool (see "Streaming progress" above).
+  with `env` from the mount route's operator-granted `env` block,
+  `progress` on a tool (see "Streaming progress" above), and `principal` on
+  an `auth: true` mount (see [protecting a mount](#protecting-a-mount)).
 
 ## What this does not implement
 
@@ -449,6 +468,7 @@ version it describes; `npm run release:bump` moves them and scripts/check-local-
 [http-named-schemas]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/HTTP.md#named-schemas
 [extensions-auth-short-form]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/EXTENSIONS.md#protecting-a-route-the-auth-short-form
 [framework-npm-libraries]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/FRAMEWORK.md#using-npm-libraries-directly
+[extensions-request-principal]: https://github.com/jimhoyd-com/urlcode/blob/v0.6.6/docs/EXTENSIONS.md#request-principal
 <!-- urlcode-current-version:end -->
 
 <!-- extension-reference:start -->
@@ -481,7 +501,7 @@ Every key `mcp` accepts, rendered from this package's `urlcode.json` (the schema
 | `extensions.mcp.config.servers.*.tools.*.annotations.openWorldHint` | boolean | no | — | Hint that the tool interacts with external entities beyond the site. |
 | `extensions.mcp.config.servers.*.tools.*.inputSchema` | object / string | yes | one of: object; string (pattern: "^[A-Za-z][A-Za-z0-9_]{0,63}$") | Schema of the arguments object, in the bounded `request.body.<METHOD>.schema` JSON Schema 2020-12 profile (checked and compiled at activation), or the name of one of the project's named schemas (top-level schemas:), which a route's `request.body.<METHOD>.schema` can name too; a call whose arguments fail it never reaches the handler. |
 | `extensions.mcp.config.servers.*.tools.*.outputSchema` | object / string | no | one of: object; string (pattern: "^[A-Za-z][A-Za-z0-9_]{0,63}$") | Optional schema, in the same profile or named the same way, of the object the handler returns; the result is then sent as structuredContent and a result that fails it is an error. |
-| `extensions.mcp.config.servers.*.tools.*.handler` | string / object | yes | one of: string (minLength: 1; maxLength: 1024); object (fields below) | Called with the validated arguments and a context (granted env, request id, server and tool names); returns the result or throws McpToolError for an isError answer. Trusted project module ({source, export} or a bare path), run in-process like other extension hooks; sandbox: true is refused. |
+| `extensions.mcp.config.servers.*.tools.*.handler` | string / object | yes | one of: string (minLength: 1; maxLength: 1024); object (fields below) | Called with the validated arguments and a context (granted env, request id, server and tool names); on an auth: true mount the context also carries the caller's verified principal; returns the result or throws McpToolError for an isError answer. Trusted project module ({source, export} or a bare path), run in-process like other extension hooks; sandbox: true is refused. |
 | `extensions.mcp.config.servers.*.tools.*.handler.source` | string | yes | minLength: 1; maxLength: 1024 | Project-relative path of the trusted hook module, resolved like a function route source and re-imported on each activation. |
 | `extensions.mcp.config.servers.*.tools.*.handler.export` | string | no | pattern: "^[A-Za-z_][A-Za-z0-9_]*$" | Named export to call (default: the module default export). |
 | `extensions.mcp.config.servers.*.tools.*.handler.sandbox` | boolean | no | — | Schema-valid but refused at activation when true: extension hooks run trusted, in-process, and are never sandboxed. |
@@ -515,10 +535,10 @@ Every key `mcp` accepts, rendered from this package's `urlcode.json` (the schema
 Declare a bounded MCP (Model Context Protocol) tool/resource/prompt server: named tools with a description, a `request.body.<METHOD>.schema-shaped` input (and optional output) schema, an optional title and optional behavior annotations (readOnlyHint, destructiveHint, idempotentHint, openWorldHint), named URI-addressed resources, and named prompt templates (resources and prompts also take an optional title), each backed by a trusted project handler. The official MCP SDK (@modelcontextprotocol/server) serves the protocol: JSON-RPC 2.0 framing, protocol version negotiation, request ids, notifications and error codes; the extension maps the declared tools, resources and prompts onto it (lists return every declared entry, without pagination) and owns argument and output checks, the trusted handler calls and the caller-facing failures. Project YAML never carries JSON-RPC mechanics, a transport choice or provider settings.
 
 - **servers** (configuration, `urlcode.yaml#extensions.mcp.config.servers`): Declare one or more MCP servers, each with a mount, serverName, serverVersion, optional instructions and bounded tools/resources/prompts maps.
-- **tool handler** (hook, `urlcode.yaml#extensions.mcp.config.servers.<name>.tools.<name>.handler`): Each tool declares a trusted project module/export handler (source, optional export), loaded and run the same way as other extension hooks: not sandboxed, receives the schema-validated arguments object and a context carrying the granted env of the mount route, the request id and the server/tool names. It returns the result value, or throws McpToolError (exported by @jimhoyd/urlcode-mcp) with a caller-facing message (and optional data returned as structuredContent when it conforms to the declared outputSchema) to answer isError: true; any other thrown error answers a fixed generic message.
+- **tool handler** (hook, `urlcode.yaml#extensions.mcp.config.servers.<name>.tools.<name>.handler`): Each tool declares a trusted project module/export handler (source, optional export), loaded and run the same way as other extension hooks: not sandboxed, receives the schema-validated arguments object and a context carrying the granted env of the mount route, the request id and the server/tool names, plus, on a mount whose route has `auth: true`, the caller's verified principal as `context.principal` ({id, provider}; with the bundled auth extension `id` is the signed-in user id). It returns the result value, or throws McpToolError (exported by @jimhoyd/urlcode-mcp) with a caller-facing message (and optional data returned as structuredContent when it conforms to the declared outputSchema) to answer isError: true; any other thrown error answers a fixed generic message.
 - **resource handler** (hook, `urlcode.yaml#extensions.mcp.config.servers.<name>.resources.<name>.handler`): Each resource declares a trusted project module/export handler returning that resource’s content (a string, or {text\|blob, mimeType}), served over resources/read.
 - **prompt handler** (hook, `urlcode.yaml#extensions.mcp.config.servers.<name>.prompts.<name>.handler`): Each prompt declares a trusted project module/export handler receiving the schema-validated string arguments and returning prompt message content, served over prompts/get.
-- **mount** (extension, `urlcode.yaml`): Mount each server at its declared path with POST (and HEAD); the protocol is stateless, so GET and DELETE are answered 405. The operator may enable streamed progress replies in host.mjs. Add `auth: true` when tool calls require a signed-in caller: with the bundled auth extension that admits a session cookie sent from the site's own origin only, so a non-browser MCP client (no Origin header, or a bearer token) is refused 403. The MCP authorization flow (OAuth, bearer tokens) is not implemented and a handler is not told who called, so per-user tools for remote clients are the owner's choice: a trusted function route that calls an MCP library directly.
+- **mount** (extension, `urlcode.yaml`): Mount each server at its declared path with POST (and HEAD); the protocol is stateless, so GET and DELETE are answered 405. The operator may enable streamed progress replies in host.mjs. Add `auth: true` when tool calls require a signed-in caller: with the bundled auth extension that admits a session cookie sent from the site's own origin only, so a non-browser MCP client (no Origin header, or a bearer token) is refused 403. Each handler then receives the caller's verified principal as `context.principal`, so a tool can scope its work to that user. The MCP authorization flow (OAuth, bearer tokens) is not implemented, so per-user tools for remote, non-browser clients are the owner's choice: a trusted function route that calls an MCP library directly.
 
 Fast checks: `urlcode validate --local --project app --host-file host.mjs --local-review`, `urlcode test --project app --host-file host.mjs --local-review`.
 <!-- extension-reference:end -->

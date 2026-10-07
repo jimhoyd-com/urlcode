@@ -227,7 +227,8 @@ test('feature planning names the mcp extension for an MCP goal, and its mount st
  assert.deepEqual(plan.extensions.surfaces.map(item=>`${item.extension}/${item.surface}`),['mcp/servers','mcp/mount']);
  const mount=plan.outline.find(item=>item.kind==='mcp mount')!.note;
  assert.match(mount,/non-browser MCP client \(no Origin header, or a bearer token\) is refused 403/);
- assert.match(mount,/\(OAuth, bearer tokens\) is not implemented and a handler is not told who called/);
+ assert.match(mount,/receives the caller's verified principal as `context\.principal`/);
+ assert.match(mount,/\(OAuth, bearer tokens\) is not implemented/);
  assert.deepEqual((await planFeature(root,'expose MCP tools')).extensions.required.map(item=>item.name),['mcp']);
  // "agents" and "server" are also words of a crawler policy goal: one shared word never requires the extension.
  for(const goal of ['block AI agents and crawlers on the server','give the team a status page'])assert.deepEqual((await planFeature(root,goal)).extensions.required,[],goal);
