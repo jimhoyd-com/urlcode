@@ -53,6 +53,6 @@
     "@jimhoyd/urlcode": "0.6.6"
   },
   "dependencies": {
-    "@modelcontextprotocol/server": "2.1.0"
+    "@modelcontextprotocol/server": "2.3.0"
   }
 }
