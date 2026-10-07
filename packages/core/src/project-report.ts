@@ -151,6 +151,7 @@ function attentionOf(routes:RouteExplanation[],review:ProjectReview,change:Proje
     if(route.state!=='active')add({level:'check',from:'explain',route:route.path,message:`Route is ${route.state}.`});
   }
   if(!review.trustedDependencies.complete)add({level:'check',from:'review',message:'Trusted dependency inventory is incomplete. Review its opaque dependencies before approving.'});
+  if(review.imports.note)add({level:'check',from:'review',message:`Code review is incomplete: ${review.imports.note}.`});
   for(const item of review.observations)
     for(const route of item.routes)add({level:'check',from:'review',route,message:`${item.reason} (${item.source}:${item.line})`});
   if(change){
@@ -293,7 +294,7 @@ ${files?`<details><summary>Hashed files</summary><ul>${files}</ul></details>`:''
 }
 function findingsSection(review:ProjectReview):string {
   if(!review.observations.length)return '';
-  const items=review.observations.map((item,index)=>`<article class="finding" id="finding-${index+1}"><p><span class="pill">${esc(item.category)}</span> <span class="pill">${esc(item.confidence)} confidence</span> ${code(`${item.source}:${item.line}`)} on ${item.routes.map(routeLink).join(', ')}</p>
+  const items=review.observations.map((item,index)=>`<article class="finding" id="finding-${index+1}"><p><span class="pill">${esc(item.category)}</span> <span class="pill">${esc(item.confidence)} confidence</span> ${code(`${item.source}:${item.line}`)}${item.importedFrom?` (imported by ${item.importedFrom.map(code).join(', ')})`:''} on ${item.routes.map(routeLink).join(', ')}</p>
 <p>${esc(item.reason)}</p><pre><code>${esc(item.excerpt)}</code></pre><p class="muted">${esc(item.note)}</p></article>`).join('\n');
   return `<section id="findings"><h2>Code review findings (${review.observations.length})</h2><p class="muted">What <code>urlcode review</code> read in project code: patterns URLCode may express declaratively, or that a person should look at. A static reading, so a finding is a prompt to look, not a verdict.</p>${items}</section>`;
 }

@@ -443,14 +443,76 @@ test('review is deterministic and bounded: same project yields the same observat
   assert.deepEqual(first.observations.map(item=>item.source),['/a.mjs','/b.mjs']);
 });
 
-test('review reads only the module a route names: a handler re-exported from another module is not scanned (#1137)',async t=>{
+test('review follows a route module\'s static relative imports and reports what it finds there with the importing route (#1141)',async t=>{
   const routes={'/login':{methods:['POST'],function:{source:'f.mjs'}}};
   // The same session code, in the route's own module and behind a re-export.
   const direct=await reviewProject(await project(t,routes,{'f.mjs':cookieSource}));
   assert.equal(direct.observations.filter(item=>item.signal==='manual-cookie-session').length,1);
+  assert.equal(direct.observations[0]!.importedFrom,undefined);
   const indirect=await reviewProject(await project(t,routes,{'f.mjs':"export { default } from './lib/session.mjs';\n",'lib/session.mjs':cookieSource}));
-  assert.deepEqual(indirect.observations,[]);
-  assert.equal(indirect.moduleCount,1);
-  // The imported file is still inventoried for the operator pin; it is just not reviewed for plumbing.
+  const [found]=indirect.observations;
+  assert.equal(indirect.observations.length,1);
+  assert.equal(found!.signal,'manual-cookie-session');
+  assert.equal(found!.source,'/lib/session.mjs');
+  assert.deepEqual(found!.routes,['/login']);
+  assert.deepEqual(found!.importedFrom,['/f.mjs']);
+  assert.equal(indirect.moduleCount,2);
+  assert.deepEqual(indirect.imports,{read:1,notRead:0});
   assert.ok(indirect.trustedDependencies.files.some(file=>file.path==='lib/session.mjs'));
+});
+
+test('review merges the routes of every route module that imports a shared module, and keeps each route\'s effective policy',async t=>{
+  const headers='export function secure(response){\n  response.headers.set("X-Frame-Options","DENY");\n  response.headers.set("Content-Security-Policy","default-src \'self\'");\n  return response;\n}\n';
+  const root=await project(t,{
+    '/a':{methods:['GET'],function:{source:'a.mjs'}},
+    '/b':{methods:['GET'],function:{source:'b.mjs'},policies:{security:{}}},
+  },{'a.mjs':"import {secure} from './shared/headers.mjs';\nexport default function(request){ return secure(new Response('a')); }\n",
+     'b.mjs':"import {secure} from './shared/headers.mjs';\nexport default function(request){ return secure(new Response('b')); }\n",
+     'shared/headers.mjs':headers});
+  const review=await reviewProject(root);
+  const [found]=review.observations.filter(item=>item.signal==='manual-security-headers');
+  assert.equal(found!.source,'/shared/headers.mjs');
+  assert.deepEqual(found!.importedFrom,['/a.mjs','/b.mjs']);
+  // /b declares policies.security, so the shared hand-set headers duplicate it there.
+  assert.equal(found!.category,'manual-review');
+  assert.deepEqual(found!.routes,['/b']);
+  assert.equal(review.imports.read,1);
+});
+
+test('review never follows packages, node_modules, dynamic imports or files outside the project',async t=>{
+  const outside=join(tmpdir(),`urlcode-review-outside-${process.pid}-${Date.now()}.mjs`);
+  await writeHostFile(outside,cookieSource);
+  t.after(()=>rm(outside,{force:true}));
+  const root=await project(t,{'/x':{methods:['POST'],function:{source:'f.mjs'}}},{
+    'f.mjs':`import a from '../${outside.split(/[\\/]/).pop()}';\nimport b from './node_modules/pkg/index.mjs';\nimport c from 'some-package';\nexport default async function(request){ const {default: d} = await import('./lazy.mjs'); return d(request); }\n`,
+    'node_modules/pkg/index.mjs':cookieSource,'lazy.mjs':cookieSource,
+  });
+  const review=await reviewProject(root);
+  assert.deepEqual(review.observations,[]);
+  assert.deepEqual(review.imports,{read:0,notRead:0});
+  assert.equal(review.moduleCount,1);
+});
+
+test('review reports imported project modules its depth and file-count caps left unread',async t=>{
+  // A chain f -> m1 -> ... -> m7: m1..m6 are within six hops, m7 (holding the session code) is not.
+  const chain:Record<string,string>={'f.mjs':"export { default } from './m1.mjs';\n"};
+  for(let index=1;index<7;index++)chain[`m${index}.mjs`]=`export { default } from './m${index+1}.mjs';\n`;
+  chain['m7.mjs']=cookieSource;
+  const deep=await reviewProject(await project(t,{'/x':{methods:['POST'],function:{source:'f.mjs'}}},chain));
+  assert.deepEqual(deep.observations,[]);
+  assert.equal(deep.imports.read,6);
+  assert.equal(deep.imports.notRead,1);
+  assert.match(deep.imports.note!,/^1 imported project module was not read/);
+  // Six hops is still read.
+  const reachable=await reviewProject(await project(t,{'/x':{methods:['POST'],function:{source:'f.mjs'}}},{...chain,'m6.mjs':cookieSource}));
+  assert.equal(reachable.observations[0]?.source,'/m6.mjs');
+  assert.equal(reachable.imports.notRead,0);
+  assert.equal(reachable.imports.note,undefined);
+
+  const files:Record<string,string>={},lines:string[]=[];
+  for(let index=0;index<130;index++){files[`lib/m${String(index).padStart(3,'0')}.mjs`]='export const value = 1;\n';lines.push(`import './lib/m${String(index).padStart(3,'0')}.mjs';`);}
+  files['f.mjs']=lines.join('\n')+'\nexport default function(request){ return new Response("ok"); }\n';
+  const wide=await reviewProject(await project(t,{'/x':{methods:['GET'],function:{source:'f.mjs'}}},files));
+  assert.deepEqual(wide.imports,{read:128,notRead:2,note:'2 imported project modules were not read (review follows static relative imports at most 6 hops from a route module and reads at most 128 imported modules)'});
+  assert.equal(wide.moduleCount,129);
 });
