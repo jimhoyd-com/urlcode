@@ -53,3 +53,29 @@ every failed run's full output, the per-reproducer JSON summaries and the
 runner environment. The job's step summary lists each run's exit code and
 whether the #708 signature appeared. The observed frequency for an upstream
 report is the number of runs with that signature over the number of runs.
+
+## npm pack hang (#1130)
+
+[#1130](https://github.com/jimhoyd-com/urlcode/issues/1130): on Windows Node 24
+(npm 11.19), `test/prepare.test.ts`'s `npm pack --ignore-scripts --json` once
+wrote its complete JSON and was killed by the 30 s timeout with status `null`.
+`spawnSync` signals the child only if it has not exited, so a `null` status
+means npm itself was still running, not that a grandchild held its pipes.
+
+`npm-pack-hang.ts` runs that pack on the same two-file fixture `--runs` times,
+`--concurrency` at a time, with `--burn` CPU-spinning worker threads.
+`--mode sync` spawns as `runNpmSync` does, `--mode legacy` as the test did
+before #1135 (a stdin pipe, no quiet npm settings), and `--mode async`
+separates the child's exit from its pipes closing. Each npm child preloads
+`npm-trace.mjs`, which records every stdout and stderr write and callback, the
+`process.exit` call with the handles still open, and the `exit` event. A run
+that fails, times out or is slow prints that trace, the tail of npm's own
+debug log and, on Windows, the child's process tree.
+
+```sh
+node scripts/repro/npm-pack-hang.ts --mode legacy --runs 1000 --concurrency 4 --burn 4
+```
+
+On 2026-10-07, 5,600 runs on `windows-latest` with Node 24.21.0 and npm 11.19.0
+(2,800 in `sync` mode, 2,000 in `legacy` mode and 800 in `async` mode, about
+half of them with four burner threads) neither timed out nor failed.
