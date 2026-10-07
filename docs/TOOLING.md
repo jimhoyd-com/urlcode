@@ -483,18 +483,32 @@ report shows this inventory and flags incomplete coverage as needing attention.
 is an opt-in, read-only static review of the
 compiled project plus its own `function`/`middleware` source, for the narrow,
 agent-facing question "which of this generated code looks like avoidable
-framework plumbing, and what is the supported alternative?" It scans only the
+framework plumbing, and what is the supported alternative?" It scans the
 module each route names as its `function` or `middleware` `source` (the same
-file resolution `explain` and `manifest` use), inside the project root: no
-project code is executed, no environment variable or secret is read, and no
-network call is made. A module that source imports is not scanned, in the
-project or outside it. An application whose route sources only re-export a
-handler built elsewhere (a compiled `dist/` beside `app/`, say) therefore gets
-`observations: []`, which means the handler code was not read, not that
-nothing was found:
-`moduleCount` is the number of files scanned, and `trustedDependencies` lists
-the files those sources import and marks the ones outside the project
-`opaque`. Findings are grouped:
+file resolution `explain` and `manifest` use), inside the project root, and
+follows that module's static relative imports (`import … from './x.mjs'`,
+`export … from '../lib/x.mjs'`) into the project modules they name, so session,
+rate-limit and header plumbing kept in a helper or behind a re-export is read
+too. It follows only `./` and `../` specifiers to `.js`, `.mjs`, `.ts` or
+`.mts` files whose real path is inside the project root and not under a
+`node_modules` directory; it never follows a package import, a dynamic
+`import()`, a CommonJS `require` or a file outside the project. It follows
+imports at most 6 hops from a route module and reads at most 128 imported
+modules in all. No project code is executed, no environment variable or secret
+is read, and no network call is made.
+
+An observation found in an imported module names that module as its `source`,
+the routes whose modules reach it as its `routes`, and those route modules as
+`importedFrom` (absent for a finding in a route's own module). A module shared
+by several routes is read once and reviewed for all of them, each with its own
+effective policies. `moduleCount` is the number of files scanned, route modules
+and imported modules together. `imports` reports the imported project modules:
+`read`, and `notRead` for the ones the depth or file-count cap left unread;
+when `notRead` is above zero, `imports.note` says so (for example "3 imported
+project modules were not read …"), so `observations: []` is never read as
+"nothing to review" for code the review did not reach. `trustedDependencies`
+separately lists the files those sources import and marks the ones outside the
+project `opaque`. Findings are grouped:
 
 - `native-alternative`: an already-supported declarative capability appears to
   cover the behavior (for example `request.body.<METHOD>.schema` in place of

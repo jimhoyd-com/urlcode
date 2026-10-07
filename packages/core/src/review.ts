@@ -1,6 +1,8 @@
 import type {TrustedDependencyInventory} from './trusted-dependencies.ts';
-import {readFile} from 'node:fs/promises';
-import {dirname, relative, sep} from 'node:path';
+import {readFile, realpath, stat} from 'node:fs/promises';
+import {dirname, extname, isAbsolute, relative, resolve, sep} from 'node:path';
+import {stripTypeScriptTypes} from 'node:module';
+import {init as lexerReady, parse as parseImports} from 'es-module-lexer';
 import {functionFile} from './config.ts';
 import {routeFunctions, MODULE_BYTE_LIMIT} from './function-sources.ts';
 import {prepare} from './tooling.ts';
@@ -24,15 +26,42 @@ export interface ReviewObservation {
   registered?: boolean; revisionPinned?: boolean;
   /** Set when `--target` names a target the declared extension does not run on (its registration's targets, or without registrations its urlcode.json descriptor's, #875): the finding falls back to what it would be without the extension. */
   refusedOn?: CapabilityTarget;
+  /** Set when `source` is not a route's own module but one it statically imports (#1141): the route modules that import it, directly or through other project modules. */
+  importedFrom?: string[];
 }
 export interface ProjectReview {
   format: 1; projectSha256: string; routeCount: number; moduleCount: number;
+  /** Project modules reached through static relative imports of route modules (#1141): how many were read, and how many the depth or file-count cap left unread. `note` is set only when some were not read. */
+  imports: {read: number; notRead: number; note?: string};
   trustedDependencies: TrustedDependencyInventory;
   observations: ReviewObservation[]; summary: Record<ReviewCategory, number>;
 }
 
 const reviewModuleByteLimit = MODULE_BYTE_LIMIT;
 const reviewExcerptLimit = 240;
+// Static relative imports are followed this many hops from a route module, and at most this many imported files are read (#1141).
+export const REVIEW_IMPORT_DEPTH_LIMIT = 6;
+export const REVIEW_IMPORT_FILE_LIMIT = 128;
+const followedExtensions = new Set(['.js', '.mjs', '.ts', '.mts']);
+
+/** The project files a module statically imports through a relative specifier (`./`, `../`), static `import`/`export … from` only:
+ * never a dynamic import, a package, `node_modules`, a symlink out of the project or another extension. Nothing is executed. */
+async function relativeImports(root: string, file: string, code: string): Promise<string[]> {
+  await lexerReady;
+  let imports: ReturnType<typeof parseImports>[0];
+  try { [imports] = parseImports(/\.m?ts$/.test(file) ? stripTypeScriptTypes(code, {mode: 'strip'}) : code); } catch { return []; }
+  const found: string[] = [];
+  for (const item of imports) {
+    if ((item.type !== 'static' && item.type !== 'reexport-star') || !/^\.\.?\//.test(item.specifier) || /[?#]/.test(item.specifier)) continue;
+    let target: string;
+    try { target = await realpath(resolve(dirname(file), item.specifier)); } catch { continue; }
+    const rel = relative(root, target);
+    if (!rel || rel === '..' || rel.startsWith('..' + sep) || isAbsolute(rel) || rel.split(sep).includes('node_modules') || !followedExtensions.has(extname(target))) continue;
+    try { if (!(await stat(target)).isFile()) continue; } catch { continue; }
+    if (!found.includes(target)) found.push(target);
+  }
+  return found;
+}
 
 interface Match { line: number; excerpt: string }
 function locate(source: string, at: number): Match {
@@ -201,7 +230,7 @@ export async function reviewProject(project: string, options: InspectOptions = {
   const declaredExtensions = new Set(Object.keys(loaded.document.extensions ?? {}));
   // The session hint follows the contract, not a name: the declared extensions that provide a principal.
   const principalProviders = await principalProvidersOf(dirname(loaded.root), [...declaredExtensions], options.extensions);
-  interface ModuleInfo { source: string; routes: Set<string>; routesMissingSchema: Set<string>; routesWithThrottle: Set<string>; routesWithSecurity: Set<string>; handlerRoutes: Set<string>; middleware: boolean; boundArgs: boolean }
+  interface ModuleInfo { source: string; routes: Set<string>; routesMissingSchema: Set<string>; routesWithThrottle: Set<string>; routesWithSecurity: Set<string>; handlerRoutes: Set<string>; middleware: boolean; boundArgs: boolean; importedFrom: Set<string> }
   const modules = new Map<string, ModuleInfo>();
   for (const route of routes) {
     const declared = loaded.routes[route.pattern];
@@ -213,7 +242,7 @@ export async function reviewProject(project: string, options: InspectOptions = {
       let absolute: string;
       try { absolute = await functionFile(loaded.root, definition.source); } catch { continue; }
       let info = modules.get(absolute);
-      if (!info) { info = {source: '/' + relative(loaded.root, absolute).split(sep).join('/'), routes: new Set(), routesMissingSchema: new Set(), routesWithThrottle: new Set(), routesWithSecurity: new Set(), handlerRoutes: new Set(), middleware: false, boundArgs: false}; modules.set(absolute, info); }
+      if (!info) { info = {source: '/' + relative(loaded.root, absolute).split(sep).join('/'), routes: new Set(), routesMissingSchema: new Set(), routesWithThrottle: new Set(), routesWithSecurity: new Set(), handlerRoutes: new Set(), middleware: false, boundArgs: false, importedFrom: new Set()}; modules.set(absolute, info); }
       if (declared.function && definition === declared.function) {
         info.handlerRoutes.add(route.pattern);
         // A `{from: …}` arg is bound per request; only literal YAML args keep an answer constant.
@@ -225,13 +254,50 @@ export async function reviewProject(project: string, options: InspectOptions = {
       if (hasSecurity) info.routesWithSecurity.add(route.pattern);
     }
   }
+  const texts = new Map<string, string | undefined>();
+  const load = async (absolute: string): Promise<string | undefined> => {
+    if (!texts.has(absolute)) {
+      try { const text = await readFile(absolute, 'utf8'); texts.set(absolute, text.length > reviewModuleByteLimit ? text.slice(0, reviewModuleByteLimit) : text); } catch { texts.set(absolute, undefined); }
+    }
+    return texts.get(absolute);
+  };
+  // Follow static relative imports from each route module (#1141), breadth first, within the depth and file-count caps.
+  // An imported module is reviewed for the routes whose modules reach it; a route module stays reviewed for its own routes only.
+  const projectRoot = await realpath(loaded.root);
+  const entries = [...modules.keys()].sort(), importsOf = new Map<string, string[]>(), readImports = new Set<string>(), unread = new Set<string>();
+  for (const entry of entries) {
+    const owner = modules.get(entry)!, visited = new Set([entry]);
+    let frontier = [entry];
+    for (let depth = 1; frontier.length; depth++) {
+      const next: string[] = [];
+      for (const file of frontier) {
+        if (!importsOf.has(file)) { const code = await load(file); importsOf.set(file, code === undefined ? [] : await relativeImports(projectRoot, file, code)); }
+        for (const child of importsOf.get(file)!) {
+          if (visited.has(child)) continue;
+          visited.add(child);
+          if (modules.has(child) && !readImports.has(child)) { next.push(child); continue; }
+          if (depth > REVIEW_IMPORT_DEPTH_LIMIT || (!readImports.has(child) && readImports.size >= REVIEW_IMPORT_FILE_LIMIT)) { if (!readImports.has(child)) unread.add(child); continue; }
+          readImports.add(child); unread.delete(child);
+          let info = modules.get(child);
+          if (!info) { info = {source: '/' + relative(projectRoot, child).split(sep).join('/'), routes: new Set(), routesMissingSchema: new Set(), routesWithThrottle: new Set(), routesWithSecurity: new Set(), handlerRoutes: new Set(), middleware: false, boundArgs: false, importedFrom: new Set()}; modules.set(child, info); }
+          for (const route of owner.routes) info.routes.add(route);
+          for (const route of owner.routesMissingSchema) info.routesMissingSchema.add(route);
+          for (const route of owner.routesWithThrottle) info.routesWithThrottle.add(route);
+          for (const route of owner.routesWithSecurity) info.routesWithSecurity.add(route);
+          info.importedFrom.add(owner.source);
+          next.push(child);
+        }
+      }
+      frontier = next;
+    }
+  }
   const observations: ReviewObservation[] = [], summary = emptyCategory();
   for (const [absolute, info] of [...modules.entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) {
-    let source: string;
-    try { const text = await readFile(absolute, 'utf8'); source = text.length > reviewModuleByteLimit ? text.slice(0, reviewModuleByteLimit) : text; } catch { continue; }
+    const source = await load(absolute);
+    if (source === undefined) continue;
     const routesList = [...info.routes].sort();
     const push = (match: Match, rest: Omit<ReviewObservation, 'source' | 'line' | 'excerpt'>) => {
-      const observation: ReviewObservation = {...rest, source: info.source, line: match.line, excerpt: match.excerpt};
+      const observation: ReviewObservation = {...rest, source: info.source, line: match.line, excerpt: match.excerpt, ...(info.importedFrom.size ? {importedFrom: [...info.importedFrom].sort()} : {})};
       observations.push(observation); summary[observation.category]++;
     };
 
@@ -330,5 +396,6 @@ export async function reviewProject(project: string, options: InspectOptions = {
       });
     }
   }
-  return {format: 1, projectSha256, trustedDependencies, routeCount: routes.length, moduleCount: modules.size, observations, summary};
+  const imports: ProjectReview['imports'] = {read: readImports.size, notRead: unread.size, ...(unread.size ? {note: `${unread.size} imported project module${unread.size === 1 ? ' was' : 's were'} not read (review follows static relative imports at most ${REVIEW_IMPORT_DEPTH_LIMIT} hops from a route module and reads at most ${REVIEW_IMPORT_FILE_LIMIT} imported modules)`} : {})};
+  return {format: 1, projectSha256, trustedDependencies, routeCount: routes.length, moduleCount: entries.length + readImports.size, imports, observations, summary};
 }
