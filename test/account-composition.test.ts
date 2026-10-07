@@ -5,16 +5,20 @@
 // handler is not told who called), so the guides can state both without a reader finding out by trial.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { mkdtemp, mkdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { admin, bearer } from 'better-auth/plugins';
 import { startServer } from '../packages/core/src/index.ts';
 import { inspectExtensionRevision } from '../packages/core/src/extensions.ts';
-import { betterAuthOptions, createAuthExtension, migrate, pendingMigrations } from '../packages/auth/src/index.ts';
+import { createAuthExtension } from '../packages/auth/src/index.ts';
 import { createMcpExtension } from '../packages/mcp/src/index.ts';
 
 const origin = 'http://localhost:8137';
+const moduleUrl = (path: string) => JSON.stringify(pathToFileURL(fileURLToPath(new URL(path, import.meta.url))).href);
 const password = 'a long local test password';
 const mcpHeaders = { 'content-type': 'application/json', accept: 'application/json, text/event-stream' };
 const initialize = { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'probe', version: '0' } } };
@@ -185,22 +189,60 @@ test('an auth: true MCP mount admits a signed-in browser on the site origin only
   assert.deepEqual(keys, ['env', 'kind', 'progress', 'requestId', 'server', 'signal', 'tool']);
 });
 
-test('a Better Auth plugin that adds columns cannot serve from the bundled SQLite file: the refusal says where it can', async t => {
+test('a Better Auth plugin that adds columns serves from the bundled SQLite file once urlcode-auth migrate reads host.mjs (#1140)', { timeout: 120000 }, async t => {
   const root = await mkdtemp(join(tmpdir(), 'urlcode-accounts-'));
   t.after(() => rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }));
   const app = join(root, 'app');
   await mkdir(app, { recursive: true });
+  await mkdir(join(root, 'data'), { recursive: true });
+  await writeFile(join(root, 'data', 'auth.secret'), `${'s'.repeat(40)}\n`, { mode: 0o600 });
   await writeFile(join(app, 'urlcode.yaml'), JSON.stringify({ version: '1', extensions: { auth: { version: '1', config: {} } }, routes: { '/api/auth/*': { extension: 'auth', methods: ['GET', 'POST'] } } }));
-  const projectSha256 = await inspectExtensionRevision(app);
-  const database = join(root, 'data', 'auth.sqlite'), secret = 's'.repeat(40);
-  // What `urlcode-auth migrate` runs: Better Auth's options without the operator's plugins, which live in host.mjs.
-  const bundled = betterAuthOptions({ database, secret }, 'http://localhost', '/api/auth', false, true);
-  await migrate(bundled);
-  assert.deepEqual(await pendingMigrations(bundled), []);
-  (bundled.database as { close(): void }).close();
-  const serve = (settings: Partial<Parameters<typeof createAuthExtension>[0]>) => startServer({ project: app, origin, port: 0, log: () => {}, extensions: [createAuthExtension({ projectSha256, database, secret, ...settings })] });
-  // The admin plugin adds user.role, user.banned and session.impersonatedBy, which that migration did not create.
-  await assert.rejects(serve({ betterAuth: { plugins: [admin()] }, paths: ['/admin/ban-user'] }), /not initialized \(user, session\); run npx urlcode-auth migrate\. If the tables are already migrated, a plugin in betterAuth\.plugins adds tables or columns that urlcode-auth migrate does not create: give Better Auth your own database/);
-  // Without the plugin the same migrated file serves.
-  await (await serve({})).close();
+  const host = join(root, 'host.mjs');
+  await writeFile(host, `import { composeHost } from ${moduleUrl('../packages/core/src/host.ts')};
+import auth from ${moduleUrl('../packages/auth/src/extension.ts')};
+import { admin } from ${JSON.stringify(import.meta.resolve('better-auth/plugins'))};
+export default await composeHost(import.meta.url, [auth({ betterAuth: { plugins: [admin()] }, paths: ['/admin/ban-user'] })]);
+`);
+  const env = { ...process.env };
+  delete env.PROJECT_SHA256; delete env.BETTER_AUTH_SECRET;
+  const node = (args: string[], more: Record<string, string> = {}) => spawnSync(process.execPath, ['--conditions=development', ...args], { cwd: root, encoding: 'utf8', env: { ...env, ...more } });
+  const authCli = (args: string[]) => node([fileURLToPath(new URL('../packages/auth/src/cli.ts', import.meta.url)), ...args, '--site', root]);
+  const validate = (extra: string[], more: Record<string, string> = {}) => node([fileURLToPath(new URL('../packages/core/src/cli.ts', import.meta.url)), 'validate', '--project', app, '--host-file', host, '--local', ...extra], more);
+  const pinned = { PROJECT_SHA256: await inspectExtensionRevision(app) };
+
+  // A hermetic run creates the plugin's schema on its throwaway file, so it passes, and says what serving will need.
+  const review = validate(['--local-review']);
+  assert.equal(review.status, 0, review.stdout + review.stderr);
+  assert.match(review.stdout + review.stderr, /"event":"extension_warning","extension":"auth","message":"betterAuth\.plugins add tables or columns \(user, session\) beyond Better Auth's own schema: before serving the bundled SQLite file, migrate it with npx urlcode-auth migrate --host-file host\.mjs/);
+
+  // Without the host file, migrate creates Better Auth's own schema only, and serving refuses with the remedy that works.
+  assert.equal(authCli(['migrate']).status, 0);
+  const refused = validate(['--origin', origin], pinned);
+  assert.equal(refused.status, 1, refused.stdout + refused.stderr);
+  assert.match(refused.stdout + refused.stderr, /not initialized \(user, session\); run npx urlcode-auth migrate --host-file host\.mjs, which also creates the tables and columns betterAuth\.plugins add/);
+
+  // With it, migrate sees the plugin, creates its columns in the same file, and the site activates.
+  const migrated = authCli(['migrate', '--host-file', host]);
+  assert.equal(migrated.status, 0, migrated.stderr);
+  // host.mjs names its site by its own real path (a macOS temporary directory is behind a symlink).
+  assert.deepEqual(JSON.parse(migrated.stdout), { event: 'migrated', database: join(await realpath(root), 'data', 'auth.sqlite') });
+  const served = validate(['--origin', origin], pinned);
+  assert.equal(served.status, 0, served.stdout + served.stderr);
+
+  // create-user and find-user read the same options, so an account carries the plugin's fields.
+  const created = spawnSync(process.execPath, ['--conditions=development', fileURLToPath(new URL('../packages/auth/src/cli.ts', import.meta.url)), 'create-user', '--host-file', host, '--site', root], { cwd: root, encoding: 'utf8', env, input: JSON.stringify({ email: 'ann@example.test', password, name: 'Ann' }) });
+  assert.equal(created.status, 0, created.stderr);
+  const found = authCli(['find-user', '--email', 'ann@example.test', '--host-file', host]);
+  assert.equal(found.status, 0, found.stderr);
+  assert.equal((JSON.parse(found.stdout) as { id: string }).id, (JSON.parse(created.stdout) as { id: string }).id);
+  const probe = new DatabaseSync(join(root, 'data', 'auth.sqlite'), { readOnly: true });
+  try { assert.deepEqual(probe.prepare('SELECT role, banned FROM user').all().map(row => ({ ...row })), [{ role: 'user', banned: 0 }]); }
+  finally { probe.close(); }
+
+  // A host file that composes no auth extension is refused by name.
+  const bare = join(root, 'bare.mjs');
+  await writeFile(bare, `import { composeHost } from ${moduleUrl('../packages/core/src/host.ts')};\nexport default await composeHost(import.meta.url, []);\n`);
+  const none = authCli(['migrate', '--host-file', bare]);
+  assert.equal(none.status, 1);
+  assert.match(none.stderr, /composes no auth extension/);
 });

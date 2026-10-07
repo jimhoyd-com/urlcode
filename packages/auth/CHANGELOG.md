@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **`urlcode-auth migrate --host-file host.mjs` creates a plugin's schema (#1140).** With a plugin in
+  `betterAuth.plugins` that adds tables or columns (Better Auth's `admin`), the bundled SQLite file refused to activate
+  and named `urlcode-auth migrate`, which never read `host.mjs` and so never created them, while `urlcode test` and
+  `audit` passed. `migrate`, `create-user` and `find-user` now take `--host-file` (and `--project`, default
+  `<site>/app`): they load the host file the way `urlcode explain` does, unpinned and serving nothing, and use the
+  database, secret and Better Auth options it passes `auth({...})`, plugins included. The refusal names
+  `--host-file host.mjs` when plugins are configured, and a hermetic run (test, audit, a local-review validate) logs one
+  `extension_warning` naming the tables the plugins add and that command. Core's `@jimhoyd/urlcode/host` exports
+  `inspectOperatorHost` for an extension's operator command. The owner-database refusal now says "the bundled SQLite
+  file" rather than `data/auth.sqlite`, since `--host-file` may name another path.
 - **A plugin's missing schema is named as such (#1137).** With a plugin in `betterAuth.plugins` that adds tables or
   columns (Better Auth's `admin` adds `user.role` and `user.banned`), the bundled SQLite file refused to activate
   with `run npx urlcode-auth migrate`, which cannot help: that command does not read `host.mjs` and creates only

@@ -367,12 +367,21 @@ export function createAuthExtension(settings: AuthSettings & { projectSha256: st
         // Only the bundled file is the adapter's to open, migrate and close; an owner database is Better Auth's as given.
         database = owner ? undefined : databaseOf(options);
         if (!owner) {
+          const plugins = (settings.betterAuth?.plugins?.length ?? 0) > 0;
           // A hermetic run starts from an empty database, so it creates the tables an operator creates with migrate.
-          if (settings.hermetic === true) await migrate(options);
+          if (settings.hermetic === true) {
+            // Only `urlcode-auth migrate --host-file` sees host.mjs's plugins (#1140): say so when they add schema, so
+            // a test or audit that passes here does not hide a site whose plain migrate leaves serving refused.
+            if (plugins) {
+              await migrate({ ...options, plugins: [] });
+              const added = await pendingMigrations(options);
+              if (added.length) activation.warn?.(`betterAuth.plugins add tables or columns (${added.join(', ')}) beyond Better Auth's own schema: before serving the bundled SQLite file, migrate it with npx urlcode-auth migrate --host-file host.mjs, which creates them; without --host-file it does not, and activation refuses`);
+            }
+            await migrate(options);
+          }
           const pending = await pendingMigrations(options);
-          // `urlcode-auth migrate` cannot read host.mjs, so it creates Better Auth's own schema and never a plugin's (#1137).
-          const plugins = settings.betterAuth?.plugins?.length ? '. If the tables are already migrated, a plugin in betterAuth.plugins adds tables or columns that urlcode-auth migrate does not create: give Better Auth your own database (auth({database})) and migrate it with Better Auth\'s own tooling' : '';
-          if (pending.length) throw new Error(`auth: Better Auth's tables are not initialized (${pending.join(', ')}); run npx urlcode-auth migrate${plugins}`);
+          // Without --host-file, `urlcode-auth migrate` cannot read host.mjs and creates Better Auth's own schema only.
+          if (pending.length) throw new Error(`auth: Better Auth's tables are not initialized (${pending.join(', ')}); run npx urlcode-auth migrate${plugins ? ' --host-file host.mjs, which also creates the tables and columns betterAuth.plugins add' : ''}`);
         }
         auth = betterAuth(options);
         // Better Auth starts a schema check on construction without awaiting it (#1013). Awaited here, it has finished

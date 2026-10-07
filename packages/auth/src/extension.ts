@@ -16,6 +16,14 @@ export const SECRET_FILE = 'data/auth.secret', DATABASE = 'data/auth.sqlite';
  * goes back to the bundled file: `urlcode-auth` reads it to refuse commands that manage only the bundled file.
  */
 export const OWNER_DATABASE_MARKER = 'data/auth.owner-database';
+/**
+ * Where a served (not hermetic) registration carries what host.mjs gave Better Auth, for `urlcode-auth --host-file`
+ * (#1140): the database, the secret and the `betterAuth` options with their plugins, so `migrate` creates a plugin's
+ * tables too. A non-enumerable `Symbol.for` property, so another copy of this package reads it and nothing serializes it.
+ */
+export const OPERATOR_SETTINGS = Symbol.for('urlcode.auth.operatorSettings');
+/** The value at `OPERATOR_SETTINGS`. */
+export interface OperatorSettings { readonly database: string | OwnerDatabase; readonly secret: string; readonly betterAuth?: Partial<BetterAuthOptions> | undefined }
 
 /** What the operator may pass as `auth({...})` in host.mjs. Everything is optional. */
 export interface AuthHostOptions {
@@ -98,12 +106,16 @@ export default defineExtension<AuthHostOptions>({
     }
     if (owner === undefined && options.testDatabase !== undefined) throw new Error('auth: testDatabase is only for an owner database (auth({database: <a Better Auth database>})); a hermetic run already gives the bundled SQLite file a fresh one');
     const database = owner ?? (typeof options.database === 'string' ? options.database : join(context.data, 'auth.sqlite'));
-    // The CLI cannot read host.mjs, so the choice is left where it looks: present only while an owner database serves.
+    // `urlcode-auth` without --host-file cannot read host.mjs, so the choice is also left where it looks: present only
+    // while an owner database serves.
     const marker = join(context.data, 'auth.owner-database');
     await mkdir(owner === undefined ? dirname(database as string) : context.data, { recursive: true, mode: 0o700 });
     if (owner === undefined) await rm(marker, { force: true });
     else await writeFile(marker, 'host.mjs gives Better Auth the owner\'s own database; urlcode-auth migrate, create-user and find-user manage only the bundled SQLite file\n', { mode: 0o600 });
     const secret = await readSecret(context.site, options.secretFile);
-    return { registration: createAuthExtension({ ...common, database, secret, hermetic: false }) };
+    const registration = createAuthExtension({ ...common, database, secret, hermetic: false });
+    const settings: OperatorSettings = Object.freeze({ database, secret, betterAuth: options.betterAuth });
+    Object.defineProperty(registration, OPERATOR_SETTINGS, { value: settings });
+    return { registration };
   },
 });
