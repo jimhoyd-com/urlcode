@@ -46,7 +46,7 @@
   },
   "dependencies": {
     "@better-auth/core": "1.7.7",
-    "better-auth": "1.7.6"
+    "better-auth": "1.7.7"
   },
   "peerDependencies": {
     "@jimhoyd/urlcode": "0.6.6"
